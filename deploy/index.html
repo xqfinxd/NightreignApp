@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-cn">
+
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <title>Nightreign App</title>
+  <link rel="shortcut icon" href="/nightreign/favicon.ico" type="image/x-icon">
+  <link rel="stylesheet" href="/nightreign/css/style.css">
+</head>
+
+<body>
+
+  <div class="fab-group js-toggle-group" role="toolbar" aria-label="View range">
+    <button class="btn is-active" type="button" data-value="-1">开&emsp;始</button>
+    <button class="btn" type="button" data-value="1">普&emsp;通</button>
+    <button class="btn" type="button" data-value="2">雪&emsp;山</button>
+    <button class="btn" type="button" data-value="2">火&emsp;山</button>
+    <button class="btn" type="button" data-value="3">腐&emsp;败</button>
+    <button class="btn" type="button" data-value="4">大空洞</button>
+    <button class="btn" type="button" data-value="5">隐&emsp;城</button>
+  </div>
+  <canvas class="game" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+
+  <script type="text/javascript" src="/nightreign/js/toggle.js"></script>
+  <script type="text/javascript" src="/nightreign/js/loadwasm.js"></script>
+</body>
+
+
+</html>
