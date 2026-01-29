@@ -5,14 +5,19 @@ project(NightreignApp)
 set(CMAKE_CXX_STANDARD 17)
 
 add_executable(NightreignApp 
-	src/ThirdParty.cpp
-	src/Application.cpp
-	src/Main.cpp
-)
+	"src/ThirdParty.cpp"
+	"src/Application.cpp"
+	"src/Main.cpp"
+	"src/Window.cpp"
+	"src/Device.cpp")
 
 target_include_directories(NightreignApp PRIVATE 
-	3rdparty/glm/include
-	3rdparty/stb_image
+	"3rdparty/glm/include"
+	"3rdparty/stb_image"
+)
+
+target_link_libraries(NightreignApp PRIVATE
+	ImGui
 )
 
 add_subdirectory(3rdparty/IMGUI)
@@ -44,7 +49,6 @@ elseif(MSVC)
 		SDL2::SDL2
 #		SDL2_ttf::SDL2_ttf
 		glad
-		ImGui
 	)
 	target_include_directories(NightreignApp PRIVATE
 		${SDL2_INCLUDE_DIRS}

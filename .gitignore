@@ -2,3 +2,6 @@ build/
 build-vs/
 build-wasm/
 .vscode/
+.vs
+deploy/nightreign/NightreignApp*
+deploy/nightreign/assets/

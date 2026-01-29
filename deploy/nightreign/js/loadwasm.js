@@ -19,12 +19,12 @@ window.onerror = function(event) {
 };
 
 var xhr = new XMLHttpRequest();
-xhr.open('GET', 'EMTest.wasm', true)
+xhr.open('GET', 'nightreign/NightreignApp.wasm', true)
 xhr.responseType = 'arraybuffer';
 xhr.onload = function () {
     Module.wasmBinary = xhr.response;
     var script = document.createElement('script');
-    script.src = "EMTest.js";
+    script.src = "nightreign/NightreignApp.js";
     document.body.appendChild(script);
 };
 xhr.send(null);

@@ -1,8 +1,9 @@
-#include <SDL.h>
-#include <imgui.h>
+#include "Application.h"
 
 int main(int argc, char** argv)
 {
-    SDL_Log("Hello World!");
+    Application app;
+    app.setFPS(60);
+    app.start();
     return 0;
 }
