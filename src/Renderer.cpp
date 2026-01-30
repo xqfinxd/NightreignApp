@@ -1,6 +1,8 @@
 #include "Renderer.h"
 #include "Window.h"
 #include "Scene.h"
+#include "systems/CameraSystem.h"
+#include "ECS.h"
 #include <SDL.h>
 #include <imgui.h>
 #include <imgui_impl_sdl2.h>
@@ -57,6 +59,10 @@ void Renderer::setViewport(int x, int y, int width, int height)
 void Renderer::drawScene(Scene* scene)
 {
 	if (scene) {
-		scene->draw();
+		// Clear with scene's camera clear color
+		clear(scene->getClearColor());
+		
+		// Render scene content
+		scene->render();
 	}
 }

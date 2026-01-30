@@ -1,6 +1,9 @@
 #include "SceneManager.h"
 #include "Scene.h"
+#include "Renderer.h"
+#include "Device.h"
 #include <SDL_log.h>
+#include <imgui.h>
 
 SceneManager::SceneManager()
 {
@@ -8,7 +11,6 @@ SceneManager::SceneManager()
 
 SceneManager::~SceneManager()
 {
-	cleanup();
 }
 
 void SceneManager::initialize()
@@ -39,11 +41,17 @@ void SceneManager::update(float deltaTime)
 	}
 }
 
-void SceneManager::draw()
+void SceneManager::draw(Renderer *renderer)
 {
-	if (m_active_scene) {
-		m_active_scene->draw();
-	}
+    if (m_active_scene) {
+        renderer->drawScene(m_active_scene);
+        // Draw scene UI
+        ImGui::Begin("Scene Window");
+        ImGui::Text("Active Scene: %s", m_active_scene_name.c_str());
+        ImGui::Separator();
+		m_active_scene->drawUI();
+        ImGui::End();
+    }
 }
 
 void SceneManager::addScene(const std::string& name, Scene* scene)

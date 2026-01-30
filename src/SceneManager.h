@@ -4,6 +4,7 @@
 #include <unordered_map>
 
 class Scene;
+class Renderer;
 
 class SceneManager
 {
@@ -15,10 +16,10 @@ public:
 	void cleanup();
 
 	void update(float deltaTime);
-	void draw();
+	void draw(Renderer *renderer);
 
 	// Scene management
-	void addScene(const std::string& name, Scene* scene);
+	void addScene(const std::string& name, class Scene* scene);
 	void removeScene(const std::string& name);
 	void setActiveScene(const std::string& name);
 	Scene* getActiveScene() const { return m_active_scene; }

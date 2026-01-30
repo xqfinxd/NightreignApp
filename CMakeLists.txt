@@ -12,11 +12,18 @@ add_executable(NightreignApp
 	"src/Device.cpp"
 	"src/Renderer.cpp"
 	"src/Scene.cpp"
-	"src/SceneManager.cpp")
+	"src/SceneManager.cpp"
+	"src/Shader.cpp"
+	"src/ResourceManager.cpp"
+	"src/Buffer.cpp"
+	"src/systems/CameraSystem.cpp"
+	"src/systems/RenderSystem.cpp")
 
-target_include_directories(NightreignApp PRIVATE 
+target_include_directories(NightreignApp PRIVATE
+	"src"
 	"3rdparty/glm/include"
 	"3rdparty/stb_image"
+	"3rdparty/entt"
 )
 
 target_link_libraries(NightreignApp PRIVATE

@@ -7,7 +7,6 @@ class Renderer;
 class SceneManager;
 class InputManager;
 class ResourceManager;
-class ModuleManager;
 
 class Application {
 public:
@@ -19,6 +18,10 @@ public:
 
     void setFPS(int fps) { m_fps = fps; }
     int getFPS() const { return m_fps; }
+
+    // Accessors
+    ResourceManager* getResourceManager() const { return m_resource_mgr; }
+    SceneManager* getSceneManager() const { return m_scene_mgr; }
 
 private:
     void runFrame();
@@ -42,5 +45,4 @@ private:
     SceneManager* m_scene_mgr = nullptr;
     InputManager* m_input_mgr = nullptr;
     ResourceManager* m_resource_mgr = nullptr;
-    ModuleManager* m_module_mgr = nullptr;
 };
