@@ -9,7 +9,8 @@ add_executable(NightreignApp
 	"src/Application.cpp"
 	"src/Main.cpp"
 	"src/Window.cpp"
-	"src/Device.cpp")
+	"src/Device.cpp"
+	"src/Renderer.cpp")
 
 target_include_directories(NightreignApp PRIVATE 
 	"3rdparty/glm/include"

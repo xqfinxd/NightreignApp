@@ -10,7 +10,7 @@
 Application::Application()
 {
     m_window = Window::createInstance();
-    m_device = Device::createInstance();
+    m_device = Device::createInstance(m_window);
 }
 
 Application::~Application()
@@ -83,7 +83,7 @@ void Application::runFrameWrapper(void* userData)
 void Application::initialize()
 {
     m_window->initialize(1200, 900);
-    m_device->initialize(m_window);
+    m_device->initialize();
 }
 
 void Application::processInput()
@@ -99,7 +99,7 @@ void Application::processInput()
         {
             if (event.window.event == SDL_WINDOWEVENT_RESIZED)
             {
-                m_device->rebindWindow(m_window);
+                m_device->onResize();
             }
         }
 

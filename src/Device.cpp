@@ -12,12 +12,13 @@ Device::~Device()
 class glDevice : public Device
 {
 public:
+    glDevice(Window* window) : m_window(window) {}
 	~glDevice() {
 
 	}
 
-	void initialize(Window* window) override {
-         auto* handle = reinterpret_cast<SDL_Window*>(window->getHandle());
+	void initialize() override {
+         auto* handle = reinterpret_cast<SDL_Window*>(m_window->getHandle());
 #ifdef __EMSCRIPTEN__
         m_renderer = SDL_CreateRenderer(handle, -1, SDL_RENDERER_ACCELERATED);
         m_context = SDL_GL_GetCurrentContext();
@@ -59,18 +60,18 @@ public:
 #endif
 	}
 
-	void rebindWindow(Window* window) {
-
+	void onResize() {
 	}
 
 private:
+    Window* m_window = nullptr;
 #ifdef __EMSCRIPTEN__
     SDL_Renderer* m_renderer = nullptr;
 #endif
     SDL_GLContext m_context = nullptr;
 };
 
-Device* Device::createInstance()
+Device* Device::createInstance(Window* window)
 {
-    return new glDevice;
+    return new glDevice(window);
 }

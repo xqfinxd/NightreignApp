@@ -8,10 +8,10 @@ class Context;
 class Device
 {
 public:
-	static Device* createInstance();
+	static Device* createInstance(Window* window);
 	virtual ~Device();
-	virtual void initialize(Window* window) = 0;
+	virtual void initialize() = 0;
 	virtual void cleanup() = 0;
 
-	virtual void rebindWindow(Window* window) = 0;
+	virtual void onResize() = 0;
 };
