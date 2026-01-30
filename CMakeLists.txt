@@ -10,7 +10,9 @@ add_executable(NightreignApp
 	"src/Main.cpp"
 	"src/Window.cpp"
 	"src/Device.cpp"
-	"src/Renderer.cpp")
+	"src/Renderer.cpp"
+	"src/Scene.cpp"
+	"src/SceneManager.cpp")
 
 target_include_directories(NightreignApp PRIVATE 
 	"3rdparty/glm/include"
@@ -62,5 +64,8 @@ elseif(MSVC)
 		/utf-8
 	)
 	file(COPY assets DESTINATION ${CMAKE_BINARY_DIR})
-	file(COPY ${SDL2_BINDIR}/SDL2.dll DESTINATION ${CMAKE_BINARY_DIR})
+	add_custom_command(TARGET NightreignApp POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different
+		"${SDL2_BINDIR}/SDL2.dll"
+		$<TARGET_FILE_DIR:NightreignApp>)
 endif()

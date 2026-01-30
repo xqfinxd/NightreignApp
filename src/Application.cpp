@@ -1,6 +1,9 @@
 #include "Application.h"
 #include "Window.h"
 #include "Device.h"
+#include "Renderer.h"
+#include "SceneManager.h"
+#include "Scene.h"
 
 #include <SDL_timer.h>
 #include <SDL_log.h>
@@ -11,10 +14,14 @@ Application::Application()
 {
     m_window = Window::createInstance();
     m_device = Device::createInstance(m_window);
+    m_renderer = new Renderer(m_window);
+    m_scene_mgr = new SceneManager();
 }
 
 Application::~Application()
 {
+    delete m_scene_mgr;
+    delete m_renderer;
     delete m_device;
     delete m_window;
 }
@@ -84,6 +91,15 @@ void Application::initialize()
 {
     m_window->initialize(1200, 900);
     m_device->initialize();
+    m_renderer->initialize();
+    m_scene_mgr->initialize();
+
+    // Add default scene
+    m_scene_mgr->addScene("main", new Scene());
+
+    // Set initial viewport
+    auto size = m_window->getCanvasSize();
+    m_renderer->setViewport(0, 0, size.x, size.y);
 }
 
 void Application::processInput()
@@ -100,6 +116,8 @@ void Application::processInput()
             if (event.window.event == SDL_WINDOWEVENT_RESIZED)
             {
                 m_device->onResize();
+                auto size = m_window->getCanvasSize();
+                m_renderer->setViewport(0, 0, size.x, size.y);
             }
         }
 
@@ -110,14 +128,24 @@ void Application::processInput()
 
 void Application::update(float deltaTime)
 {
+    m_scene_mgr->update(deltaTime);
 }
 
 void Application::render()
 {
+    m_renderer->clear(glm::vec4(0.1f, 0.1f, 0.15f, 1.0f));
+    
+    m_renderer->beginFrame();
+    
+    m_renderer->drawScene(m_scene_mgr->getActiveScene());
+    
+    m_renderer->endFrame();
 }
 
 void Application::cleanup()
 {
+    m_scene_mgr->cleanup();
+    m_renderer->cleanup();
     m_device->cleanup();
     m_window->cleanup();
 }

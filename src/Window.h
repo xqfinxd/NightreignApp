@@ -17,5 +17,7 @@ public:
 
 	virtual glm::ivec2 getSize() const = 0;
 	virtual glm::ivec2 getCanvasSize() const = 0;
+
+	virtual void swapBuffers() = 0;
 };
 

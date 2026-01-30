@@ -4,6 +4,7 @@
 class Window;
 class Device;
 class Renderer;
+class SceneManager;
 class InputManager;
 class ResourceManager;
 class ModuleManager;
@@ -38,6 +39,7 @@ private:
     Window* m_window = nullptr;
     Device* m_device = nullptr;
     Renderer* m_renderer = nullptr;
+    SceneManager* m_scene_mgr = nullptr;
     InputManager* m_input_mgr = nullptr;
     ResourceManager* m_resource_mgr = nullptr;
     ModuleManager* m_module_mgr = nullptr;

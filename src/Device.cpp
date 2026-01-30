@@ -61,6 +61,7 @@ public:
 	}
 
 	void onResize() {
+		// OpenGL viewport will be updated by Application
 	}
 
 private:

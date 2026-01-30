@@ -72,6 +72,10 @@ public:
         return size;
 	}
 
+	void swapBuffers() override {
+		SDL_GL_SwapWindow(m_handle);
+	}
+
 private:
 	SDL_Window* m_handle = nullptr;
 };
