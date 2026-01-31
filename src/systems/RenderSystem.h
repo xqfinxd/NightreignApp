@@ -1,6 +1,6 @@
 #pragma once
 #include "public.h"
-#include "ECS.h"
+#include <entt/entt.hpp>
 
 class ResourceManager;
 

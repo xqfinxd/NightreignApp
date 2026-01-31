@@ -16,13 +16,13 @@ public:
 	void cleanup();
 
 	void update(float deltaTime);
-	void draw(Renderer *renderer);
 
 	// Scene management
 	void addScene(const std::string& name, class Scene* scene);
 	void removeScene(const std::string& name);
 	void setActiveScene(const std::string& name);
 	Scene* getActiveScene() const { return m_active_scene; }
+	const std::string& getActiveSceneName() const { return m_active_scene_name; }
 	Scene* getScene(const std::string& name);
 
 private:

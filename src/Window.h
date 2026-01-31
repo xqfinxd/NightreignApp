@@ -6,8 +6,7 @@
 class Window
 {
 public:
-	static Window* createInstance();
-	virtual ~Window();
+	virtual ~Window() {}
 	virtual void initialize(int w, int h) = 0;
 	virtual void cleanup() = 0;
 

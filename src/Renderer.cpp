@@ -1,15 +1,14 @@
 #include "Renderer.h"
-#include "Window.h"
+#include "Device.h"
+#include "ResourceManager.h"
 #include "Scene.h"
-#include "systems/CameraSystem.h"
-#include "ECS.h"
 #include <SDL.h>
 #include <imgui.h>
 #include <imgui_impl_sdl2.h>
 #include <imgui_impl_opengl3.h>
 
-Renderer::Renderer(Window* window)
-	: m_window(window)
+Renderer::Renderer(Device* device, ResourceManager* resmgr)
+	: m_device(device), m_resource_mgr(resmgr)
 {
 }
 
@@ -40,9 +39,6 @@ void Renderer::endFrame()
 	// Render ImGui
 	ImGui::Render();
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-	// Swap buffers
-	m_window->swapBuffers();
 }
 
 void Renderer::clear(const glm::vec4& color)

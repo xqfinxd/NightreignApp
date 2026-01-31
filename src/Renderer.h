@@ -1,12 +1,13 @@
 #pragma once
 #include "public.h"
 
-class Window;
+class Device;
+class ResourceManager;
 
 class Renderer
 {
 public:
-	Renderer(Window* window);
+	Renderer(Device* device, ResourceManager* resmgr);
 	~Renderer();
 
 	void initialize();
@@ -20,9 +21,8 @@ public:
 
 	void drawScene(class Scene* scene);
 
-	Window* getWindow() const { return m_window; }
-
 private:
-	Window* m_window = nullptr;
+	Device* m_device = nullptr;
+	ResourceManager* m_resource_mgr = nullptr;
 };
 

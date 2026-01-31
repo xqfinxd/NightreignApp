@@ -3,9 +3,28 @@
 #include "public.h"
 #include <string>
 #include <cstddef>
+#include <any>
 
 class Window;
 class Context;
+
+enum class ResourceType
+{
+	eNull,
+	eBuffer,
+	eTexture,
+	ePipeline,
+};
+
+class IResource
+{
+public:
+	IResource(ResourceType type) : m_type(type) {}
+	virtual ~IResource() {}
+
+private:
+	ResourceType m_type = ResourceType::eNull;
+};
 
 enum class BufferType {
 	Vertex,
@@ -22,8 +41,7 @@ enum class BufferUsage {
 class Device
 {
 public:
-	static Device* createInstance(Window* window);
-	virtual ~Device();
+	virtual ~Device() {}
 	virtual void initialize() = 0;
 	virtual void cleanup() = 0;
 

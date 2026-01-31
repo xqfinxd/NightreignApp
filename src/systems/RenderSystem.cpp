@@ -4,6 +4,7 @@
 #include "Buffer.h"
 #include "components/Mesh.h"
 #include "components/Transform.h"
+#include "components/Camera.h"
 #include <SDL_log.h>
 
 RenderSystem::RenderSystem(ResourceManager* resourceManager)
@@ -123,8 +124,4 @@ void RenderSystem::setupVertexAttributes()
     // TexCoord attribute
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 6));
-
-    // Color attribute
-    glEnableVertexAttribArray(3);
-    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 8));
 }

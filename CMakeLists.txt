@@ -8,15 +8,14 @@ add_executable(NightreignApp
 	"src/ThirdParty.cpp"
 	"src/Application.cpp"
 	"src/Main.cpp"
-	"src/Window.cpp"
-	"src/Device.cpp"
 	"src/Renderer.cpp"
 	"src/Scene.cpp"
 	"src/SceneManager.cpp"
 	"src/Shader.cpp"
 	"src/ResourceManager.cpp"
 	"src/Buffer.cpp"
-	"src/systems/CameraSystem.cpp"
+	"src/sdlWindow.cpp"
+	"src/glDevice.cpp"
 	"src/systems/RenderSystem.cpp")
 
 target_include_directories(NightreignApp PRIVATE

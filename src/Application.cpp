@@ -5,8 +5,8 @@
 #include "SceneManager.h"
 #include "ResourceManager.h"
 #include "Scene.h"
-#include "systems/CameraSystem.h"
-#include "ECS.h"
+#include "sdlWindow.h"
+#include "glDevice.h"
 
 #include <SDL_timer.h>
 #include <SDL_log.h>
@@ -16,11 +16,11 @@
 Application::Application()
 {
     SDL_Log("Application: Creating application...");
-    m_window = Window::createInstance();
-    m_device = Device::createInstance(m_window);
-    m_renderer = new Renderer(m_window);
-    m_scene_mgr = new SceneManager();
+    m_window = new sdlWindow();
+    m_device = new glDevice(m_window);
     m_resource_mgr = new ResourceManager(m_device);
+    m_renderer = new Renderer(m_device, m_resource_mgr);
+    m_scene_mgr = new SceneManager();
     SDL_Log("Application: Application created successfully");
 }
 
@@ -154,8 +154,18 @@ void Application::update(float deltaTime)
 void Application::render()
 {
     m_renderer->beginFrame();
-    m_scene_mgr->draw(m_renderer);
+    if (auto activeScene = m_scene_mgr->getActiveScene())
+    {
+        m_renderer->drawScene(activeScene);
+        // Draw scene UI
+        ImGui::Begin("Scene Window");
+        ImGui::Text("Active Scene: %s", m_scene_mgr->getActiveSceneName().c_str());
+        ImGui::Separator();
+        activeScene->drawUI();
+        ImGui::End();
+    }
     m_renderer->endFrame();
+    m_window->swapBuffers();
 }
 
 void Application::cleanup()
