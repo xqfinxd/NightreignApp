@@ -6,25 +6,6 @@
 #include <any>
 
 class Window;
-class Context;
-
-enum class ResourceType
-{
-	eNull,
-	eBuffer,
-	eTexture,
-	ePipeline,
-};
-
-class IResource
-{
-public:
-	IResource(ResourceType type) : m_type(type) {}
-	virtual ~IResource() {}
-
-private:
-	ResourceType m_type = ResourceType::eNull;
-};
 
 enum class BufferType {
 	Vertex,

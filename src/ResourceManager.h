@@ -9,6 +9,7 @@
 
 class Shader;
 class Device;
+class IResource;
 
 class ResourceManager
 {
