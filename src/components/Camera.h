@@ -13,13 +13,23 @@ public:
 
     float fov = 45.0f;
     float aspect = 16.0f / 9.0f;
-    float nearPlane = 0.1f;
+    float nearPlane = 0.01f;
     float farPlane = 1000.0f;
 
     bool isOrthographic = false;
     float orthoSize = 10.0f;
 
     glm::vec4 clearColor = glm::vec4(0.1f, 0.1f, 0.15f, 1.0f);
+
+    void setAspect(float width, float height)
+    {
+        float newAspect = width / height;
+        if (std::abs(aspect - newAspect) > FLT_EPSILON)
+        {
+            aspect = newAspect;
+            updateMatrices();
+        }
+    }
 
     // Getters for matrices
     glm::mat4 getViewMatrix() const
@@ -53,5 +63,11 @@ public:
                                                  nearPlane,
                                                  farPlane);
         }
+    }
+
+    glm::vec4 clip2World(glm::vec4 clipCoords)
+    {
+        glm::mat4 inverseVP = glm::inverse(projection * view);
+        return inverseVP * clipCoords;
     }
 };

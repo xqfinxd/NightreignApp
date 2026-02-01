@@ -2,6 +2,7 @@
 #include "Shader.h"
 #include "Device.h"
 #include "Buffer.h"
+#include "Texture.h"
 #include <SDL_log.h>
 
 ResourceManager* ResourceManager::s_instance = nullptr;
@@ -31,6 +32,11 @@ void ResourceManager::cleanup()
 
 Shader* ResourceManager::loadShader(const std::string& name, const std::string& vertPath, const std::string& fragPath)
 {
+    if (!m_device) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: No device available for shader loading");
+        return nullptr;
+    }
+
     // Check if shader already exists
     auto it = m_shaders.find(name);
     if (it != m_shaders.end()) {
@@ -38,16 +44,15 @@ Shader* ResourceManager::loadShader(const std::string& name, const std::string& 
         return it->second;
     }
 
-    // Create and load new shader
-    Shader* shader = new Shader();
-    if (!shader->loadFromFiles(vertPath, fragPath)) {
+    // Create shader through device
+    Shader* shader = m_device->createShader(vertPath, fragPath);
+    if (!shader || !shader->isValid()) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Failed to load shader '%s'", name.c_str());
-        delete shader;
         return nullptr;
     }
 
     m_shaders[name] = shader;
-    SDL_Log("ResourceManager: Shader '%s' loaded successfully", name.c_str());
+    SDL_Log("ResourceManager: Shader '%s' loaded successfully (Program ID: %u)", name.c_str(), shader->getProgram());
     return shader;
 }
 
@@ -66,17 +71,19 @@ void ResourceManager::unloadShader(const std::string& name)
 {
     auto it = m_shaders.find(name);
     if (it != m_shaders.end()) {
-        delete it->second;
+        if (m_device) {
+            m_device->deleteShader(it->second);
+        }
         m_shaders.erase(it);
         SDL_Log("ResourceManager: Shader '%s' unloaded", name.c_str());
     }
 }
 
-uint32_t ResourceManager::loadTexture(const std::string& name, const std::string& path, bool generateMipmaps)
+Texture* ResourceManager::loadTexture(const std::string& name, const std::string& path, bool generateMipmaps)
 {
     if (!m_device) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: No device available for texture loading");
-        return 0;
+        return nullptr;
     }
 
     // Check if texture already exists
@@ -87,18 +94,19 @@ uint32_t ResourceManager::loadTexture(const std::string& name, const std::string
     }
 
     // Load texture through device
-    uint32_t textureID = m_device->createTexture(path);
-    if (textureID == 0) {
+    Texture* texture = m_device->createTexture(path);
+    if (!texture || !texture->isValid()) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Failed to load texture '%s' from '%s'", name.c_str(), path.c_str());
-        return 0;
+        return nullptr;
     }
 
-    m_textures[name] = textureID;
-    SDL_Log("ResourceManager: Texture '%s' loaded successfully (ID: %u)", name.c_str(), textureID);
-    return textureID;
+    m_textures[name] = texture;
+    SDL_Log("ResourceManager: Texture '%s' loaded successfully (ID: %u, Size: %dx%d)", 
+        name.c_str(), texture->getId(), texture->getWidth(), texture->getHeight());
+    return texture;
 }
 
-uint32_t ResourceManager::getTexture(const std::string& name)
+Texture* ResourceManager::getTexture(const std::string& name)
 {
     auto it = m_textures.find(name);
     if (it != m_textures.end()) {
@@ -106,7 +114,7 @@ uint32_t ResourceManager::getTexture(const std::string& name)
     }
     
     SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Texture '%s' not found", name.c_str());
-    return 0;
+    return nullptr;
 }
 
 void ResourceManager::unloadTexture(const std::string& name)
@@ -145,8 +153,10 @@ void ResourceManager::unloadMesh(const std::string& name)
 void ResourceManager::unloadAll()
 {
     // Unload all shaders
-    for (auto& pair : m_shaders) {
-        delete pair.second;
+    if (m_device) {
+        for (auto& pair : m_shaders) {
+            m_device->deleteShader(pair.second);
+        }
     }
     m_shaders.clear();
     SDL_Log("ResourceManager: All shaders unloaded");

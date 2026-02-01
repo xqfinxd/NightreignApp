@@ -19,50 +19,19 @@ struct MeshComponent
     {}
 };
 
-// Vertex structure for standard meshes
 struct Vertex
 {
     glm::vec3 position;
-    glm::vec3 normal;
     glm::vec2 texCoord;
     glm::vec4 color;
 
     Vertex()
         : position(0.0f)
-        , normal(0.0f, 0.0f, 1.0f)
         , texCoord(0.0f)
         , color(1.0f)
     {}
 
-    Vertex(const glm::vec3& pos)
-        : position(pos)
-        , normal(0.0f, 0.0f, 1.0f)
-        , texCoord(0.0f)
-        , color(1.0f)
-    {}
-
-    Vertex(const glm::vec3& pos, const glm::vec3& norm, const glm::vec2& uv)
-        : position(pos)
-        , normal(norm)
-        , texCoord(uv)
-        , color(1.0f)
-    {}
-};
-
-// Simple vertex structure for 2D rendering
-struct Vertex2D
-{
-    glm::vec2 position;
-    glm::vec2 texCoord;
-    glm::vec4 color;
-
-    Vertex2D()
-        : position(0.0f)
-        , texCoord(0.0f)
-        , color(1.0f)
-    {}
-
-    Vertex2D(const glm::vec2& pos, const glm::vec2& uv, const glm::vec4& col = glm::vec4(1.0f))
+    Vertex(const glm::vec3& pos, const glm::vec2& uv, const glm::vec4& col = glm::vec4(1.0f))
         : position(pos)
         , texCoord(uv)
         , color(col)

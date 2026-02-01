@@ -2,6 +2,7 @@
 #include "Device.h"
 #include "ResourceManager.h"
 #include "Scene.h"
+#include "components/Camera.h"
 #include <SDL.h>
 #include <imgui.h>
 #include <imgui_impl_sdl2.h>
@@ -32,6 +33,8 @@ void Renderer::beginFrame()
 	ImGui_ImplOpenGL3_NewFrame();
 	ImGui_ImplSDL2_NewFrame();
 	ImGui::NewFrame();
+	glEnable(GL_BLEND);
+	glEnable(GL_DEPTH_TEST);
 }
 
 void Renderer::endFrame()
@@ -54,11 +57,13 @@ void Renderer::setViewport(int x, int y, int width, int height)
 
 void Renderer::drawScene(Scene* scene)
 {
+	auto canvasSize = m_device->getCanvasSize();
 	if (scene) {
-		// Clear with scene's camera clear color
-		clear(scene->getClearColor());
-		
-		// Render scene content
-		scene->render();
+		if(auto camera = scene->getCamera())
+		{
+			clear(camera->clearColor);
+			camera->setAspect(canvasSize.x, canvasSize.y);
+			scene->render();
+		}
 	}
 }

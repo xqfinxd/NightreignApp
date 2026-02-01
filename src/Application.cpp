@@ -141,8 +141,59 @@ void Application::processInput()
             }
         }
 
+		// Handle mouse clicks for spots
+		if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT)
+		{
+			// Only handle click if not over ImGui window
+			if (!ImGui::GetIO().WantCaptureMouse)
+			{
+				auto size = m_window->getCanvasSize();
+				if (auto activeScene = m_scene_mgr->getActiveScene())
+				{
+					activeScene->onMouseClick(event.button.x, event.button.y, size.x, size.y);
+				}
+			}
+		}
+
+		// Handle mouse button press/release for dragging
+		if (event.type == SDL_MOUSEBUTTONDOWN || event.type == SDL_MOUSEBUTTONUP)
+		{
+			if (!ImGui::GetIO().WantCaptureMouse)
+			{
+				if (auto activeScene = m_scene_mgr->getActiveScene())
+				{
+					bool pressed = (event.type == SDL_MOUSEBUTTONDOWN);
+					activeScene->onMouseButton(event.button.button, pressed);
+				}
+			}
+		}
+
+		// Handle mouse motion for dragging
+		if (event.type == SDL_MOUSEMOTION)
+		{
+			if (!ImGui::GetIO().WantCaptureMouse)
+			{
+				auto size = m_window->getCanvasSize();
+				if (auto activeScene = m_scene_mgr->getActiveScene())
+				{
+					activeScene->onMouseMove(event.motion.x, event.motion.y, size.x, size.y);
+				}
+			}
+		}
+
+		// Handle mouse wheel for zooming
+		if (event.type == SDL_MOUSEWHEEL)
+		{
+			if (!ImGui::GetIO().WantCaptureMouse)
+			{
+				if (auto activeScene = m_scene_mgr->getActiveScene())
+				{
+					activeScene->onMouseWheel(event.wheel.y);
+				}
+			}
+		}
+
         ImGui_ImplSDL2_ProcessEvent(&event);
-        
     }
 }
 

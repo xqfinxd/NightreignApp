@@ -6,11 +6,10 @@ class Shader
 {
 public:
     Shader();
+    Shader(uint32_t program, const std::string& vertPath, const std::string& fragPath);
     ~Shader();
 
-    bool loadFromFiles(const std::string& vertPath, const std::string& fragPath);
     void use() const;
-    void cleanup();
 
     // Uniform setters
     void setMat4(const std::string& name, const glm::mat4& mat) const;
@@ -20,13 +19,17 @@ public:
     void setFloat(const std::string& name, float value) const;
     void setInt(const std::string& name, int value) const;
 
+    // Getters
     uint32_t getProgram() const { return m_program; }
+    const std::string& getVertexPath() const { return m_vertPath; }
+    const std::string& getFragmentPath() const { return m_fragPath; }
+    bool isValid() const { return m_program != 0; }
 
-private:
-    uint32_t compileShader(const std::string& source, uint32_t type);
-    bool linkProgram(uint32_t vertShader, uint32_t fragShader);
-    std::string readFile(const std::string& path);
+    // Resource management
+    void release();
 
 private:
     uint32_t m_program = 0;
+    std::string m_vertPath;
+    std::string m_fragPath;
 };

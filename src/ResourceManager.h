@@ -10,6 +10,7 @@
 class Shader;
 class Device;
 class IResource;
+class Texture;
 
 class ResourceManager
 {
@@ -26,8 +27,8 @@ public:
     void unloadShader(const std::string& name);
 
     // Texture management
-    uint32_t loadTexture(const std::string& name, const std::string& path, bool generateMipmaps = false);
-    uint32_t getTexture(const std::string& name);
+    Texture* loadTexture(const std::string& name, const std::string& path, bool generateMipmaps = false);
+    Texture* getTexture(const std::string& name);
     void unloadTexture(const std::string& name);
 
     // Mesh buffer management
@@ -51,7 +52,7 @@ public:
 
 private:
     std::unordered_map<std::string, Shader*> m_shaders;
-    std::unordered_map<std::string, uint32_t> m_textures;
+    std::unordered_map<std::string, Texture*> m_textures;
     std::unordered_map<std::string, MeshBuffer*> m_meshes;
     
     Device* m_device = nullptr;

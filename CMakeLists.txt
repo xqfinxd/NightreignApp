@@ -14,8 +14,10 @@ add_executable(NightreignApp
 	"src/Shader.cpp"
 	"src/ResourceManager.cpp"
 	"src/Buffer.cpp"
+	"src/Texture.cpp"
 	"src/sdlWindow.cpp"
 	"src/glDevice.cpp"
+	"src/CsvReader.cpp"
 	"src/systems/RenderSystem.cpp")
 
 target_include_directories(NightreignApp PRIVATE
@@ -69,8 +71,13 @@ elseif(MSVC)
 	target_compile_options(NightreignApp PRIVATE
 		/utf-8
 	)
-	file(COPY assets DESTINATION ${CMAKE_BINARY_DIR})
+	# Create nightreign directory in output executable dir and copy assets
 	add_custom_command(TARGET NightreignApp POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E make_directory
+		$<TARGET_FILE_DIR:NightreignApp>/nightreign
+		COMMAND ${CMAKE_COMMAND} -E copy_directory
+		${CMAKE_SOURCE_DIR}/assets
+		$<TARGET_FILE_DIR:NightreignApp>/nightreign/assets
 		COMMAND ${CMAKE_COMMAND} -E copy_if_different
 		"${SDL2_BINDIR}/SDL2.dll"
 		$<TARGET_FILE_DIR:NightreignApp>)

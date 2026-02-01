@@ -7,18 +7,9 @@
 class Buffer
 {
 public:
-    Buffer(Device* device, BufferType type, BufferUsage usage);
+    Buffer();
+    Buffer(uint32_t id, BufferType type, BufferUsage usage, size_t size);
     ~Buffer();
-
-    // Initialize with data
-    bool create(size_t size, const void* data = nullptr);
-    
-    // Update buffer data
-    void update(size_t offset, size_t size, const void* data);
-    void updateAll(const void* data);
-    
-    // Cleanup
-    void destroy();
 
     // Getters
     uint32_t getID() const { return m_bufferId; }
@@ -27,15 +18,14 @@ public:
     BufferUsage getUsage() const { return m_usage; }
     bool isValid() const { return m_bufferId != 0; }
 
-    // Helper for uniform buffers - bind to a binding point
-    void bindUniformBuffer(uint32_t bindingPoint) const;
+    // Resource management
+    void release();
 
 private:
-    Device* m_device = nullptr;
     uint32_t m_bufferId = 0;
     size_t m_size = 0;
-    BufferType m_type;
-    BufferUsage m_usage;
+    BufferType m_type = BufferType::Vertex;
+    BufferUsage m_usage = BufferUsage::Static;
 };
 
 // Mesh buffer helper class
@@ -77,12 +67,17 @@ void MeshBuffer::setVertexData(const std::vector<T>& vertices, BufferUsage usage
 {
     if (vertices.empty()) return;
 
-    if (!m_vertexBuffer) {
-        m_vertexBuffer = new Buffer(m_device, BufferType::Vertex, usage);
+    // Delete old buffer if exists
+    if (m_vertexBuffer && m_device) {
+        m_device->deleteBuffer(m_vertexBuffer);
+        m_vertexBuffer = nullptr;
     }
 
-    m_vertexBuffer->create(vertices.size() * sizeof(T), vertices.data());
-    m_vertexCount = vertices.size();
+    // Create new buffer
+    if (m_device) {
+        m_vertexBuffer = m_device->createBuffer(BufferType::Vertex, usage, vertices.size() * sizeof(T), vertices.data());
+        m_vertexCount = vertices.size();
+    }
 }
 
 template<typename T>
@@ -90,10 +85,15 @@ void MeshBuffer::setIndexData(const std::vector<T>& indices, BufferUsage usage)
 {
     if (indices.empty()) return;
 
-    if (!m_indexBuffer) {
-        m_indexBuffer = new Buffer(m_device, BufferType::Index, usage);
+    // Delete old buffer if exists
+    if (m_indexBuffer && m_device) {
+        m_device->deleteBuffer(m_indexBuffer);
+        m_indexBuffer = nullptr;
     }
 
-    m_indexBuffer->create(indices.size() * sizeof(T), indices.data());
-    m_indexCount = indices.size();
+    // Create new buffer
+    if (m_device) {
+        m_indexBuffer = m_device->createBuffer(BufferType::Index, usage, indices.size() * sizeof(T), indices.data());
+        m_indexCount = indices.size();
+    }
 }

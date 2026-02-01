@@ -2,12 +2,123 @@
 #include "systems/RenderSystem.h"
 #include "components/Mesh.h"
 #include "components/Transform.h"
+#include "components/MapTileGrid.h"
+#include "components/MapSpot.h"
+#include "components/BlendMode.h"
+#include "components/Tag.h"
 #include "Device.h"
 #include "ResourceManager.h"
 #include "components/Camera.h"
+#include "CsvReader.h"
 #include <imgui.h>
 #include <SDL_log.h>
 #include <entt/entt.hpp>
+#include <sstream>
+#include <iomanip>
+#include <map>
+#include <SDL_events.h>
+
+float MapSpot::textScale = 0.005f;
+
+struct HitResult {
+	bool hit = false;
+	float distance = 0.0f;
+	glm::vec3 point;
+	glm::vec3 normal;
+};
+
+struct Ray {
+	glm::vec3 origin;
+	glm::vec3 direction;
+
+	HitResult intersectPlane(const glm::vec3& planePoint, const glm::vec3& planeNormal) const {
+		HitResult result;
+
+		float denom = glm::dot(planeNormal, direction);
+		if (fabs(denom) > FLT_EPSILON) {
+			glm::vec3 p0l0 = planePoint - origin;
+			float t = glm::dot(p0l0, planeNormal) / denom;
+
+			if (t >= 0) {
+				result.hit = true;
+				result.distance = t;
+				result.point = origin + direction * t;
+				result.normal = planeNormal;
+			}
+		}
+
+		return result;
+	}
+
+	HitResult intersectSphere(const glm::vec3& center, float radius) const {
+		HitResult result;
+
+		glm::vec3 oc = origin - center;
+		float a = glm::dot(direction, direction);
+		float b = 2.0f * glm::dot(oc, direction);
+		float c = glm::dot(oc, oc) - radius * radius;
+		float discriminant = b * b - 4 * a * c;
+
+		if (discriminant > 0) {
+			float t = (-b - sqrt(discriminant)) / (2.0f * a);
+			if (t >= 0) {
+				result.hit = true;
+				result.distance = t;
+				result.point = origin + direction * t;
+				result.normal = glm::normalize(result.point - center);
+			}
+		}
+
+		return result;
+	}
+
+	HitResult intersectAABB(const glm::vec3& minBounds, const glm::vec3& maxBounds) const {
+		HitResult result;
+
+		float tmin = 0.0f;
+		float tmax = 100000.0f;
+
+		for (int i = 0; i < 3; i++) {
+			if (fabs(direction[i]) < 1e-6) {
+				if (origin[i] < minBounds[i] || origin[i] > maxBounds[i])
+					return result;
+			}
+			else {
+				float ood = 1.0f / direction[i];
+				float t1 = (minBounds[i] - origin[i]) * ood;
+				float t2 = (maxBounds[i] - origin[i]) * ood;
+
+				if (t1 > t2) std::swap(t1, t2);
+				if (t1 > tmin) tmin = t1;
+				if (t2 < tmax) tmax = t2;
+
+				if (tmin > tmax) return result;
+			}
+		}
+
+		if (tmin > 0) {
+			result.hit = true;
+			result.distance = tmin;
+			result.point = origin + direction * tmin;
+
+			glm::vec3 center = (minBounds + maxBounds) * 0.5f;
+			glm::vec3 halfSize = (maxBounds - minBounds) * 0.5f;
+			glm::vec3 localHit = result.point - center;
+
+			float minDist = FLT_MAX;
+			for (int i = 0; i < 3; i++) {
+				float dist = fabs(halfSize[i] - fabs(localHit[i]));
+				if (dist < minDist) {
+					minDist = dist;
+					result.normal = glm::vec3(0);
+					result.normal[i] = (localHit[i] > 0) ? 1.0f : -1.0f;
+				}
+			}
+		}
+
+		return result;
+	}
+};
 
 Scene::Scene()
 {
@@ -25,16 +136,17 @@ void Scene::initialize()
 	// Create default camera
 	{
 		auto entity = m_registry.create();
-		auto& camera = m_registry.emplace<Camera>(entity);
-		
+		auto &camera = m_registry.emplace<Camera>(entity);
+
 		camera.position = glm::vec3(0.0f, 0.0f, 5.0f);
 		camera.target = glm::vec3(0.0f, 0.0f, 0.0f);
 		camera.updateMatrices();
 	}
-	
+
 	// Get ResourceManager
-	ResourceManager* resMgr = ResourceManager::getInstance();
-	if (!resMgr) {
+	ResourceManager *resMgr = ResourceManager::getInstance();
+	if (!resMgr)
+	{
 		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Scene: ResourceManager not available");
 		return;
 	}
@@ -43,29 +155,40 @@ void Scene::initialize()
 	m_render_system = new RenderSystem(resMgr);
 
 	// Load shader and texture
-	resMgr->loadShader("texture", "assets/shaders/texture.vert", "assets/shaders/texture.frag");
-	resMgr->loadTexture("bg", "assets/textures/bg.png");
+	resMgr->loadShader("texture", "nightreign/assets/shaders/texture.vert", "nightreign/assets/shaders/texture.frag");
 
-	// Create a simple quad mesh for background
+	// Create a simple quad mesh for tiles
 	std::vector<Vertex> quadVertices = {
-		Vertex(glm::vec3(-2.0f, -2.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f), glm::vec2(0.0f, 0.0f)),
-		Vertex(glm::vec3( 2.0f, -2.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f), glm::vec2(1.0f, 0.0f)),
-		Vertex(glm::vec3( 2.0f,  2.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f), glm::vec2(1.0f, 1.0f)),
-		Vertex(glm::vec3(-2.0f,  2.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f), glm::vec2(0.0f, 1.0f))
-	};
+		Vertex(glm::vec3(-0.5f, -0.5f, 0.0f), glm::vec2(0.0f, 0.0f), glm::vec4(1.0f)),
+		Vertex(glm::vec3(0.5f, -0.5f, 0.0f) , glm::vec2(1.0f, 0.0f), glm::vec4(1.0f)),
+		Vertex(glm::vec3(0.5f, 0.5f, 0.0f)  , glm::vec2(1.0f, 1.0f), glm::vec4(1.0f)),
+		Vertex(glm::vec3(-0.5f, 0.5f, 0.0f) , glm::vec2(0.0f, 1.0f), glm::vec4(1.0f))};
 
 	std::vector<uint32_t> quadIndices = {
 		0, 1, 2,
-		2, 3, 0
-	};
+		2, 3, 0};
 
 	resMgr->createMesh("quad", quadVertices, quadIndices);
 
-	// Create background entity
-	auto bgEntity = m_registry.create();
-	m_registry.emplace<MeshComponent>(bgEntity, "quad", "texture", "bg");
-	m_registry.emplace<Transform>(bgEntity);
-	
+	// Load spot texture
+	resMgr->loadTexture("launch", "nightreign/assets/textures/spots/launch.png");
+
+	// Set up spot click callback
+	setSpotClickCallback([](entt::entity entity, const MapSpot& spot) {
+		SDL_Log("=== Spot Clicked ===");
+		SDL_Log("  Entity: %d", (int)entity);
+		SDL_Log("  Grid Position: (%.1f, %.1f)", spot.gridPosition.x, spot.gridPosition.y);
+		SDL_Log("  Size: %.2f", spot.size);
+		if (!spot.metadata.empty())
+			SDL_Log("  Metadata: %s", spot.metadata.c_str());
+	});
+
+	// Load initial map tiles (index 0, layer 0)
+	loadMapTiles(0, 0);
+
+	// Add some sample spots on the map with Chinese labels
+	loadSpotsByPattern(1);
+
 	SDL_Log("Scene initialized (ECS ready, entities: %zu)", m_registry.size());
 }
 
@@ -79,15 +202,164 @@ void Scene::update(float deltaTime)
 {
 }
 
+void Scene::onMouseClick(int screenX, int screenY, int windowWidth, int windowHeight)
+{
+	auto camera = getCamera();
+	if (!camera)
+		return;
+
+	// Convert screen coordinates to NDC (Normalized Device Coordinates)
+	// Screen Y is top-down, NDC Y is bottom-up
+	float ndcX = (2.0f * screenX) / windowWidth - 1.0f;
+	float ndcY = 1.0f - (2.0f * screenY) / windowHeight;
+
+	// Convert NDC to world space
+	glm::vec4 nearPointWorld = camera->clip2World(glm::vec4(ndcX, ndcY, -1.0f, 1.0f));
+	glm::vec4 farPointWorld = camera->clip2World(glm::vec4(ndcX, ndcY, 1.0f, 1.0f));
+	nearPointWorld /= nearPointWorld.w;
+	farPointWorld /= farPointWorld.w;
+	Ray ray;
+	ray.origin = glm::vec3(nearPointWorld);
+	ray.direction = glm::normalize(glm::vec3(farPointWorld) - ray.origin);
+	
+	// Check all spots for hits (iterate in reverse to check top-most first)
+	for (auto it = m_mapSpotEntities.rbegin(); it != m_mapSpotEntities.rend(); ++it)
+	{
+		auto entity = *it;
+		if (!m_registry.valid(entity))
+			continue;
+
+		auto* transform = m_registry.try_get<Transform>(entity);
+		auto* mapSpot = m_registry.try_get<MapSpot>(entity);
+		if (!transform || !mapSpot)
+			continue;
+
+		// Check if click is within spot bounds (simple square hit test)
+		float halfSize = (mapSpot->size * m_tileSize) * 0.5f;
+		auto result = ray.intersectSphere(transform->position, halfSize);
+
+		if (result.hit)
+		{
+			// Hit detected!
+			SDL_Log("Spot clicked at grid position (%.1f, %.1f)", mapSpot->gridPosition.x, mapSpot->gridPosition.y);
+			
+			if (m_spotClickCallback)
+			{
+				m_spotClickCallback(entity, *mapSpot);
+			}
+			return; // Only handle first hit
+		}
+	}
+}
+
+void Scene::onMouseButton(int button, bool pressed)
+{
+	// Right mouse button for dragging
+	if (button == SDL_BUTTON_LEFT)
+	{
+		m_isMouseDragging = pressed;
+		
+		if (!pressed)
+		{
+			// Reset drag state when button released
+			m_lastMousePos = glm::vec2(0.0f);
+		}
+	}
+}
+
+void Scene::onMouseMove(int screenX, int screenY, int windowWidth, int windowHeight)
+{
+	glm::vec2 currentMousePos = glm::vec2(screenX, screenY);
+	
+	if (m_isMouseDragging && m_lastMousePos != glm::vec2(0.0f))
+	{
+		auto camera = getCamera();
+		if (!camera)
+			return;
+		
+		// Calculate mouse delta in screen space
+		glm::vec2 delta = currentMousePos - m_lastMousePos;
+		
+		// Convert screen delta to world delta based on camera
+		float worldDeltaScale = 0.01f;
+		if (camera->isOrthographic)
+		{
+			// For orthographic camera, scale based on ortho size
+			worldDeltaScale = camera->orthoSize / (float)windowHeight;
+		}
+		else
+		{
+			// For perspective camera, scale based on distance from target
+			float distance = glm::length(camera->position - camera->target);
+			worldDeltaScale = distance * 0.001f;
+		}
+		
+		// Calculate world space movement (inverted for natural drag feel)
+		glm::vec3 right = glm::normalize(glm::cross(camera->target - camera->position, camera->up));
+		glm::vec3 worldUp = camera->up;
+		
+		glm::vec3 movement = -right * delta.x * worldDeltaScale + worldUp * delta.y * worldDeltaScale;
+		
+		// Update camera position and target
+		camera->position += movement;
+		camera->target += movement;
+		camera->updateMatrices();
+	}
+	
+	m_lastMousePos = currentMousePos;
+}
+
+void Scene::onMouseWheel(float deltaY)
+{
+	auto camera = getCamera();
+	if (!camera)
+		return;
+	
+	// Zoom by adjusting ortho size or camera distance
+	if (camera->isOrthographic)
+	{
+		// Zoom by changing orthographic size
+		float zoomFactor = 1.0f - deltaY * 0.1f;
+		camera->orthoSize *= zoomFactor;
+		
+		// Clamp zoom level
+		camera->orthoSize = glm::clamp(camera->orthoSize, m_minZoom, m_maxZoom);
+	}
+	else
+	{
+		// Zoom by moving camera closer/farther from target
+		glm::vec3 direction = glm::normalize(camera->target - camera->position);
+		float distance = glm::length(camera->position - camera->target);
+		float zoomAmount = distance * deltaY * 0.1f;
+		
+		camera->position += direction * zoomAmount;
+		
+		// Clamp distance
+		float newDistance = glm::length(camera->position - camera->target);
+		if (newDistance < m_minZoom)
+		{
+			camera->position = camera->target - direction * m_minZoom;
+		}
+		else if (newDistance > m_maxZoom)
+		{
+			camera->position = camera->target - direction * m_maxZoom;
+		}
+	}
+	
+	camera->updateMatrices();
+}
+
 void Scene::render()
 {
-	if (!m_render_system) {
+	if (!m_render_system)
+	{
 		return;
 	}
 
 	// Get camera matrices
 	auto camera = getCamera();
-	if (!camera) {
+	if (!camera)
+	{
 		return;
 	}
 
@@ -96,44 +368,342 @@ void Scene::render()
 
 	// Render all entities with MeshComponent
 	m_render_system->render(m_registry);
+	
+	// Render spot labels with ImGui's font texture
+	m_render_system->renderSpotLabels(m_registry, *camera);
 }
 
 void Scene::drawUI()
 {
-    ImGui::Text("ECS Statistics:");
-    ImGui::Text("  Entities: %zu", m_registry.size());
-    ImGui::Text("  Alive: %zu", m_registry.alive());
-    
-    ImGui::Separator();
-    ImGui::Text("Camera:");
-    if (auto camera = getCamera()) {
-        ImGui::Text("  Position: (%.2f, %.2f, %.2f)", 
-                    camera->position.x, camera->position.y, camera->position.z);
-        ImGui::Text("  FOV: %.1f°", camera->fov);
-        ImGui::Text("  Type: %s", camera->isOrthographic ? "Orthographic" : "Perspective");
-    } else {
-        ImGui::Text("  No camera");
-    }
+	ImGui::Text("ECS Statistics:");
+	ImGui::Text("  Entities: %zu", m_registry.size());
+	ImGui::Text("  Alive: %zu", m_registry.alive());
+
+	ImGui::Separator();
+	ImGui::Text("Map Control:");
+	ImGui::Text("  Current Index: %d", m_currentMapIndex);
+	ImGui::Text("  Current Layer: %d", m_currentLayer);
+	ImGui::Text("  Tiles: %zu", m_mapTileEntities.size());
+	ImGui::Text("  Spots: %zu", m_mapSpotEntities.size());
+
+	// Map index selector
+	if (ImGui::Button("Map 0"))
+		setMapIndex(0);
+	ImGui::SameLine();
+	if (ImGui::Button("Map 1"))
+		setMapIndex(1);
+	ImGui::SameLine();
+	if (ImGui::Button("Map 2"))
+		setMapIndex(2);
+	ImGui::SameLine();
+	if (ImGui::Button("Map 3"))
+		setMapIndex(3);
+	ImGui::SameLine();
+	if (ImGui::Button("Map 4"))
+		setMapIndex(4);
+	ImGui::SameLine();
+	if (ImGui::Button("Map 5"))
+		setMapIndex(5);
+
+	ImGui::Separator();
+	ImGui::Text("Camera:");
+	if (auto camera = getCamera())
+	{
+		bool dirty = false;
+		dirty |= ImGui::DragFloat3("Position", glm::value_ptr(camera->position));
+		dirty |= ImGui::Checkbox("Orthographic", &camera->isOrthographic);
+
+		if (camera->isOrthographic)
+		{
+			dirty |= ImGui::DragFloat("Ortho Size", &camera->orthoSize);
+		}
+		else
+		{	
+			dirty |= ImGui::DragFloat("FOV", &camera->fov);
+		}
+
+		if (dirty)
+			camera->updateMatrices();
+	}
+	else
+	{
+		ImGui::Text("  No camera");
+	}
 }
 
 Camera *Scene::getCamera()
 {
-    auto view = m_registry.view<Camera>();
-    for (auto entity : view) {
-        return &m_registry.get<Camera>(entity); // Return first camera found
-    }
-    return nullptr;
+	auto view = m_registry.view<Camera>();
+	for (auto entity : view)
+	{
+		return &m_registry.get<Camera>(entity); // Return first camera found
+	}
+	return nullptr;
 }
 
 const Camera *Scene::getCamera() const
 {
-    return const_cast<Scene*>(this)->getCamera();
+	return const_cast<Scene *>(this)->getCamera();
 }
 
 glm::vec4 Scene::getClearColor() const
 {
-	if (auto camera = getCamera()) {
+	if (auto camera = getCamera())
+	{
 		return camera->clearColor;
 	}
 	return glm::vec4(0.1f, 0.1f, 0.15f, 1.0f); // Default color
 }
+
+void Scene::loadMapTiles(int mapIndex, int layer)
+{
+	// Clear existing tiles first
+	clearMapTiles();
+
+	m_currentMapIndex = mapIndex;
+	m_currentLayer = layer;
+
+	ResourceManager *resMgr = ResourceManager::getInstance();
+	if (!resMgr)
+	{
+		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Scene: ResourceManager not available");
+		return;
+	}
+
+	m_gridWidth = 6;
+	m_gridHeight = 6;
+	m_tileSize = 1.0f;
+
+	// Calculate centering offset
+	float gridTotalWidth = m_gridWidth * m_tileSize;
+	float gridTotalHeight = m_gridHeight * m_tileSize;
+	float offsetX = -gridTotalWidth / 2.0f + m_tileSize / 2.0f;
+	float offsetY = -gridTotalHeight / 2.0f + m_tileSize / 2.0f;
+
+	// Load and create entities for each tile
+	for (int y = 0; y < m_gridHeight; y++)
+	{
+		for (int x = 0; x < m_gridWidth; x++)
+		{
+			// Generate texture path and name
+			std::stringstream ss;
+			ss << "nightreign/assets/textures/" << mapIndex << "/MENU_MapTile_L" << layer
+			   << "_" << std::setw(2) << std::setfill('0') << x
+			   << "_" << std::setw(2) << std::setfill('0') << y << ".png";
+			std::string texturePath = ss.str();
+
+			std::stringstream nameStream;
+			nameStream << "tile_" << mapIndex << "_L" << layer << "_" << x << "_" << y;
+			std::string textureName = nameStream.str();
+
+			// Load texture
+			resMgr->loadTexture(textureName, texturePath);
+
+			// Create tile entity
+			auto entity = m_registry.create();
+			m_registry.emplace<Tag>(entity, "map");
+			m_registry.emplace<MeshComponent>(entity, "quad", "texture", textureName);
+
+			auto &transform = m_registry.emplace<Transform>(entity);
+			transform.position = glm::vec3(offsetX + x * m_tileSize, offsetY + y * m_tileSize, 0.0f);
+			transform.scale = glm::vec3(m_tileSize, m_tileSize, 1.0f);
+
+			// Store entity for later cleanup
+			m_mapTileEntities.push_back(entity);
+		}
+	}
+
+	SDL_Log("Scene: Loaded map tiles (index: %d, layer: %d, tiles: %dx%d)",
+			mapIndex, layer, m_gridWidth, m_gridHeight);
+}
+
+void Scene::setMapIndex(int index)
+{
+	if (index < 0 || index > 5)
+	{
+		SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Scene: Invalid map index %d (must be 0-5)", index);
+		return;
+	}
+
+	if (index != m_currentMapIndex)
+	{
+		loadMapTiles(index, m_currentLayer);
+	}
+}
+
+void Scene::clearMapTiles()
+{
+	// Destroy all tile entities
+	for (auto entity : m_mapTileEntities)
+	{
+		if (m_registry.valid(entity))
+		{
+			m_registry.destroy(entity);
+		}
+	}
+	m_mapTileEntities.clear();
+}
+
+void Scene::addSpot(const glm::vec2 &gridPos, const std::string &textureName, float size)
+{
+	// Calculate centering offset (same as tile grid)
+	float gridTotalWidth = m_gridWidth * m_tileSize;
+	float gridTotalHeight = m_gridHeight * m_tileSize;
+	float offsetX = -gridTotalWidth / 2.0f + m_tileSize / 2.0f;
+	float offsetY = -gridTotalHeight / 2.0f + m_tileSize / 2.0f;
+
+	// Convert grid position to world position
+	float worldX = offsetX + gridPos.x * m_tileSize;
+	float worldY = offsetY + gridPos.y * m_tileSize;
+
+	// Create spot entity
+	auto entity = m_registry.create();
+	m_registry.emplace<Tag>(entity, "spot");
+	m_registry.emplace<MapSpot>(entity, gridPos, textureName, size);
+	m_registry.emplace<MeshComponent>(entity, "quad", "texture", textureName);
+	m_registry.emplace<BlendMode>(entity, BlendMode::Type::DestAlpha);
+
+	auto &transform = m_registry.emplace<Transform>(entity);
+	transform.position = glm::vec3(worldX, worldY, 0.5f); // Slightly above tiles
+	transform.scale = glm::vec3(size, size, 1.0f);
+
+	// Store entity for later cleanup
+	m_mapSpotEntities.push_back(entity);
+
+	SDL_Log("Scene: Added spot at grid position (%.2f, %.2f)", gridPos.x, gridPos.y);
+}
+
+void Scene::clearSpots()
+{
+	// Destroy all spot entities
+	for (auto entity : m_mapSpotEntities)
+	{
+		if (m_registry.valid(entity))
+		{
+			m_registry.destroy(entity);
+		}
+	}
+	m_mapSpotEntities.clear();
+}
+
+void Scene::loadSpotsByPattern(int patternId)
+{
+	// Clear existing spots
+	clearSpots();
+	
+	// Load CSV files
+	CsvReader lotResultCsv;
+	CsvReader attachPointCsv;
+	CsvReader mapVariationCsv;
+	
+	if (!lotResultCsv.load("nightreign/assets/datas/LotResultSmallBaseAndSpot.csv", true))
+	{
+		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to load LotResultSmallBaseAndSpot.csv");
+		return;
+	}
+	
+	if (!attachPointCsv.load("nightreign/assets/datas/SmallBaseAndSpotAttachPoint.csv", true))
+	{
+		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to load SmallBaseAndSpotAttachPoint.csv");
+		return;
+	}
+	
+	if (!mapVariationCsv.load("nightreign/assets/datas/SmallBaseMapVariationParam.csv", true))
+	{
+		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to load SmallBaseMapVariationParam.csv");
+		return;
+	}
+	
+	// Build lookup maps for faster access
+	std::map<int, size_t> attachPointMap; // ID -> row index
+	for (size_t i = 0; i < attachPointCsv.getRowCount(); ++i)
+	{
+		int id = std::stoi(attachPointCsv.getValue(i, "ID"));
+		attachPointMap[id] = i;
+	}
+	
+	std::map<int, size_t> mapVariationMap; // ID -> row index
+	for (size_t i = 0; i < mapVariationCsv.getRowCount(); ++i)
+	{
+		int id = std::stoi(mapVariationCsv.getValue(i, "ID"));
+		mapVariationMap[id] = i;
+	}
+	
+	// Find all entries matching the patternId
+	int spotsLoaded = 0;
+	for (size_t i = 0; i < lotResultCsv.getRowCount(); ++i)
+	{
+		int pattern = std::stoi(lotResultCsv.getValue(i, "patternId"));
+		if (pattern != patternId)
+			continue;
+		
+		int attachId = std::stoi(lotResultCsv.getValue(i, "attachId"));
+		int smallBaseMapId = std::stoi(lotResultCsv.getValue(i, "smallBaseMapId"));
+
+		auto mapIt = mapVariationMap.find(smallBaseMapId);
+		if (mapIt == mapVariationMap.end())
+			continue;
+		int disableNT = std::stoi(mapVariationCsv.getValue(mapIt->second, "disableParam_NT"));
+		if( disableNT == 0)
+			continue;
+		
+		// Look up attach point data
+		auto attachIt = attachPointMap.find(attachId);
+		if (attachIt == attachPointMap.end())
+		{
+			SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, 
+				"AttachPoint ID %d not found for pattern %d", attachId, patternId);
+			continue;
+		}
+		
+		size_t attachRow = attachIt->second;
+		std::string gridXStr = attachPointCsv.getValue(attachRow, "gridXNo");
+		std::string gridZStr = attachPointCsv.getValue(attachRow, "gridZNo");
+		std::string posXStr = attachPointCsv.getValue(attachRow, "posX");
+		std::string posZStr = attachPointCsv.getValue(attachRow, "posZ");
+		
+		if (gridXStr.empty() || gridZStr.empty() || posXStr.empty() || posZStr.empty())
+		{
+			SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, 
+				"Missing position data for attachId %d", attachId);
+			continue;
+		}
+		
+		// Calculate grid position (gridXNo - 41, gridZNo - 35)
+		float gridX = std::stof(gridXStr) - 41.0f;
+		float gridZ = std::stof(gridZStr) - 35.0f;
+		
+		// Get world position offset (posX and posZ are in range [-128, 128])
+		float posX = std::stof(posXStr);
+		float posZ = std::stof(posZStr);
+		
+		// Normalize position to [0, 1] range within tile
+		float normalizedX = posX / 256.0f;
+		float normalizedZ = posZ / 256.0f;
+		
+		// Final grid position
+		float finalGridX = gridX + normalizedX;
+		float finalGridZ = gridZ + normalizedZ;
+		
+		// Look up map variation name
+		std::string spotLabel = "ID:" + std::to_string(smallBaseMapId);
+		spotLabel.append(" - " + lotResultCsv.getValue(i, "variationId"));
+				
+		// Add the spot
+		addSpot(glm::vec2(finalGridX, finalGridZ), "launch", 0.1f);
+		
+		// Set the label on the last added spot
+		if (!m_mapSpotEntities.empty())
+		{
+			if (auto* spot = m_registry.try_get<MapSpot>(m_mapSpotEntities.back()))
+			{
+				spot->label = spotLabel;
+			}
+		}
+		
+		spotsLoaded++;
+	}
+	
+	SDL_Log("Loaded %d spots for pattern %d", spotsLoaded, patternId);
+}
+
