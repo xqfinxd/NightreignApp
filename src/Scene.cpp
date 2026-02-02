@@ -389,25 +389,6 @@ void Scene::drawUI()
 	ImGui::Text("  Tiles: %zu", m_mapTileEntities.size());
 	ImGui::Text("  Spots: %zu", m_mapSpotEntities.size());
 
-	// Map index selector
-	if (ImGui::Button("Map 0"))
-		setMapIndex(0);
-	ImGui::SameLine();
-	if (ImGui::Button("Map 1"))
-		setMapIndex(1);
-	ImGui::SameLine();
-	if (ImGui::Button("Map 2"))
-		setMapIndex(2);
-	ImGui::SameLine();
-	if (ImGui::Button("Map 3"))
-		setMapIndex(3);
-	ImGui::SameLine();
-	if (ImGui::Button("Map 4"))
-		setMapIndex(4);
-	ImGui::SameLine();
-	if (ImGui::Button("Map 5"))
-		setMapIndex(5);
-
 	ImGui::Separator();
 	ImGui::Text("Spots Control:");
 	ImGui::InputInt("Pattern ID", &m_patternInput);
@@ -528,20 +509,6 @@ void Scene::loadMapTiles(int mapIndex, int layer)
 			mapIndex, layer, m_gridWidth, m_gridHeight);
 }
 
-void Scene::setMapIndex(int index)
-{
-	if (index < 0 || index > 5)
-	{
-		SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Scene: Invalid map index %d (must be 0-5)", index);
-		return;
-	}
-
-	if (index != m_currentMapIndex)
-	{
-		loadMapTiles(index, m_currentLayer);
-	}
-}
-
 void Scene::clearMapTiles()
 {
 	// Destroy all tile entities
@@ -622,4 +589,5 @@ void Scene::loadSpotsByPattern(int patternId)
         auto spotEntity = addSpot(spot.getGridPos(), textureName, 0.1f);
 		m_registry.get<MapSpot>(spotEntity).label = std::to_string(spotPair.second.attachment.UID());
     }
+	loadMapTiles(patternData.map);
 }

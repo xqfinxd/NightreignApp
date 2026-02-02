@@ -24,8 +24,6 @@ public:
 
 	// Map control
 	void loadMapTiles(int mapIndex, int layer = 0);
-	void setMapIndex(int index);
-	int getMapIndex() const { return m_currentMapIndex; }
 
 	// Map spots
 	entt::entity addSpot(const glm::vec2 &gridPos, const std::string &textureName, float size = 0.2f);
