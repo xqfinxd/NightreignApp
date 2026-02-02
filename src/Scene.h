@@ -1,6 +1,7 @@
 #pragma once
 #include "public.h"
 #include "components/MapSpot.h"
+#include "MetaData.h"
 #include <entt/entt.hpp>
 #include <vector>
 
@@ -27,7 +28,7 @@ public:
 	int getMapIndex() const { return m_currentMapIndex; }
 
 	// Map spots
-	void addSpot(const glm::vec2 &gridPos, const std::string &textureName, float size = 0.2f);
+	entt::entity addSpot(const glm::vec2 &gridPos, const std::string &textureName, float size = 0.2f);
 	void clearSpots();
 	void loadSpotsByPattern(int patternId);
 
@@ -69,6 +70,8 @@ private:
 	float m_minZoom = 0.5f;
 	float m_maxZoom = 20.0f;
 	
+	MetaData m_metaData;
+	bool m_metaDataLoaded = false;
 	// Spot pattern input
 	int m_patternInput = 1;
 };

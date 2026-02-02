@@ -154,8 +154,9 @@ void Scene::initialize()
 	// Create RenderSystem
 	m_render_system = new RenderSystem(resMgr);
 
-	// Load shader and texture
+	// Load shaders
 	resMgr->loadShader("texture", "nightreign/assets/shaders/texture.vert", "nightreign/assets/shaders/texture.frag");
+	resMgr->loadShader("font", "nightreign/assets/shaders/font.vert", "nightreign/assets/shaders/font.frag");
 
 	// Create a simple quad mesh for tiles
 	std::vector<Vertex> quadVertices = {
@@ -370,7 +371,9 @@ void Scene::render()
 	m_render_system->render(m_registry);
 	
 	// Render spot labels with ImGui's font texture
-	m_render_system->renderSpotLabels(m_registry, *camera);
+	glm::vec4 black = glm::vec4(0.0f, 0.0f, 0.0f, 0.5f);
+	glm::vec4 white = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+	m_render_system->renderSpotLabels(m_registry, *camera, black, white);
 }
 
 void Scene::drawUI()
@@ -552,7 +555,7 @@ void Scene::clearMapTiles()
 	m_mapTileEntities.clear();
 }
 
-void Scene::addSpot(const glm::vec2 &gridPos, const std::string &textureName, float size)
+entt::entity Scene::addSpot(const glm::vec2 &gridPos, const std::string &textureName, float size)
 {
 	// Calculate centering offset (same as tile grid)
 	float gridTotalWidth = m_gridWidth * m_tileSize;
@@ -579,6 +582,7 @@ void Scene::addSpot(const glm::vec2 &gridPos, const std::string &textureName, fl
 	m_mapSpotEntities.push_back(entity);
 
 	SDL_Log("Scene: Added spot at grid position (%.2f, %.2f)", gridPos.x, gridPos.y);
+	return entity;
 }
 
 void Scene::clearSpots()
@@ -599,119 +603,23 @@ void Scene::loadSpotsByPattern(int patternId)
 	// Clear existing spots
 	clearSpots();
 	
-	// Load CSV files
-	CsvReader lotResultCsv;
-	CsvReader attachPointCsv;
-	CsvReader mapVariationCsv;
-	
-	if (!lotResultCsv.load("nightreign/assets/datas/LotResultSmallBaseAndSpot.csv", true))
+	if(!m_metaDataLoaded)
 	{
-		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to load LotResultSmallBaseAndSpot.csv");
+		m_metaData.load();
+		m_metaDataLoaded = true;
+	}
+	auto patternIt = m_metaData.patterns.find(patternId);
+	if(patternIt == m_metaData.patterns.end())
+	{
+		SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Scene: Pattern ID %d not found in metadata", patternId);
 		return;
 	}
-	
-	if (!attachPointCsv.load("nightreign/assets/datas/SmallBaseAndSpotAttachPoint.csv", true))
-	{
-		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to load SmallBaseAndSpotAttachPoint.csv");
-		return;
-	}
-	
-	if (!mapVariationCsv.load("nightreign/assets/datas/SmallBaseMapVariationParam.csv", true))
-	{
-		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to load SmallBaseMapVariationParam.csv");
-		return;
-	}
-	
-	// Build lookup maps for faster access
-	std::map<int, size_t> attachPointMap; // ID -> row index
-	for (size_t i = 0; i < attachPointCsv.getRowCount(); ++i)
-	{
-		int id = std::stoi(attachPointCsv.getValue(i, "ID"));
-		attachPointMap[id] = i;
-	}
-	
-	std::map<int, size_t> mapVariationMap; // ID -> row index
-	for (size_t i = 0; i < mapVariationCsv.getRowCount(); ++i)
-	{
-		int id = std::stoi(mapVariationCsv.getValue(i, "ID"));
-		mapVariationMap[id] = i;
-	}
-	
-	// Find all entries matching the patternId
-	int spotsLoaded = 0;
-	for (size_t i = 0; i < lotResultCsv.getRowCount(); ++i)
-	{
-		int pattern = std::stoi(lotResultCsv.getValue(i, "patternId"));
-		if (pattern != patternId)
-			continue;
-		
-		int attachId = std::stoi(lotResultCsv.getValue(i, "attachId"));
-		int smallBaseMapId = std::stoi(lotResultCsv.getValue(i, "smallBaseMapId"));
-
-		auto mapIt = mapVariationMap.find(smallBaseMapId);
-		if (mapIt == mapVariationMap.end())
-			continue;
-		int disableNT = std::stoi(mapVariationCsv.getValue(mapIt->second, "modifier1"));
-		if( disableNT > 0)
-			continue;
-		
-		// Look up attach point data
-		auto attachIt = attachPointMap.find(attachId);
-		if (attachIt == attachPointMap.end())
-		{
-			SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, 
-				"AttachPoint ID %d not found for pattern %d", attachId, patternId);
-			continue;
-		}
-		
-		size_t attachRow = attachIt->second;
-		std::string gridXStr = attachPointCsv.getValue(attachRow, "gridXNo");
-		std::string gridZStr = attachPointCsv.getValue(attachRow, "gridZNo");
-		std::string posXStr = attachPointCsv.getValue(attachRow, "posX");
-		std::string posZStr = attachPointCsv.getValue(attachRow, "posZ");
-		
-		if (gridXStr.empty() || gridZStr.empty() || posXStr.empty() || posZStr.empty())
-		{
-			SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, 
-				"Missing position data for attachId %d", attachId);
-			continue;
-		}
-		
-		// Calculate grid position (gridXNo - 41, gridZNo - 35)
-		float gridX = std::stof(gridXStr) - 41.0f;
-		float gridZ = std::stof(gridZStr) - 35.0f;
-		
-		// Get world position offset (posX and posZ are in range [-128, 128])
-		float posX = std::stof(posXStr);
-		float posZ = std::stof(posZStr);
-		
-		// Normalize position to [0, 1] range within tile
-		float normalizedX = posX / 256.0f;
-		float normalizedZ = posZ / 256.0f;
-		
-		// Final grid position
-		float finalGridX = gridX + normalizedX;
-		float finalGridZ = gridZ + normalizedZ;
-		
-		// Look up map variation name
-		std::string spotLabel = "ID:" + std::to_string(smallBaseMapId);
-		spotLabel.append(" - " + lotResultCsv.getValue(i, "variationId"));
-				
-		// Add the spot
-		addSpot(glm::vec2(finalGridX, finalGridZ), "launch", 0.1f);
-		
-		// Set the label on the last added spot
-		if (!m_mapSpotEntities.empty())
-		{
-			if (auto* spot = m_registry.try_get<MapSpot>(m_mapSpotEntities.back()))
-			{
-				spot->label = spotLabel;
-			}
-		}
-		
-		spotsLoaded++;
-	}
-	
-	SDL_Log("Loaded %d spots for pattern %d", spotsLoaded, patternId);
+    const MetaData::PatternData& patternData = patternIt->second;
+    for (const auto& spotPair : patternData.spots)
+    {
+        const MetaData::SpotData& spot = spotPair.second;
+        std::string textureName = "launch";
+        auto spotEntity = addSpot(spot.getGridPos(), textureName, 0.1f);
+		m_registry.get<MapSpot>(spotEntity).label = std::to_string(spotPair.second.attachment.UID());
+    }
 }
-

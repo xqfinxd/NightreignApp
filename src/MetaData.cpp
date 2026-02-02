@@ -1,0 +1,101 @@
+#include "MetaData.h"
+#include "CsvReader.h"
+#include <SDL_log.h>
+#include <SDL_assert.h>
+
+void MetaData::load()
+{
+    CsvReader lrSpotCsv;
+    if (!lrSpotCsv.load("nightreign/assets/datas/LotResultSmallBaseAndSpot.csv", true))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "MetaData: Failed to load LotResultSmallBaseAndSpot.csv");
+        return;
+    }
+    CsvReader lrPatternCsv;
+    if (!lrPatternCsv.load("nightreign/assets/datas/LotResultMapPatternFlag.csv", true))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "MetaData: Failed to load LotResultMapPatternFlag.csv");
+        return;
+    }
+    CsvReader spotAttachCsv;
+    if (!spotAttachCsv.load("nightreign/assets/datas/SmallBaseAndSpotAttachPoint.csv", true))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "MetaData: Failed to load SmallBaseAndSpotAttachPoint.csv");
+        return;
+    }
+    std::unordered_map<int, size_t> attachPointMap;
+    for (size_t i = 0; i < spotAttachCsv.getRowCount(); ++i)
+    {
+        int id = std::stoi(spotAttachCsv.getValue(i, "ID"));
+        attachPointMap[id] = i;
+    }
+
+    CsvReader mapVariationCsv;
+    if (!mapVariationCsv.load("nightreign/assets/datas/SmallBaseMapVariationParam.csv", true))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "MetaData: Failed to load SmallBaseMapVariationParam.csv");
+        return;
+    }
+    std::unordered_map<int, size_t> mapVariationMap;
+    for (size_t i = 0; i < mapVariationCsv.getRowCount(); ++i)
+    {
+        int id = std::stoi(mapVariationCsv.getValue(i, "ID"));
+        mapVariationMap[id] = i;
+    }
+
+
+    for(auto& row : lrPatternCsv.getAllRows())
+    {
+        PatternID patternId = std::stoi(row[lrPatternCsv.getColumnIndex("patternId")]);
+        NightlordID nightlordId = std::stoi(row[lrPatternCsv.getColumnIndex("targetBoss")]);
+        MapID mapId = std::stoi(row[lrPatternCsv.getColumnIndex("rareMap")]);
+        
+        PatternData& patternData = patterns[patternId];
+        if( patternData.nightlord == -1 && patternData.map == -1)
+        {
+            patternData.nightlord = nightlordId;
+            patternData.map = mapId;
+        }
+        else
+        {
+            SDL_assert(patternData.nightlord == nightlordId && patternData.map == mapId);
+        }
+    }
+
+    for(auto& row : lrSpotCsv.getAllRows())
+    {
+        PatternID patternId = std::stoi(row[lrSpotCsv.getColumnIndex("patternId")]);
+        auto patternIt = patterns.find(patternId);
+        SDL_assert(patternIt != patterns.end());
+
+        SpotID spotId = std::stoi(row[lrSpotCsv.getColumnIndex("ID")]);
+        int variationId = std::stoi(row[lrSpotCsv.getColumnIndex("smallBaseMapId")]);
+        int variationIndex = std::stoi(row[lrSpotCsv.getColumnIndex("variationId")]);
+        int pointID = std::stoi(row[lrSpotCsv.getColumnIndex("attachId")]);
+
+        auto mapIt = mapVariationMap.find(variationId);
+        if (mapIt != mapVariationMap.end()) {
+            int NTFlag = std::stoi(mapVariationCsv.getValue(mapIt->second, "modifier1"));
+            if( NTFlag > 0)
+                continue;
+        }
+        
+        auto attachIt = attachPointMap.find(pointID);
+        if (attachIt == attachPointMap.end())
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "MetaData: Attach point ID %d not found", pointID);
+            continue;
+        }
+        size_t attachRow = attachIt->second;
+
+        SpotData spotData;
+        spotData.gridX = std::stoi(spotAttachCsv.getValue(attachRow, "gridXNo")) - GRID_OFFSET_X;
+        spotData.gridZ = std::stoi(spotAttachCsv.getValue(attachRow, "gridZNo")) - GRID_OFFSET_Z;
+        spotData.posX = std::stof(spotAttachCsv.getValue(attachRow, "posX"));
+        spotData.posZ = std::stof(spotAttachCsv.getValue(attachRow, "posZ"));
+        spotData.attachment.variantId = variationId;
+        spotData.attachment.variantIndex = variationIndex;
+        
+        patternIt->second.spots[spotId] = spotData;
+    }
+}

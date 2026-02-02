@@ -174,7 +174,8 @@ void RenderSystem::setupVertexAttributes()
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 5));
 }
-void RenderSystem::renderSpotLabels(entt::registry& registry, const Camera& camera)
+void RenderSystem::renderSpotLabels(entt::registry& registry, const Camera& camera,
+    glm::vec4 bgColor = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f), glm::vec4 fgColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f))
 {
     // Get ImGui font atlas
     ImGuiIO& io = ImGui::GetIO();
@@ -186,24 +187,30 @@ void RenderSystem::renderSpotLabels(entt::registry& registry, const Camera& came
     if (!font || !font->IsLoaded())
         return;
     
-    // Get shader
-    Shader* shader = m_resourceManager->getShader("texture");
+    // Get font shader
+    Shader* shader = m_resourceManager->getShader("font");
     if (!shader)
         return;
     
     shader->use();
     float textScale = MapSpot::textScale;
+    
+    // Set custom foreground and background colors
+    glm::vec4 foregroundColor = fgColor; // Use passed foreground color
+    glm::vec4 backgroundColor = bgColor; // Use passed background color
+    shader->setVec4("foregroundColor", foregroundColor);
+    shader->setVec4("backgroundColor", backgroundColor);
+    
     // Set up OpenGL state for text rendering
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, (GLuint)(intptr_t)atlas->TexID);
-    shader->setInt("mapTexture", 0);
+    shader->setInt("fontTexture", 0);
     
     // Get view-projection matrix
     glm::mat4 viewProj = camera.getProjectionMatrix() * camera.getViewMatrix();
 
-    glm::vec4 textColor = glm::vec4(0.0f, 1.0f, 0.0f, 1.0f);
     // Render labels for all spots
     auto spotView = registry.view<MapSpot, Transform>();
     for (auto entity : spotView)
@@ -266,15 +273,16 @@ void RenderSystem::renderSpotLabels(entt::registry& registry, const Camera& came
             float u1 = glyph->U1;
             float v1 = glyph->V1;
             
-            // Add vertices (position + normal + texcoord)
+            // Add vertices (position + texcoord + dummy color)
+            glm::vec4 whiteColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
             // Bottom-left
-            vertices.emplace_back(glm::vec3(x0, y0, textWorldPos.z), glm::vec2(u0, v0), textColor);
+            vertices.emplace_back(glm::vec3(x0, y0, textWorldPos.z), glm::vec2(u0, v0), whiteColor);
             // Bottom-right
-            vertices.emplace_back(glm::vec3(x1, y0, textWorldPos.z), glm::vec2(u1, v0), textColor);
+            vertices.emplace_back(glm::vec3(x1, y0, textWorldPos.z), glm::vec2(u1, v0), whiteColor);
             // Top-right
-            vertices.emplace_back(glm::vec3(x1, y1, textWorldPos.z), glm::vec2(u1, v1), textColor);
+            vertices.emplace_back(glm::vec3(x1, y1, textWorldPos.z), glm::vec2(u1, v1), whiteColor);
             // Top-left
-            vertices.emplace_back(glm::vec3(x0, y1, textWorldPos.z), glm::vec2(u0, v1), textColor);
+            vertices.emplace_back(glm::vec3(x0, y1, textWorldPos.z), glm::vec2(u0, v1), whiteColor);
             
             // Add indices for two triangles
             indices.push_back(indexOffset + 0);

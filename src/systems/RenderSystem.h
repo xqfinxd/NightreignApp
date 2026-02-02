@@ -16,7 +16,7 @@ public:
     void render(entt::registry& registry);
     
     // Render text labels for spots
-    void renderSpotLabels(entt::registry& registry, const Camera& camera);
+    void renderSpotLabels(entt::registry& registry, const Camera& camera, glm::vec4 bgColor, glm::vec4 fgColor);
 
 private:
     void renderEntity(entt::entity entity, const MeshComponent& meshComp, const Camera& camera, entt::registry& registry);
