@@ -651,9 +651,6 @@ void Scene::loadSpotsByPattern(int patternId)
 		auto mapIt = mapVariationMap.find(smallBaseMapId);
 		if (mapIt == mapVariationMap.end())
 			continue;
-		int disableNT = std::stoi(mapVariationCsv.getValue(mapIt->second, "disableParam_NT"));
-		if( disableNT == 0)
-			continue;
 		
 		// Look up attach point data
 		auto attachIt = attachPointMap.find(attachId);
