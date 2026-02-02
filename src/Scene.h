@@ -68,4 +68,7 @@ private:
 	glm::vec2 m_lastMousePos = glm::vec2(0.0f);
 	float m_minZoom = 0.5f;
 	float m_maxZoom = 20.0f;
+	
+	// Spot pattern input
+	int m_patternInput = 1;
 };

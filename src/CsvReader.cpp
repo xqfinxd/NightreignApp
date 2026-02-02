@@ -1,5 +1,5 @@
 #include "CsvReader.h"
-#include <SDL_log.h>
+#include <iostream>
 #include <algorithm>
 
 bool CsvReader::load(const std::string& filePath, bool hasHeader, char delimiter)
@@ -15,7 +15,7 @@ bool CsvReader::load(const std::string& filePath, bool hasHeader, char delimiter
     std::ifstream file(filePath);
     if (!file.is_open())
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "CsvReader: Failed to open file: %s", filePath.c_str());
+        std::cerr << "CsvReader: Failed to open file: " << filePath << std::endl;
         return false;
     }
 
@@ -68,8 +68,7 @@ bool CsvReader::load(const std::string& filePath, bool hasHeader, char delimiter
     file.close();
 
     m_loaded = true;
-    SDL_Log("CsvReader: Loaded %s - %zu rows, %zu columns", 
-        filePath.c_str(), m_rows.size(), m_columnCount);
+    std::cout << "CsvReader: Loaded " << filePath << " - " << m_rows.size() << " rows, " << m_columnCount << " columns" << std::endl;
 
     return true;
 }
@@ -140,14 +139,14 @@ std::string CsvReader::getValue(size_t row, const std::string& columnName) const
 {
     if (!m_hasHeader)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "CsvReader: Cannot get value by column name without header");
+        std::cerr << "CsvReader: Cannot get value by column name without header" << std::endl;
         return "";
     }
 
     auto it = m_columnMap.find(columnName);
     if (it == m_columnMap.end())
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "CsvReader: Column '%s' not found", columnName.c_str());
+        std::cerr << "CsvReader: Column '" << columnName << "' not found" << std::endl;
         return "";
     }
 
@@ -184,14 +183,14 @@ std::vector<std::string> CsvReader::getColumn(const std::string& columnName) con
 {
     if (!m_hasHeader)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "CsvReader: Cannot get column by name without header");
+        std::cerr << "CsvReader: Cannot get column by name without header" << std::endl;
         return std::vector<std::string>();
     }
 
     auto it = m_columnMap.find(columnName);
     if (it == m_columnMap.end())
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "CsvReader: Column '%s' not found", columnName.c_str());
+        std::cerr << "CsvReader: Column '" << columnName << "' not found" << std::endl;
         return std::vector<std::string>();
     }
 

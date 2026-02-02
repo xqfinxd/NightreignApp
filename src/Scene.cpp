@@ -406,6 +406,14 @@ void Scene::drawUI()
 		setMapIndex(5);
 
 	ImGui::Separator();
+	ImGui::Text("Spots Control:");
+	ImGui::InputInt("Pattern ID", &m_patternInput);
+	if (ImGui::Button("Load Spots by Pattern"))
+	{
+		loadSpotsByPattern(m_patternInput);
+	}
+
+	ImGui::Separator();
 	ImGui::Text("Camera:");
 	if (auto camera = getCamera())
 	{

@@ -4,6 +4,11 @@ project(NightreignApp)
 
 set(CMAKE_CXX_STANDARD 17)
 
+add_executable(DatabaseBuilder 
+	"src/DatabaseBuilder.cpp"
+	"src/CsvReader.cpp")
+
+
 add_executable(NightreignApp 
 	"src/ThirdParty.cpp"
 	"src/Application.cpp"
