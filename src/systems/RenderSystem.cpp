@@ -234,6 +234,46 @@ void RenderSystem::renderSpotLabels(entt::registry& registry, const Camera& came
         glm::vec3 textWorldPos = transform.position;
         textWorldPos.y -= spot.size * 0.5f + textHeight * 1.2f; // Position below spot
         
+        // Draw background rectangle first (if background color has alpha > 0)
+        if (backgroundColor.a > 0.0f)
+        {
+            // Add padding around text
+            float padding = textHeight * 0.2f;
+            float bgX0 = textWorldPos.x - textWidth * 0.5f - padding;
+            float bgX1 = textWorldPos.x + textWidth * 0.5f + padding;
+            float bgY0 = textWorldPos.y - textHeight - padding;
+            float bgY1 = textWorldPos.y + padding;
+            
+            // Create background quad with no texture (use dummy UV coords)
+            std::vector<Vertex> bgVertices;
+            bgVertices.emplace_back(glm::vec3(bgX0, bgY0, textWorldPos.z - 0.001f), glm::vec2(0.0f, 0.0f), backgroundColor);
+            bgVertices.emplace_back(glm::vec3(bgX1, bgY0, textWorldPos.z - 0.001f), glm::vec2(0.0f, 0.0f), backgroundColor);
+            bgVertices.emplace_back(glm::vec3(bgX1, bgY1, textWorldPos.z - 0.001f), glm::vec2(0.0f, 0.0f), backgroundColor);
+            bgVertices.emplace_back(glm::vec3(bgX0, bgY1, textWorldPos.z - 0.001f), glm::vec2(0.0f, 0.0f), backgroundColor);
+            
+            std::vector<uint32_t> bgIndices = {0, 1, 2, 2, 3, 0};
+            
+            GLuint bgVbo, bgEbo;
+            glGenBuffers(1, &bgVbo);
+            glGenBuffers(1, &bgEbo);
+            
+            glBindBuffer(GL_ARRAY_BUFFER, bgVbo);
+            glBufferData(GL_ARRAY_BUFFER, bgVertices.size() * sizeof(bgVertices[0]), bgVertices.data(), GL_DYNAMIC_DRAW);
+            
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bgEbo);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, bgIndices.size() * sizeof(uint32_t), bgIndices.data(), GL_DYNAMIC_DRAW);
+            
+            shader->setMat4("mvp", viewProj);
+            shader->setVec4("foregroundColor", backgroundColor);
+            shader->setVec4("backgroundColor", backgroundColor);
+            
+            setupVertexAttributes();
+            glDrawElements(GL_TRIANGLES, bgIndices.size(), GL_UNSIGNED_INT, 0);
+            
+            glDeleteBuffers(1, &bgVbo);
+            glDeleteBuffers(1, &bgEbo);
+        }
+        
         // Render each character
         float cursorX = textWorldPos.x - textWidth * 0.5f; // Center horizontally
         float cursorY = textWorldPos.y;
@@ -241,6 +281,10 @@ void RenderSystem::renderSpotLabels(entt::registry& registry, const Camera& came
         std::vector<Vertex> vertices;
         std::vector<uint32_t> indices;
         uint32_t indexOffset = 0;
+        
+        // Reset shader colors for text rendering
+        shader->setVec4("foregroundColor", foregroundColor);
+        shader->setVec4("backgroundColor", glm::vec4(0.0f, 0.0f, 0.0f, 0.0f));
         
         // Properly decode UTF-8 characters
         const char* text_begin = spot.label.c_str();

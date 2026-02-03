@@ -16,6 +16,7 @@
 #include <sstream>
 #include <iomanip>
 #include <map>
+#include <set>
 #include <SDL_events.h>
 
 float MapSpot::textScale = 0.005f;
@@ -395,6 +396,48 @@ void Scene::drawUI()
 	if (ImGui::Button("Load Spots by Pattern"))
 	{
 		loadSpotsByPattern(m_patternInput);
+	}
+	
+	static char spotOutFilePath[256] = "D:\\Temp\\SpotDefine.csv";
+	ImGui::InputText("Spot Output File", spotOutFilePath, sizeof(spotOutFilePath));
+	if (ImGui::Button("List All Spot UIDs"))
+	{
+		if (!m_metaDataLoaded)
+		{
+			m_metaData.load();
+			m_metaDataLoaded = true;
+		}
+		
+		std::map<int, std::set<int>> patternUIDs;
+		for (const auto& pattern : m_metaData.patterns)
+		{
+			for (const auto& spot : pattern.second.spots)
+			{
+				patternUIDs[spot.second.attachment.UID()].insert(pattern.first);
+			}
+		}
+		std::ofstream spotDefineFile(spotOutFilePath, std::ios::out);
+		if (spotDefineFile.is_open())
+		{
+			spotDefineFile << "UID,patterns\n";
+			for (const auto& spot : patternUIDs)
+			{
+				spotDefineFile << spot.first << ",";
+				for (auto it = spot.second.begin(); it != spot.second.end(); ++it)
+				{
+					spotDefineFile << *it;
+					if (std::next(it) != spot.second.end())
+						spotDefineFile << "|";
+				}
+				spotDefineFile << "\n";
+			}
+			spotDefineFile.close();
+			SDL_Log("SpotDefine.csv written with %zu unique UIDs", patternUIDs.size());
+		}
+		else
+		{
+			SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to write SpotDefine.csv");
+		}
 	}
 
 	ImGui::Separator();
