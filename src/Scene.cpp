@@ -176,20 +176,22 @@ void Scene::initialize()
 	resMgr->loadTexture("launch", "nightreign/assets/textures/spots/launch.png");
 
 	// Set up spot click callback
-	setSpotClickCallback([](entt::entity entity, const MapSpot& spot) {
-		SDL_Log("=== Spot Clicked ===");
-		SDL_Log("  Entity: %d", (int)entity);
-		SDL_Log("  Grid Position: (%.1f, %.1f)", spot.gridPosition.x, spot.gridPosition.y);
-		SDL_Log("  Size: %.2f", spot.size);
-		if (!spot.metadata.empty())
-			SDL_Log("  Metadata: %s", spot.metadata.c_str());
+	setSpotClickCallback([this](entt::entity entity, const MapSpot& spot) {
+		if(m_selectedSpotEntity == entity)
+		{
+			m_selectedSpotEntity = entt::null;
+		}
+		else
+		{
+			m_selectedSpotEntity = entity;
+		}
 	});
 
 	// Load initial map tiles (index 0, layer 0)
 	loadMapTiles(0, 0);
 
 	// Add some sample spots on the map with Chinese labels
-	loadSpotsByPattern(1);
+	loadSpotsByPattern(0);
 
 	SDL_Log("Scene initialized (ECS ready, entities: %zu)", m_registry.size());
 }
@@ -197,6 +199,7 @@ void Scene::initialize()
 void Scene::cleanup()
 {
 	SDL_Log("Scene cleanup (clearing %zu entities)", m_registry.size());
+	m_selectedSpotEntity = entt::null;
 	m_registry.clear();
 }
 
@@ -242,6 +245,9 @@ void Scene::onMouseClick(int screenX, int screenY, int windowWidth, int windowHe
 
 		if (result.hit)
 		{
+			if(m_selectedSpotEntity == entity)
+				continue;
+
 			// Hit detected!
 			SDL_Log("Spot clicked at grid position (%.1f, %.1f)", mapSpot->gridPosition.x, mapSpot->gridPosition.y);
 			
@@ -391,53 +397,26 @@ void Scene::drawUI()
 	ImGui::Text("  Spots: %zu", m_mapSpotEntities.size());
 
 	ImGui::Separator();
+	if(m_selectedSpotEntity != entt::null)
+	{
+		auto& spot = m_registry.get<MapSpot>(m_selectedSpotEntity);
+		ImGui::Text("Selected Spot:");
+		ImGui::Text("  ID: %d", spot.metadata.has_value() ? std::any_cast<int>(spot.metadata) : -1);
+		ImGui::Text("  Grid Position: (%.1f, %.1f)", spot.gridPosition.x, spot.gridPosition.y);
+		ImGui::Text("  Label: %s", spot.label.c_str());
+	}
+	else
+	{
+		ImGui::Text("No spot selected");
+	}
+
+	ImGui::Separator();
 	ImGui::Text("Spots Control:");
 	ImGui::InputInt("Pattern ID", &m_patternInput);
+	
 	if (ImGui::Button("Load Spots by Pattern"))
 	{
 		loadSpotsByPattern(m_patternInput);
-	}
-	
-	static char spotOutFilePath[256] = "D:\\Temp\\SpotDefine.csv";
-	ImGui::InputText("Spot Output File", spotOutFilePath, sizeof(spotOutFilePath));
-	if (ImGui::Button("List All Spot UIDs"))
-	{
-		if (!m_metaDataLoaded)
-		{
-			m_metaData.load();
-			m_metaDataLoaded = true;
-		}
-		
-		std::map<int, std::set<int>> patternUIDs;
-		for (const auto& pattern : m_metaData.patterns)
-		{
-			for (const auto& spot : pattern.second.spots)
-			{
-				patternUIDs[spot.second.attachment.UID()].insert(pattern.first);
-			}
-		}
-		std::ofstream spotDefineFile(spotOutFilePath, std::ios::out);
-		if (spotDefineFile.is_open())
-		{
-			spotDefineFile << "UID,patterns\n";
-			for (const auto& spot : patternUIDs)
-			{
-				spotDefineFile << spot.first << ",";
-				for (auto it = spot.second.begin(); it != spot.second.end(); ++it)
-				{
-					spotDefineFile << *it;
-					if (std::next(it) != spot.second.end())
-						spotDefineFile << "|";
-				}
-				spotDefineFile << "\n";
-			}
-			spotDefineFile.close();
-			SDL_Log("SpotDefine.csv written with %zu unique UIDs", patternUIDs.size());
-		}
-		else
-		{
-			SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to write SpotDefine.csv");
-		}
 	}
 
 	ImGui::Separator();
@@ -605,6 +584,7 @@ void Scene::clearSpots()
 			m_registry.destroy(entity);
 		}
 	}
+	m_selectedSpotEntity = entt::null;
 	m_mapSpotEntities.clear();
 }
 
@@ -629,8 +609,11 @@ void Scene::loadSpotsByPattern(int patternId)
     {
         const MetaData::SpotData& spot = spotPair.second;
         std::string textureName = "launch";
-        auto spotEntity = addSpot(spot.getGridPos(), textureName, 0.1f);
-		m_registry.get<MapSpot>(spotEntity).label = std::to_string(spotPair.second.attachment.UID());
+		float size = 0.1f;
+        auto spotEntity = addSpot(spot.getGridPos(), textureName, size);
+		auto& mapSpot = m_registry.get<MapSpot>(spotEntity);
+		mapSpot.label = spotPair.second.attachment.label;
+		mapSpot.metadata = spotPair.first;
     }
 	loadMapTiles(patternData.map);
 }

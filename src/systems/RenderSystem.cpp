@@ -286,9 +286,13 @@ void RenderSystem::renderSpotLabels(entt::registry& registry, const Camera& came
         shader->setVec4("foregroundColor", foregroundColor);
         shader->setVec4("backgroundColor", glm::vec4(0.0f, 0.0f, 0.0f, 0.0f));
         
+        std::string showLabel = spot.label;
+        if(showLabel.empty())
+            showLabel = "UNKNOWN";
+
         // Properly decode UTF-8 characters
-        const char* text_begin = spot.label.c_str();
-        const char* text_end = text_begin + spot.label.length();
+        const char* text_begin = showLabel.c_str();
+        const char* text_end = text_begin + showLabel.length();
         
         for (const char* s = text_begin; s < text_end; )
         {

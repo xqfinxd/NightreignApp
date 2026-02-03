@@ -43,6 +43,19 @@ void MetaData::load()
         mapVariationMap[id] = i;
     }
 
+    CsvReader spotLabelCsv;
+    if (!spotLabelCsv.load("nightreign/assets/datas/User_SpotDefine.csv", true))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "MetaData: Failed to load User_SpotDefine.csv");
+        return;
+    }
+    std::unordered_map<int, std::string> spotLabelMap;
+    for (size_t i = 0; i < spotLabelCsv.getRowCount(); ++i)
+    {
+        int id = std::stoi(spotLabelCsv.getValue(i, "ID"));
+        std::string label = spotLabelCsv.getValue(i, "label");
+        spotLabelMap[id] = label;
+    }
 
     for(auto& row : lrPatternCsv.getAllRows())
     {
@@ -95,7 +108,7 @@ void MetaData::load()
         spotData.posZ = std::stof(spotAttachCsv.getValue(attachRow, "posZ"));
         spotData.attachment.variantId = variationId;
         spotData.attachment.variantIndex = variationIndex;
-        
+        spotData.attachment.label = spotLabelMap[spotData.attachment.UID()];
         patternIt->second.spots[spotId] = spotData;
     }
 }

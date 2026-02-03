@@ -13,6 +13,7 @@ struct MetaData
     {
         int variantId = -1;
         int variantIndex = -1;
+        std::string label;
 
         int UID() const { return variantId * 10 + variantIndex; }
     };

@@ -1,6 +1,8 @@
 #pragma once
 #include "public.h"
 #include <string>
+#include <any>
+#include <glm/glm.hpp>
 
 // Component for map spots/markers
 struct MapSpot
@@ -10,7 +12,7 @@ struct MapSpot
     std::string textureName;     // Texture to use for this spot
     float size = 0.2f;           // Size of the spot in world units
     glm::vec4 tint = glm::vec4(1.0f);  // Color tint
-    std::string metadata;        // Optional metadata for identifying this spot
+    std::any metadata;        // Optional metadata for identifying this spot
     std::string label;           // Text label to display below spot
     
     MapSpot() = default;

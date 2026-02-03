@@ -31,7 +31,7 @@ public:
 	void loadSpotsByPattern(int patternId);
 
 	// Mouse input
-	typedef void (*SpotClickCallback)(entt::entity spotEntity, const MapSpot& spot);
+	using SpotClickCallback = std::function<void(entt::entity spotEntity, const MapSpot& spot)>;
 	void onMouseClick(int screenX, int screenY, int windowWidth, int windowHeight);
 	void onMouseMove(int screenX, int screenY, int windowWidth, int windowHeight);
 	void onMouseWheel(float deltaY);
@@ -71,5 +71,7 @@ private:
 	MetaData m_metaData;
 	bool m_metaDataLoaded = false;
 	// Spot pattern input
-	int m_patternInput = 1;
+	int m_patternInput = 0;
+	
+	entt::entity m_selectedSpotEntity = entt::null;
 };
