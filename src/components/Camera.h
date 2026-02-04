@@ -16,8 +16,8 @@ public:
     float nearPlane = 0.01f;
     float farPlane = 1000.0f;
 
-    bool isOrthographic = false;
-    float orthoSize = 10.0f;
+    bool isOrthographic = true;
+    float orthoSize = 5.0f;
 
     glm::vec4 clearColor = glm::vec4(0.1f, 0.1f, 0.15f, 1.0f);
 

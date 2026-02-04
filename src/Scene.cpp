@@ -155,9 +155,6 @@ void Scene::initialize()
 		}
 	});
 
-	// Load initial map tiles (index 0, layer 0)
-	loadMapTiles(0, 0);
-
 	// Add some sample spots on the map with Chinese labels
 	loadSpotsByPattern(0);
 
