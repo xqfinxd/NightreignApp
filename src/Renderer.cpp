@@ -49,12 +49,12 @@ void Renderer::initialize()
 	// Load spot texture
 	m_resource_mgr->loadTexture("launch", "nightreign/assets/textures/spots/launch.png");
 
-	SDL_Log("Renderer initialized");
+	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Renderer initialized");
 }
 
 void Renderer::cleanup()
 {
-	SDL_Log("Renderer cleanup");
+	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Renderer cleanup");
 }
 
 void Renderer::beginFrame()

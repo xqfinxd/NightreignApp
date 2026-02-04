@@ -21,13 +21,13 @@ ResourceManager::~ResourceManager()
 
 void ResourceManager::initialize()
 {
-    SDL_Log("ResourceManager: Initialized");
+    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Initialized");
 }
 
 void ResourceManager::cleanup()
 {
     unloadAll();
-    SDL_Log("ResourceManager: Cleanup complete");
+    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Cleanup complete");
 }
 
 Shader* ResourceManager::loadShader(const std::string& name, const std::string& vertPath, const std::string& fragPath)
@@ -75,7 +75,7 @@ void ResourceManager::unloadShader(const std::string& name)
             m_device->deleteShader(it->second);
         }
         m_shaders.erase(it);
-        SDL_Log("ResourceManager: Shader '%s' unloaded", name.c_str());
+        SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Shader '%s' unloaded", name.c_str());
     }
 }
 
@@ -101,7 +101,7 @@ Texture* ResourceManager::loadTexture(const std::string& name, const std::string
     }
 
     m_textures[name] = texture;
-    SDL_Log("ResourceManager: Texture '%s' loaded successfully (ID: %u, Size: %dx%d)", 
+    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Texture '%s' loaded successfully (ID: %u, Size: %dx%d)", 
         name.c_str(), texture->getId(), texture->getWidth(), texture->getHeight());
     return texture;
 }
@@ -125,7 +125,7 @@ void ResourceManager::unloadTexture(const std::string& name)
             m_device->deleteTexture(it->second);
         }
         m_textures.erase(it);
-        SDL_Log("ResourceManager: Texture '%s' unloaded", name.c_str());
+        SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Texture '%s' unloaded", name.c_str());
     }
 }
 
@@ -146,7 +146,7 @@ void ResourceManager::unloadMesh(const std::string& name)
     if (it != m_meshes.end()) {
         delete it->second;
         m_meshes.erase(it);
-        SDL_Log("ResourceManager: Mesh '%s' unloaded", name.c_str());
+        SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Mesh '%s' unloaded", name.c_str());
     }
 }
 
@@ -159,7 +159,7 @@ void ResourceManager::unloadAll()
         }
     }
     m_shaders.clear();
-    SDL_Log("ResourceManager: All shaders unloaded");
+    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: All shaders unloaded");
 
     // Unload all textures
     if (m_device) {
@@ -168,12 +168,12 @@ void ResourceManager::unloadAll()
         }
     }
     m_textures.clear();
-    SDL_Log("ResourceManager: All textures unloaded");
+    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: All textures unloaded");
 
     // Unload all meshes
     for (auto& pair : m_meshes) {
         delete pair.second;
     }
     m_meshes.clear();
-    SDL_Log("ResourceManager: All meshes unloaded");
+    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: All meshes unloaded");
 }

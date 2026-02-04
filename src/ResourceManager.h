@@ -79,7 +79,7 @@ MeshBuffer* ResourceManager::createMesh(const std::string& name, const std::vect
     mesh->setVertexData(vertices);
     m_meshes[name] = mesh;
     
-    SDL_Log("ResourceManager: Mesh '%s' created (%zu vertices)", name.c_str(), vertices.size());
+    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Mesh '%s' created (%zu vertices)", name.c_str(), vertices.size());
     return mesh;
 }
 
@@ -103,7 +103,7 @@ MeshBuffer* ResourceManager::createMesh(const std::string& name, const std::vect
     mesh->setIndexData(indices);
     m_meshes[name] = mesh;
     
-    SDL_Log("ResourceManager: Mesh '%s' created (%zu vertices, %zu indices)", 
+    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Mesh '%s' created (%zu vertices, %zu indices)", 
             name.c_str(), vertices.size(), indices.size());
     return mesh;
 }

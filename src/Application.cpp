@@ -15,24 +15,24 @@
 
 Application::Application()
 {
-    SDL_Log("Application: Creating application...");
+    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Creating application...");
     m_window = new sdlWindow();
     m_device = new glDevice(m_window);
     m_resource_mgr = new ResourceManager(m_device);
     m_renderer = new Renderer(m_device, m_resource_mgr);
     m_scene_mgr = new SceneManager();
-    SDL_Log("Application: Application created successfully");
+    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Application created successfully");
 }
 
 Application::~Application()
 {
-    SDL_Log("Application: Destroying application...");
+    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Destroying application...");
     delete m_scene_mgr;
     delete m_resource_mgr;
     delete m_renderer;
     delete m_device;
     delete m_window;
-    SDL_Log("Application: Application destroyed");
+    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Application destroyed");
 }
 
 void Application::start()
@@ -42,28 +42,28 @@ void Application::start()
         return;
     }
 
-    SDL_Log("Application: Starting application...");
+    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Starting application...");
     initialize();
 
     m_running = true;
     m_last_frame_time = SDL_GetTicks();
-    SDL_Log("Application: Entering main loop (FPS: %d)", m_fps);
+    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Entering main loop (FPS: %d)", m_fps);
 
 #ifdef __EMSCRIPTEN__
-    SDL_Log("Emscripten setup mainloop...");
+    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Emscripten setup mainloop...");
     emscripten_set_main_loop_arg(runFrameWrapper, this, 0, 1);
 #else
     while (m_running) {
         runFrame();
     }
-    SDL_Log("Application: Exited main loop");
+    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Exited main loop");
     cleanup();
 #endif
 }
 
 void Application::quit()
 {
-    SDL_Log("Application: Quit requested");
+    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Quit requested");
     m_running = false;
 }
 
@@ -71,7 +71,7 @@ void Application::runFrame()
 {
     if (!m_running) {
 #ifdef __EMSCRIPTEN__
-        SDL_Log("Emscripten terminate mainloop...");
+        SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Emscripten terminate mainloop...");
         emscripten_cancel_main_loop();
         cleanup();
 #endif
@@ -105,7 +105,7 @@ void Application::runFrameWrapper(void* userData)
 
 void Application::initialize()
 {
-    SDL_Log("Application: Initializing subsystems...");
+    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Initializing subsystems...");
     m_window->initialize(1200, 900);
     m_device->initialize();
     m_renderer->initialize();
@@ -118,7 +118,7 @@ void Application::initialize()
     // Set initial viewport
     auto size = m_window->getCanvasSize();
     m_renderer->setViewport(0, 0, size.x, size.y);
-    SDL_Log("Application: Initialization complete (Viewport: %dx%d)", size.x, size.y);
+    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Initialization complete (Viewport: %dx%d)", size.x, size.y);
 }
 
 void Application::processInput()
@@ -137,7 +137,7 @@ void Application::processInput()
                 m_device->onResize();
                 auto size = m_window->getCanvasSize();
                 m_renderer->setViewport(0, 0, size.x, size.y);
-                SDL_Log("Application: Window resized to %dx%d", size.x, size.y);
+                SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Window resized to %dx%d", size.x, size.y);
             }
         }
 
@@ -221,11 +221,11 @@ void Application::render()
 
 void Application::cleanup()
 {
-    SDL_Log("Application: Cleaning up subsystems...");
+    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Cleaning up subsystems...");
     m_scene_mgr->cleanup();
     m_resource_mgr->cleanup();
     m_renderer->cleanup();
     m_device->cleanup();
     m_window->cleanup();
-    SDL_Log("Application: Cleanup complete");
+    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Cleanup complete");
 }

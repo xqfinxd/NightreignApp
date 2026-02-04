@@ -15,7 +15,7 @@ SceneManager::~SceneManager()
 
 void SceneManager::initialize()
 {
-	SDL_Log("SceneManager initialized");
+	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "SceneManager initialized");
 }
 
 void SceneManager::cleanup()
@@ -54,7 +54,7 @@ void SceneManager::addScene(const std::string& name, Scene* scene)
 	m_scenes[name] = scene;
 	scene->initialize();
 	
-	SDL_Log("Scene added: %s", name.c_str());
+	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Scene added: %s", name.c_str());
 
 	// If no active scene, set this as active
 	if (!m_active_scene) {
@@ -86,7 +86,7 @@ void SceneManager::setActiveScene(const std::string& name)
 	if (it != m_scenes.end()) {
 		m_active_scene = it->second;
 		m_active_scene_name = name;
-		SDL_Log("Active scene set to: %s", name.c_str());
+		SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Active scene set to: %s", name.c_str());
 	} else {
 		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Scene not found: %s", name.c_str());
 	}

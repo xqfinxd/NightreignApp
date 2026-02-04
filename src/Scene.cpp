@@ -123,12 +123,12 @@ struct Ray {
 
 Scene::Scene()
 {
-	SDL_Log("Scene: ECS registry created");
+	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Scene: ECS registry created");
 }
 
 Scene::~Scene()
 {
-	SDL_Log("Scene: ECS registry destroyed (entities: %zu)", m_registry.size());
+	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Scene: ECS registry destroyed (entities: %zu)", m_registry.size());
 }
 
 void Scene::initialize()
@@ -161,12 +161,12 @@ void Scene::initialize()
 	// Add some sample spots on the map with Chinese labels
 	loadSpotsByPattern(0);
 
-	SDL_Log("Scene initialized (ECS ready, entities: %zu)", m_registry.size());
+	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Scene initialized (ECS ready, entities: %zu)", m_registry.size());
 }
 
 void Scene::cleanup()
 {
-	SDL_Log("Scene cleanup (clearing %zu entities)", m_registry.size());
+	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Scene cleanup (clearing %zu entities)", m_registry.size());
 	m_selectedSpotEntity = entt::null;
 	m_registry.clear();
 }
@@ -502,7 +502,7 @@ void Scene::loadMapTiles(int mapIndex, int layer)
 		}
 	}
 
-	SDL_Log("Scene: Loaded map tiles (index: %d, layer: %d, tiles: %dx%d)",
+	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Scene: Loaded map tiles (index: %d, layer: %d, tiles: %dx%d)",
 			mapIndex, layer, m_gridWidth, m_gridHeight);
 }
 
@@ -545,7 +545,7 @@ entt::entity Scene::addSpot(const glm::vec2 &gridPos, const std::string &texture
 	// Store entity for later cleanup
 	m_mapSpotEntities.push_back(entity);
 
-	SDL_Log("Scene: Added spot at grid position (%.2f, %.2f)", gridPos.x, gridPos.y);
+	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Scene: Added spot at grid position (%.2f, %.2f)", gridPos.x, gridPos.y);
 	return entity;
 }
 
