@@ -18,8 +18,7 @@ add_executable(NightreignApp
 	"src/sdlWindow.cpp"
 	"src/glDevice.cpp"
 	"src/CsvReader.cpp"
-	"src/MetaData.cpp"
-	"src/systems/RenderSystem.cpp")
+	"src/MetaData.cpp")
 
 target_include_directories(NightreignApp PRIVATE
 	"src"

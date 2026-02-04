@@ -5,7 +5,7 @@
 #include <entt/entt.hpp>
 #include <vector>
 
-class RenderSystem;
+class Renderer;
 class Device;
 class Camera;
 
@@ -19,7 +19,7 @@ public:
 	void cleanup();
 
 	void update(float deltaTime);
-	void render();
+	void render(Renderer* renderer);
 	void drawUI();
 
 	// Map control
@@ -52,7 +52,6 @@ private:
 	void clearMapTiles();
 
 	entt::registry m_registry;
-	RenderSystem *m_render_system = nullptr;
 	std::vector<entt::entity> m_mapTileEntities;
 	std::vector<entt::entity> m_mapSpotEntities;
 	int m_currentMapIndex = 0;

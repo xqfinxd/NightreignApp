@@ -1,5 +1,5 @@
 #include "Scene.h"
-#include "systems/RenderSystem.h"
+#include "Renderer.h"
 #include "components/Mesh.h"
 #include "components/Transform.h"
 #include "components/MapTileGrid.h"
@@ -128,7 +128,6 @@ Scene::Scene()
 
 Scene::~Scene()
 {
-	delete m_render_system;
 	SDL_Log("Scene: ECS registry destroyed (entities: %zu)", m_registry.size());
 }
 
@@ -143,37 +142,6 @@ void Scene::initialize()
 		camera.target = glm::vec3(0.0f, 0.0f, 0.0f);
 		camera.updateMatrices();
 	}
-
-	// Get ResourceManager
-	ResourceManager *resMgr = ResourceManager::getInstance();
-	if (!resMgr)
-	{
-		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Scene: ResourceManager not available");
-		return;
-	}
-
-	// Create RenderSystem
-	m_render_system = new RenderSystem(resMgr);
-
-	// Load shaders
-	resMgr->loadShader("texture", "nightreign/assets/shaders/texture.vert", "nightreign/assets/shaders/texture.frag");
-	resMgr->loadShader("font", "nightreign/assets/shaders/font.vert", "nightreign/assets/shaders/font.frag");
-
-	// Create a simple quad mesh for tiles
-	std::vector<Vertex> quadVertices = {
-		Vertex(glm::vec3(-0.5f, -0.5f, 0.0f), glm::vec2(0.0f, 0.0f), glm::vec4(1.0f)),
-		Vertex(glm::vec3(0.5f, -0.5f, 0.0f) , glm::vec2(1.0f, 0.0f), glm::vec4(1.0f)),
-		Vertex(glm::vec3(0.5f, 0.5f, 0.0f)  , glm::vec2(1.0f, 1.0f), glm::vec4(1.0f)),
-		Vertex(glm::vec3(-0.5f, 0.5f, 0.0f) , glm::vec2(0.0f, 1.0f), glm::vec4(1.0f))};
-
-	std::vector<uint32_t> quadIndices = {
-		0, 1, 2,
-		2, 3, 0};
-
-	resMgr->createMesh("quad", quadVertices, quadIndices);
-
-	// Load spot texture
-	resMgr->loadTexture("launch", "nightreign/assets/textures/spots/launch.png");
 
 	// Set up spot click callback
 	setSpotClickCallback([this](entt::entity entity, const MapSpot& spot) {
@@ -227,7 +195,9 @@ void Scene::onMouseClick(int screenX, int screenY, int windowWidth, int windowHe
 	ray.origin = glm::vec3(nearPointWorld);
 	ray.direction = glm::normalize(glm::vec3(farPointWorld) - ray.origin);
 	
-	// Check all spots for hits (iterate in reverse to check top-most first)
+	// Collect all spots at this click location
+	std::vector<entt::entity> hitsAtLocation;
+	int selectedIndex = -1;
 	for (auto it = m_mapSpotEntities.rbegin(); it != m_mapSpotEntities.rend(); ++it)
 	{
 		auto entity = *it;
@@ -239,23 +209,36 @@ void Scene::onMouseClick(int screenX, int screenY, int windowWidth, int windowHe
 		if (!transform || !mapSpot)
 			continue;
 
-		// Check if click is within spot bounds (simple square hit test)
+		// Check if click is within spot bounds
 		float halfSize = (mapSpot->size * m_tileSize) * 0.5f;
 		auto result = ray.intersectSphere(transform->position, halfSize);
 
 		if (result.hit)
 		{
-			if(m_selectedSpotEntity == entity)
-				continue;
-
-			// Hit detected!
-			SDL_Log("Spot clicked at grid position (%.1f, %.1f)", mapSpot->gridPosition.x, mapSpot->gridPosition.y);
-			
-			if (m_spotClickCallback)
+			hitsAtLocation.push_back(entity);
+			if (entity == m_selectedSpotEntity)
 			{
-				m_spotClickCallback(entity, *mapSpot);
+				selectedIndex = static_cast<int>(hitsAtLocation.size()) - 1;
 			}
-			return; // Only handle first hit
+		}
+	}
+	
+	if (m_spotClickCallback && !hitsAtLocation.empty())
+	{
+		entt::entity nextSelectedEntity;
+		if(selectedIndex < 0 || static_cast<size_t>(selectedIndex) >= hitsAtLocation.size() - 1)
+		{
+			nextSelectedEntity = hitsAtLocation[0];
+		}
+		else
+		{
+			nextSelectedEntity = hitsAtLocation[selectedIndex + 1];
+		}
+
+		auto* mapSpot = m_registry.try_get<MapSpot>(nextSelectedEntity);
+		if (mapSpot)
+		{
+			m_spotClickCallback(nextSelectedEntity, *mapSpot);
 		}
 	}
 }
@@ -357,30 +340,22 @@ void Scene::onMouseWheel(float deltaY)
 	camera->updateMatrices();
 }
 
-void Scene::render()
+void Scene::render(Renderer* renderer)
 {
-	if (!m_render_system)
-	{
-		return;
-	}
-
-	// Get camera matrices
+	// Get camera
 	auto camera = getCamera();
 	if (!camera)
 	{
 		return;
 	}
 
-	glm::mat4 view = camera->getViewMatrix();
-	glm::mat4 projection = camera->getProjectionMatrix();
-
 	// Render all entities with MeshComponent
-	m_render_system->render(m_registry);
+	renderer->renderEntities(m_registry);
 	
 	// Render spot labels with ImGui's font texture
 	glm::vec4 black = glm::vec4(0.0f, 0.0f, 0.0f, 0.5f);
 	glm::vec4 white = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
-	m_render_system->renderSpotLabels(m_registry, *camera, black, white);
+	renderer->renderSpotLabels(m_registry, *camera, black, white);
 }
 
 void Scene::drawUI()
