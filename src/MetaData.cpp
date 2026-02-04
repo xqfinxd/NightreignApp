@@ -17,17 +17,17 @@ void MetaData::load()
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "MetaData: Failed to load LotResultMapPatternFlag.csv");
         return;
     }
-    CsvReader spotAttachCsv;
-    if (!spotAttachCsv.load("nightreign/assets/datas/SmallBaseAndSpotAttachPoint.csv", true))
+    CsvReader spotPointCsv;
+    if (!spotPointCsv.load("nightreign/assets/datas/WorldMapPointParam.csv", true))
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "MetaData: Failed to load SmallBaseAndSpotAttachPoint.csv");
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "MetaData: Failed to load WorldMapPointParam.csv");
         return;
     }
-    std::unordered_map<int, size_t> attachPointMap;
-    for (size_t i = 0; i < spotAttachCsv.getRowCount(); ++i)
+    std::unordered_map<int, size_t> spotPointMap;
+    for (size_t i = 0; i < spotPointCsv.getRowCount(); ++i)
     {
-        int id = std::stoi(spotAttachCsv.getValue(i, "ID"));
-        attachPointMap[id] = i;
+        int id = std::stoi(spotPointCsv.getValue(i, "ID"));
+        spotPointMap[id] = i;
     }
 
     CsvReader mapVariationCsv;
@@ -93,8 +93,8 @@ void MetaData::load()
                 continue;
         }
         
-        auto attachIt = attachPointMap.find(pointID);
-        if (attachIt == attachPointMap.end())
+        auto attachIt = spotPointMap.find(pointID);
+        if (attachIt == spotPointMap.end())
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "MetaData: Attach point ID %d not found", pointID);
             continue;
@@ -102,10 +102,10 @@ void MetaData::load()
         size_t attachRow = attachIt->second;
 
         SpotData spotData;
-        spotData.gridX = std::stoi(spotAttachCsv.getValue(attachRow, "gridXNo")) - GRID_OFFSET_X;
-        spotData.gridZ = std::stoi(spotAttachCsv.getValue(attachRow, "gridZNo")) - GRID_OFFSET_Z;
-        spotData.posX = std::stof(spotAttachCsv.getValue(attachRow, "posX"));
-        spotData.posZ = std::stof(spotAttachCsv.getValue(attachRow, "posZ"));
+        spotData.gridX = std::stoi(spotPointCsv.getValue(attachRow, "gridXNo")) - GRID_OFFSET_X;
+        spotData.gridZ = std::stoi(spotPointCsv.getValue(attachRow, "gridZNo")) - GRID_OFFSET_Z;
+        spotData.posX = std::stof(spotPointCsv.getValue(attachRow, "posX"));
+        spotData.posZ = std::stof(spotPointCsv.getValue(attachRow, "posZ"));
         spotData.attachment.variantId = variationId;
         spotData.attachment.variantIndex = variationIndex;
         spotData.attachment.label = spotLabelMap[spotData.attachment.UID()];
