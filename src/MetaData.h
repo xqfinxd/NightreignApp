@@ -52,4 +52,5 @@ struct MetaData
     std::unordered_map<PatternID, PatternData> patterns;
 
     void load();
+    int queryByAttachmentID(int attachmentID);
 };

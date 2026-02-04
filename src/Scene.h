@@ -69,8 +69,9 @@ private:
 	
 	MetaData m_metaData;
 	bool m_metaDataLoaded = false;
-	// Spot pattern input
+	
 	int m_patternInput = 0;
+	int m_attachmentInput = -1;
 	
 	entt::entity m_selectedSpotEntity = entt::null;
 };

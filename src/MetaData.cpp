@@ -101,7 +101,7 @@ void MetaData::load()
 
         auto mapIt = mapVariationMap.find(variationId);
         if (mapIt != mapVariationMap.end()) {
-            int NTFlag = std::stoi(mapVariationCsv.getValue(mapIt->second, "modifier1"));
+            int NTFlag = std::stoi(mapVariationCsv.getValue(mapIt->second, "unknown_1b"));
             if( NTFlag > 0)
                 continue;
         }
@@ -139,4 +139,22 @@ void MetaData::load()
         spotData.attachment.label = spotLabelMap[spotData.attachment.UID()];
         patternIt->second.spots[spotId] = spotData;
     }
+}
+
+int MetaData::queryByAttachmentID(int attachmentID)
+{
+    for (const auto& patternPair : patterns)
+    {
+        const PatternData& patternData = patternPair.second;
+        for (const auto& spotPair : patternData.spots)
+        {
+            const SpotData& spot = spotPair.second;
+            if (spot.attachment.UID() == attachmentID)
+            {
+                return patternPair.first;
+            }
+        }
+    }
+
+    return -1;
 }

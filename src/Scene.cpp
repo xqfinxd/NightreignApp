@@ -145,6 +145,12 @@ void Scene::initialize()
 
 	// Set up spot click callback
 	setSpotClickCallback([this](entt::entity entity, const MapSpot& spot) {
+		if(m_selectedSpotEntity != entt::null)
+		{
+			auto& prevSpot = m_registry.get<Transform>(m_selectedSpotEntity);
+			prevSpot.scale = glm::vec3(0.1f, 0.1f, 1.0f);
+		}
+
 		if(m_selectedSpotEntity == entity)
 		{
 			m_selectedSpotEntity = entt::null;
@@ -152,6 +158,12 @@ void Scene::initialize()
 		else
 		{
 			m_selectedSpotEntity = entity;
+		}
+
+		if(m_selectedSpotEntity != entt::null)
+		{
+			auto& newSpot = m_registry.get<Transform>(m_selectedSpotEntity);
+			newSpot.scale = glm::vec3(0.3f, 0.3f, 1.0f);
 		}
 	});
 
@@ -373,9 +385,8 @@ void Scene::drawUI()
 	{
 		auto& spot = m_registry.get<MapSpot>(m_selectedSpotEntity);
 		ImGui::Text("Selected Spot:");
-		ImGui::Text("  ID: %d", spot.metadata.has_value() ? std::any_cast<int>(spot.metadata) : -1);
+		ImGui::Text("  ID: %s", spot.metadata.has_value() ? std::any_cast<std::string>(spot.metadata).c_str() : "UNKNOWN");
 		ImGui::Text("  Grid Position: (%.1f, %.1f)", spot.gridPosition.x, spot.gridPosition.y);
-		ImGui::Text("  Label: %s", spot.label.c_str());
 	}
 	else
 	{
@@ -383,12 +394,28 @@ void Scene::drawUI()
 	}
 
 	ImGui::Separator();
-	ImGui::Text("Spots Control:");
-	ImGui::InputInt("Pattern ID", &m_patternInput);
-	
+	ImGui::Text("Pattern ID:");
+	ImGui::InputInt("##PatternID", &m_patternInput);
 	if (ImGui::Button("Load Spots by Pattern"))
 	{
 		loadSpotsByPattern(m_patternInput);
+	}
+
+	ImGui::Separator();
+	ImGui::Text("Attachment ID:");
+	ImGui::InputInt("##AttachmentID", &m_attachmentInput);
+	if (ImGui::Button("Search Attachment and Load Pattern"))
+	{
+		int patternId = m_metaData.queryByAttachmentID(m_attachmentInput);
+		if(patternId >= 0)
+		{
+			loadSpotsByPattern(patternId);
+			m_patternInput = patternId;
+		}
+		else
+		{
+			SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Scene: Attachment ID %d not found in metadata", m_attachmentInput);
+		}
 	}
 
 	ImGui::Separator();
@@ -581,11 +608,10 @@ void Scene::loadSpotsByPattern(int patternId)
     {
         const MetaData::SpotData& spot = spotPair.second;
         std::string textureName = "launch";
-		float size = 0.1f;
-        auto spotEntity = addSpot(spot.getGridPos(), textureName, size);
+        auto spotEntity = addSpot(spot.getGridPos(), textureName, 0.1f);
 		auto& mapSpot = m_registry.get<MapSpot>(spotEntity);
-		mapSpot.label = spotPair.second.attachment.label;
-		mapSpot.metadata = spotPair.first;
+		mapSpot.label = spotPair.second.attachment.label.empty() ? "UNKNOWN" : spotPair.second.attachment.label;
+		mapSpot.metadata = std::to_string(spotPair.first) + " : " + std::to_string(spotPair.second.attachment.UID());
     }
 	loadMapTiles(patternData.map);
 }
