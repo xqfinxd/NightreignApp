@@ -10,11 +10,26 @@ struct MetaData
     static constexpr int GRID_OFFSET_Z = 35;
     static constexpr float GRID_SIZE = 256.0f;
 
-    using SpotID = int;
     using PatternID = int;
+    using SpotID = int;
+    using AttachPointID = int;
+    using VariationID = int;
     using NightlordID = int;
     using MapID = int;
-    using VariationID = int;
+
+    struct SpotMetaData
+    {
+        AttachPointID pointID;
+        VariationID variationID;
+        int variantIndex;
+        int mapIndex;
+        int modifier;
+    };
+
+    struct PatternMetaData
+    {
+        std::unordered_map<SpotID, SpotMetaData> spotMetaDatas;
+    };
 
     struct Location
     {
@@ -59,8 +74,9 @@ struct MetaData
     struct PatternData {
         NightlordID nightlord = -1;
         MapID map = -1;
-        std::unordered_map<SpotID, SpotData> spots;
+        std::unordered_map<SpotID, SpotData> baseSpots;
         SpotData starter;
+        std::unordered_map<SpotID, SpotData> eventCandidates;
     };
 
     std::unordered_map<PatternID, PatternData> patterns;

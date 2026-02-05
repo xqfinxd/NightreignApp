@@ -164,7 +164,7 @@ void Scene::initialize()
 		if(m_selectedSpotEntity != entt::null)
 		{
 			auto& newSpot = m_registry.get<Transform>(m_selectedSpotEntity);
-			newSpot.scale = glm::vec3(0.3f, 0.3f, 1.0f);
+			newSpot.scale = glm::vec3(0.15f, 0.15f, 1.0f);
 		}
 	});
 
@@ -655,7 +655,7 @@ void Scene::loadSpotsByPattern(int patternId)
 		return;
 	}
     const MetaData::PatternData& patternData = patternIt->second;
-    for (const auto& spotPair : patternData.spots)
+    for (const auto& spotPair : patternData.baseSpots)
     {
         const MetaData::SpotData& spot = spotPair.second;
 		if(!spot.location.isValid())

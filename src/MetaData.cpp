@@ -2,6 +2,8 @@
 #include "CsvReader.h"
 #include <SDL_log.h>
 #include <SDL_assert.h>
+#include <algorithm>
+#include <set>
 
 void MetaData::load()
 {
@@ -11,12 +13,21 @@ void MetaData::load()
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "MetaData: Failed to load LotResultSmallBaseAndSpot.csv");
         return;
     }
-    CsvReader lrPatternCsv;
-    if (!lrPatternCsv.load("nightreign/assets/datas/LotResultMapPatternFlag.csv", true))
+    std::unordered_map<PatternID, PatternMetaData> patternSpotMetaDatas;
+    for(auto& row : lrSpotCsv.getAllRows())
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "MetaData: Failed to load LotResultMapPatternFlag.csv");
-        return;
+        PatternID patternId = std::stoi(row[lrSpotCsv.getColumnIndex("patternId")]);
+        auto& patternMetaData = patternSpotMetaDatas[patternId];
+        auto spotId = std::stoi(row[lrSpotCsv.getColumnIndex("ID")]);
+        auto& spotMetaData = patternMetaData.spotMetaDatas[spotId];
+
+        spotMetaData.pointID = std::stoi(row[lrSpotCsv.getColumnIndex("attachId")]);
+        spotMetaData.variationID = std::stoi(row[lrSpotCsv.getColumnIndex("smallBaseMapId")]);
+        spotMetaData.variantIndex = std::stoi(row[lrSpotCsv.getColumnIndex("variationId")]);
+        spotMetaData.mapIndex = std::stoi(row[lrSpotCsv.getColumnIndex("mapIndex")]);
+        spotMetaData.modifier = std::stoi(row[lrSpotCsv.getColumnIndex("modifier")]);
     }
+
     CsvReader spotPointCsv;
     if (!spotPointCsv.load("nightreign/assets/datas/WorldMapPointParam.csv", true))
     {
@@ -70,6 +81,12 @@ void MetaData::load()
         spotLabelMap[id] = label;
     }
 
+    CsvReader lrPatternCsv;
+    if (!lrPatternCsv.load("nightreign/assets/datas/LotResultMapPatternFlag.csv", true))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "MetaData: Failed to load LotResultMapPatternFlag.csv");
+        return;
+    }
     for(auto& row : lrPatternCsv.getAllRows())
     {
         PatternID patternId = std::stoi(row[lrPatternCsv.getColumnIndex("patternId")]);
@@ -88,47 +105,94 @@ void MetaData::load()
         }
     }
 
-    for(auto& row : lrSpotCsv.getAllRows())
+    for(const auto& metaPair : patternSpotMetaDatas)
     {
-        PatternID patternId = std::stoi(row[lrSpotCsv.getColumnIndex("patternId")]);
+        PatternID patternId = metaPair.first;
         auto patternIt = patterns.find(patternId);
         SDL_assert(patternIt != patterns.end());
-
-        SpotID spotId = std::stoi(row[lrSpotCsv.getColumnIndex("ID")]);
-        int variationId = std::stoi(row[lrSpotCsv.getColumnIndex("smallBaseMapId")]);
-        int variationIndex = std::stoi(row[lrSpotCsv.getColumnIndex("variationId")]);
-        int pointID = std::stoi(row[lrSpotCsv.getColumnIndex("attachId")]);
-
-        auto mapIt = mapVariationMap.find(variationId);
-        if (mapIt != mapVariationMap.end()) {
-            int NTFlag = std::stoi(mapVariationCsv.getValue(mapIt->second, "unknown_1b"));
-            if( NTFlag > 0)
-                continue;
-        }
         
-        SpotData spotData;
+        std::unordered_map<int, AttachPointID> nightHordes; // mapIndex -> PointID
+        std::set<SpotID> baseSpots;
+        std::for_each(metaPair.second.spotMetaDatas.begin(), metaPair.second.spotMetaDatas.end(),
+            [&](const auto& spotPair)
+            {
+                const SpotMetaData& spotMetaData = spotPair.second;
+                auto iter = mapVariationMap.find(spotMetaData.variationID);
+                if(iter == mapVariationMap.end())
+                    return;
+                
+                int modifier1 = std::stoi(mapVariationCsv.getValue(iter->second, "modifier1"));
+                int modifier2 = std::stoi(mapVariationCsv.getValue(iter->second, "modifier2"));
+                int modifier3 = std::stoi(mapVariationCsv.getValue(iter->second, "modifier3"));
+                if(modifier1 == 180 || modifier1 == 604)
+                {
+                    // night horde
+                    nightHordes[spotMetaData.mapIndex] = spotPair.first;
+                    return;
+                }
+                else if(modifier1 == 13)
+                {
+                    // rotted
+                }
+                baseSpots.insert(spotPair.first);
+            }
+        );
 
-        auto attachIt = spotPointMap.find(pointID);
-        if (attachIt != spotPointMap.end())
+        for(auto spotID : baseSpots)
         {
-            spotData.location.gridX = std::stoi(spotPointCsv.getValue(attachIt->second, "gridXNo")) - GRID_OFFSET_X;
-            spotData.location.gridZ = std::stoi(spotPointCsv.getValue(attachIt->second, "gridZNo")) - GRID_OFFSET_Z;
-            spotData.location.posX = std::stof(spotPointCsv.getValue(attachIt->second, "posX"));
-            spotData.location.posZ = std::stof(spotPointCsv.getValue(attachIt->second, "posZ"));
-        }
-        auto attach2It = spotPoint2Map.find(pointID);
-        if (attach2It != spotPoint2Map.end())
-        {
-            spotData.locationExtra.gridX = std::stoi(spotPoint2Csv.getValue(attach2It->second, "gridXNo")) - GRID_OFFSET_X;
-            spotData.locationExtra.gridZ = std::stoi(spotPoint2Csv.getValue(attach2It->second, "gridZNo")) - GRID_OFFSET_Z;
-            spotData.locationExtra.posX = std::stof(spotPoint2Csv.getValue(attach2It->second, "posX"));
-            spotData.locationExtra.posZ = std::stof(spotPoint2Csv.getValue(attach2It->second, "posZ"));
+            const SpotMetaData& spotMetaData = metaPair.second.spotMetaDatas.at(spotID);
+            MetaData::SpotData spotData;
+
+            auto attachIt = spotPointMap.find(spotMetaData.pointID);
+            if (attachIt != spotPointMap.end())
+            {
+                spotData.location.gridX = std::stoi(spotPointCsv.getValue(attachIt->second, "gridXNo")) - GRID_OFFSET_X;
+                spotData.location.gridZ = std::stoi(spotPointCsv.getValue(attachIt->second, "gridZNo")) - GRID_OFFSET_Z;
+                spotData.location.posX = std::stof(spotPointCsv.getValue(attachIt->second, "posX"));
+                spotData.location.posZ = std::stof(spotPointCsv.getValue(attachIt->second, "posZ"));
+            }
+            auto attach2It = spotPoint2Map.find(spotMetaData.pointID);
+            if (attach2It != spotPoint2Map.end())
+            {
+                spotData.locationExtra.gridX = std::stoi(spotPoint2Csv.getValue(attach2It->second, "gridXNo")) - GRID_OFFSET_X;
+                spotData.locationExtra.gridZ = std::stoi(spotPoint2Csv.getValue(attach2It->second, "gridZNo")) - GRID_OFFSET_Z;
+                spotData.locationExtra.posX = std::stof(spotPoint2Csv.getValue(attach2It->second, "posX"));
+                spotData.locationExtra.posZ = std::stof(spotPoint2Csv.getValue(attach2It->second, "posZ"));
+            }
+
+            spotData.attachment.variantId = spotMetaData.variationID;
+            spotData.attachment.variantIndex = spotMetaData.variantIndex;
+            spotData.attachment.label = spotLabelMap[spotData.attachment.UID()];
+            patternIt->second.baseSpots[spotID] = spotData;
         }
 
-        spotData.attachment.variantId = variationId;
-        spotData.attachment.variantIndex = variationIndex;
-        spotData.attachment.label = spotLabelMap[spotData.attachment.UID()];
-        patternIt->second.spots[spotId] = spotData;
+        for(auto nightHorde : nightHordes)
+        {
+            const SpotMetaData& spotMetaData = metaPair.second.spotMetaDatas.at(nightHorde.second);
+            MetaData::SpotData spotData;
+
+            auto attachIt = spotPointMap.find(spotMetaData.pointID);
+            if (attachIt != spotPointMap.end())
+            {
+                spotData.location.gridX = std::stoi(spotPointCsv.getValue(attachIt->second, "gridXNo")) - GRID_OFFSET_X;
+                spotData.location.gridZ = std::stoi(spotPointCsv.getValue(attachIt->second, "gridZNo")) - GRID_OFFSET_Z;
+                spotData.location.posX = std::stof(spotPointCsv.getValue(attachIt->second, "posX"));
+                spotData.location.posZ = std::stof(spotPointCsv.getValue(attachIt->second, "posZ"));
+            }
+            auto attach2It = spotPoint2Map.find(spotMetaData.pointID);
+            if (attach2It != spotPoint2Map.end())
+            {
+                spotData.locationExtra.gridX = std::stoi(spotPoint2Csv.getValue(attach2It->second, "gridXNo")) - GRID_OFFSET_X;
+                spotData.locationExtra.gridZ = std::stoi(spotPoint2Csv.getValue(attach2It->second, "gridZNo")) - GRID_OFFSET_Z;
+                spotData.locationExtra.posX = std::stof(spotPoint2Csv.getValue(attach2It->second, "posX"));
+                spotData.locationExtra.posZ = std::stof(spotPoint2Csv.getValue(attach2It->second, "posZ"));
+            }
+
+            spotData.attachment.variantId = spotMetaData.variationID;
+            spotData.attachment.variantIndex = spotMetaData.variantIndex;
+            spotData.attachment.label = spotLabelMap[spotData.attachment.UID()];
+            patternIt->second.eventCandidates[nightHorde.first] = spotData;
+        }
     }
 }
 
@@ -137,7 +201,7 @@ int MetaData::queryByAttachmentID(VariationID variationID) const
     for (const auto& patternPair : patterns)
     {
         const PatternData& patternData = patternPair.second;
-        for (const auto& spotPair : patternData.spots)
+        for (const auto& spotPair : patternData.baseSpots)
         {
             const SpotData& spot = spotPair.second;
             if (spot.attachment.UID() == variationID)
@@ -155,8 +219,8 @@ const MetaData::SpotData* MetaData::queryBySpotID(SpotID spotID) const
     for (const auto& patternPair : patterns)
     {
         const PatternData& patternData = patternPair.second;
-        auto spotIt = patternData.spots.find(spotID);
-        if (spotIt != patternData.spots.end())
+        auto spotIt = patternData.baseSpots.find(spotID);
+        if (spotIt != patternData.baseSpots.end())
         {
             return &spotIt->second;
         }
