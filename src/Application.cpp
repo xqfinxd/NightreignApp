@@ -188,7 +188,7 @@ void Application::processInput()
 			{
 				if (auto activeScene = m_scene_mgr->getActiveScene())
 				{
-					activeScene->onMouseWheel(event.wheel.y);
+					activeScene->onMouseWheel(event.wheel.y * 1.0f);
 				}
 			}
 		}
@@ -208,12 +208,8 @@ void Application::render()
     if (auto activeScene = m_scene_mgr->getActiveScene())
     {
         m_renderer->drawScene(activeScene);
-        // Draw scene UI
-        ImGui::Begin("Scene Window");
-        ImGui::Text("Active Scene: %s", m_scene_mgr->getActiveSceneName().c_str());
-        ImGui::Separator();
+        
         activeScene->drawUI();
-        ImGui::End();
     }
     m_renderer->endFrame();
     m_window->swapBuffers();

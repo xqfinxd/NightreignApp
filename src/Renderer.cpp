@@ -8,7 +8,7 @@
 #include "Texture.h"
 #include "components/Mesh.h"
 #include "components/Transform.h"
-#include "components/BlendMode.h"
+#include "components/RenderOptions.h"
 #include "components/MapSpot.h"
 #include <SDL.h>
 #include <SDL_log.h>
@@ -16,6 +16,7 @@
 #include <imgui_impl_sdl2.h>
 #include <imgui_impl_opengl3.h>
 #include <imgui_internal.h>
+#include <algorithm>
 #include <vector>
 
 Renderer::Renderer(Device* device, ResourceManager* resmgr)
@@ -64,7 +65,6 @@ void Renderer::beginFrame()
 	ImGui_ImplSDL2_NewFrame();
 	ImGui::NewFrame();
 	glEnable(GL_BLEND);
-	glEnable(GL_DEPTH_TEST);
 }
 
 void Renderer::endFrame()
@@ -112,54 +112,44 @@ void Renderer::renderEntities(entt::registry& registry)
 	// Use the first camera found
 	auto& camera = registry.get<Camera>(*cameraEntities.begin());
 
-	// Get all entities with MeshComponent
-	auto viewEntities = registry.view<MeshComponent>();
+	// Get all entities with MeshComponent and Transform
+	auto viewEntities = registry.view<MeshComponent, Transform>();
 
-	// First pass: render map tiles (entities without DestAlpha blend mode)
+	// Collect entities and sort by render order
+	std::vector<entt::entity> sortedEntities;
 	for (auto entity : viewEntities) {
-		auto& meshComp = viewEntities.get<MeshComponent>(entity);
-
-		// Skip if not visible
-		if (!meshComp.visible) {
-			continue;
+		auto& meshComp = registry.get<MeshComponent>(entity);
+		if (meshComp.visible) {
+			sortedEntities.push_back(entity);
 		}
-
-		// Skip spots in first pass
-		if (registry.all_of<BlendMode>(entity)) {
-			auto& blendMode = registry.get<BlendMode>(entity);
-			if (blendMode.mode == BlendMode::Type::DestAlpha) {
-				continue;
-			}
-		}
-
-		renderEntity(entity, meshComp, camera, registry);
 	}
 
-	// Second pass: render spots (entities with DestAlpha blend mode)
-	for (auto entity : viewEntities) {
-		auto& meshComp = viewEntities.get<MeshComponent>(entity);
+	// Sort by RenderOptions.order (default 0 if not present)
+	std::sort(sortedEntities.begin(), sortedEntities.end(), 
+		[&registry](entt::entity a, entt::entity b) {
+			float orderA = 0.0f;
+			float orderB = 0.0f;
+			
+			if (auto optA = registry.try_get<RenderOptions>(a)) {
+				orderA = optA->order;
+			}
+			if (auto optB = registry.try_get<RenderOptions>(b)) {
+				orderB = optB->order;
+			}
+			
+			return orderA < orderB;
+		});
 
-		// Skip if not visible
-		if (!meshComp.visible) {
-			continue;
-		}
-
-		// Only render spots in second pass
-		bool isSpot = false;
-		if (registry.all_of<BlendMode>(entity)) {
-			auto& blendMode = registry.get<BlendMode>(entity);
-			isSpot = (blendMode.mode == BlendMode::Type::DestAlpha);
-		}
-		if (!isSpot) {
-			continue;
-		}
-
-		renderEntity(entity, meshComp, camera, registry);
+	// Render entities in sorted order
+	for (auto entity : sortedEntities) {
+		renderEntity(registry, camera, entity);
 	}
 }
 
-void Renderer::renderEntity(entt::entity entity, const MeshComponent& meshComp, const Camera& camera, entt::registry& registry)
+void Renderer::renderEntity(entt::registry& registry, const Camera& camera, entt::entity entity)
 {
+	auto& meshComp = registry.get<MeshComponent>(entity);
+	auto& transform = registry.get<Transform>(entity);
 	// Get resources by name
 	MeshBuffer* mesh = m_resource_mgr->getMesh(meshComp.meshName);
 	Shader* shader = m_resource_mgr->getShader(meshComp.shaderName);
@@ -184,22 +174,11 @@ void Renderer::renderEntity(entt::entity entity, const MeshComponent& meshComp, 
 	mvp = camera.getProjectionMatrix() * camera.getViewMatrix();
 
 	// Set model matrix if entity has Transform
-	if (registry.all_of<Transform>(entity)) {
-		auto& transform = registry.get<Transform>(entity);
-		shader->setMat4("mvp", mvp * transform.getModelMatrix());
-	}
+	shader->setMat4("mvp", mvp * transform.getModelMatrix());
 
-	// Set blend mode based on BlendMode component
-	if (registry.all_of<BlendMode>(entity)) {
-		auto& blendMode = registry.get<BlendMode>(entity);
-		if (blendMode.mode == BlendMode::Type::DestAlpha) {
-			glBlendFunc(GL_DST_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		} else {
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		}
-	} else {
-		// Default blend mode for entities without BlendMode component
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	// Set blend mode based on RenderOptions component
+	if (auto* opt = registry.try_get<RenderOptions>(entity)) {
+		applyBlendFunc(opt->mode);
 	}
 
 	// Bind texture if specified
@@ -247,6 +226,21 @@ void Renderer::setupVertexAttributes()
 	// Color attribute
 	glEnableVertexAttribArray(2);
 	glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 5));
+}
+
+void Renderer::applyBlendFunc(BlendType type)
+{
+	switch (type) {
+	case BlendType::Standard:
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		break;
+	case BlendType::DestAlpha:
+		glBlendFunc(GL_DST_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		break;
+	default:
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		break;
+	}
 }
 
 void Renderer::renderSpotLabels(entt::registry& registry, const Camera& camera,
@@ -305,7 +299,7 @@ void Renderer::renderSpotLabels(entt::registry& registry, const Camera& camera,
 		
 		// World-space position for text (below the spot)
 		glm::vec3 textWorldPos = transform.position;
-		textWorldPos.y -= spot.size * 0.5f + textHeight * 1.2f; // Position below spot
+		textWorldPos.y -= transform.scale.y * 0.5f + textHeight * 1.2f; // Position below spot
 		
 		// Draw background rectangle first (if background color has alpha > 0)
 		if (backgroundColor.a > 0.0f)

@@ -1,5 +1,6 @@
 #pragma once
 #include "public.h"
+#include "components/RenderOptions.h"
 #include <entt/entt.hpp>
 
 class Device;
@@ -29,8 +30,9 @@ public:
 	void renderSpotLabels(entt::registry& registry, const Camera& camera, glm::vec4 bgColor, glm::vec4 fgColor);
 
 private:
-	void renderEntity(entt::entity entity, const MeshComponent& meshComp, const Camera& camera, entt::registry& registry);
+	void renderEntity(entt::registry& registry, const Camera& camera, entt::entity entity);
 	void setupVertexAttributes();
+	void applyBlendFunc(BlendType type);
 
 	Device* m_device = nullptr;
 	ResourceManager* m_resource_mgr = nullptr;

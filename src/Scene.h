@@ -69,9 +69,12 @@ private:
 	
 	MetaData m_metaData;
 	bool m_metaDataLoaded = false;
+	int m_currentPatternId = -1;
 	
 	int m_patternInput = 0;
 	int m_attachmentInput = -1;
+	
+	bool m_enableB1Overlay = false;
 	
 	entt::entity m_selectedSpotEntity = entt::null;
 };

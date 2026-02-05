@@ -4,10 +4,11 @@
 #include "components/Transform.h"
 #include "components/MapTileGrid.h"
 #include "components/MapSpot.h"
-#include "components/BlendMode.h"
+#include "components/RenderOptions.h"
 #include "components/Tag.h"
 #include "Device.h"
 #include "ResourceManager.h"
+#include "Texture.h"
 #include "components/Camera.h"
 #include "CsvReader.h"
 #include <imgui.h>
@@ -24,8 +25,8 @@ float MapSpot::textScale = 0.005f;
 struct HitResult {
 	bool hit = false;
 	float distance = 0.0f;
-	glm::vec3 point;
-	glm::vec3 normal;
+	glm::vec3 point{ 0.f };
+	glm::vec3 normal{ 0.f };
 };
 
 struct Ray {
@@ -219,7 +220,7 @@ void Scene::onMouseClick(int screenX, int screenY, int windowWidth, int windowHe
 			continue;
 
 		// Check if click is within spot bounds
-		float halfSize = (mapSpot->size * m_tileSize) * 0.5f;
+		float halfSize = (transform->scale.x * m_tileSize) * 0.5f;
 		auto result = ray.intersectSphere(transform->position, halfSize);
 
 		if (result.hit)
@@ -369,30 +370,71 @@ void Scene::render(Renderer* renderer)
 
 void Scene::drawUI()
 {
+	// Scene statistics window
+	ImGui::Begin("Scene View");
 	ImGui::Text("ECS Statistics:");
 	ImGui::Text("  Entities: %zu", m_registry.size());
 	ImGui::Text("  Alive: %zu", m_registry.alive());
 
 	ImGui::Separator();
-	ImGui::Text("Map Control:");
+	ImGui::Text("Map Info:");
 	ImGui::Text("  Current Index: %d", m_currentMapIndex);
 	ImGui::Text("  Current Layer: %d", m_currentLayer);
 	ImGui::Text("  Tiles: %zu", m_mapTileEntities.size());
 	ImGui::Text("  Spots: %zu", m_mapSpotEntities.size());
+	ImGui::Text("  Pattern ID: %d", m_currentPatternId);
 
 	ImGui::Separator();
-	if(m_selectedSpotEntity != entt::null)
+	bool spotDataFound = false;
+	do
 	{
-		auto& spot = m_registry.get<MapSpot>(m_selectedSpotEntity);
+		if (m_selectedSpotEntity == entt::null)
+			break;
+		auto mapSpot = m_registry.try_get<MapSpot>(m_selectedSpotEntity);
+		if(!mapSpot)
+			break;
+		auto spotID = mapSpot->metadata.has_value() ? std::any_cast<int>(mapSpot->metadata) : -1;
+		auto spotData = m_metaData.queryBySpotID(spotID);
+		if (!spotData)
+			break;
+		
 		ImGui::Text("Selected Spot:");
-		ImGui::Text("  ID: %s", spot.metadata.has_value() ? std::any_cast<std::string>(spot.metadata).c_str() : "UNKNOWN");
-		ImGui::Text("  Grid Position: (%.1f, %.1f)", spot.gridPosition.x, spot.gridPosition.y);
+		ImGui::Text("  ID: %d", spotID);
+		ImGui::Text("  Grid Position: (%.1f, %.1f)", mapSpot->gridPosition.x, mapSpot->gridPosition.y);
+		ImGui::Text("  Attachment ID: %d", spotData->attachment.UID());
+		ImGui::Text("  Label: %s", spotData->attachment.label.c_str());
+		spotDataFound = true;
+	} while (false);
+	if(!spotDataFound)
+	{
+		ImGui::Text("Selected Spot: None");
+	}
+
+	ImGui::Separator();
+	ImGui::Text("Camera:");
+	if (auto camera = getCamera())
+	{
+		ImGui::Text("  Position: (%.2f, %.2f, %.2f)", camera->position.x, camera->position.y, camera->position.z);
+		ImGui::Text("  Orthographic: %s", camera->isOrthographic ? "Yes" : "No");
+		if (camera->isOrthographic)
+		{
+			ImGui::Text("  Ortho Size: %.2f", camera->orthoSize);
+		}
+		else
+		{
+			ImGui::Text("  FOV: %.2f", camera->fov);
+		}
 	}
 	else
 	{
-		ImGui::Text("No spot selected");
+		ImGui::Text("  No camera");
 	}
+	ImGui::End();
 
+	// Scene tool window
+	ImGui::Begin("Scene Tool");
+	ImGui::Checkbox("Enable B1 Overlay", &m_enableB1Overlay);
+	
 	ImGui::Separator();
 	ImGui::Text("Pattern ID:");
 	ImGui::InputInt("##PatternID", &m_patternInput);
@@ -418,30 +460,7 @@ void Scene::drawUI()
 		}
 	}
 
-	ImGui::Separator();
-	ImGui::Text("Camera:");
-	if (auto camera = getCamera())
-	{
-		bool dirty = false;
-		dirty |= ImGui::DragFloat3("Position", glm::value_ptr(camera->position));
-		dirty |= ImGui::Checkbox("Orthographic", &camera->isOrthographic);
-
-		if (camera->isOrthographic)
-		{
-			dirty |= ImGui::DragFloat("Ortho Size", &camera->orthoSize);
-		}
-		else
-		{	
-			dirty |= ImGui::DragFloat("FOV", &camera->fov);
-		}
-
-		if (dirty)
-			camera->updateMatrices();
-	}
-	else
-	{
-		ImGui::Text("  No camera");
-	}
+	ImGui::End();
 }
 
 Camera *Scene::getCamera()
@@ -523,6 +542,38 @@ void Scene::loadMapTiles(int mapIndex, int layer)
 
 			// Store entity for later cleanup
 			m_mapTileEntities.push_back(entity);
+
+			// Load B1 overlay if enabled
+			if (m_enableB1Overlay)
+			{
+				std::stringstream b1Stream;
+				b1Stream << "nightreign/assets/textures/" << mapIndex << "/MENU_MapTile_L" << layer
+						 << "_" << std::setw(2) << std::setfill('0') << x
+						 << "_" << std::setw(2) << std::setfill('0') << y << "_B1.png";
+				std::string b1TexturePath = b1Stream.str();
+
+				std::stringstream b1NameStream;
+				b1NameStream << "tile_" << mapIndex << "_L" << layer << "_" << x << "_" << y << "_B1";
+				std::string b1TextureName = b1NameStream.str();
+
+				// Try to load B1 texture (may not exist for all tiles)
+				Texture* b1Texture = resMgr->loadTexture(b1TextureName, b1TexturePath);
+				if (b1Texture && b1Texture->isValid())
+				{
+					// Create overlay entity
+					auto overlayEntity = m_registry.create();
+					m_registry.emplace<Tag>(overlayEntity, "map_b1");
+					m_registry.emplace<MeshComponent>(overlayEntity, "quad", "texture", b1TextureName);
+					m_registry.emplace<RenderOptions>(overlayEntity).order = 1;
+
+					auto &overlayTransform = m_registry.emplace<Transform>(overlayEntity);
+					overlayTransform.position = glm::vec3(offsetX + x * m_tileSize, offsetY + y * m_tileSize, 0.01f); // Slightly above base tile
+					overlayTransform.scale = glm::vec3(m_tileSize, m_tileSize, 1.0f);
+
+					// Store overlay entity for cleanup
+					m_mapTileEntities.push_back(overlayEntity);
+				}
+			}
 		}
 	}
 
@@ -558,12 +609,12 @@ entt::entity Scene::addSpot(const glm::vec2 &gridPos, const std::string &texture
 	// Create spot entity
 	auto entity = m_registry.create();
 	m_registry.emplace<Tag>(entity, "spot");
-	m_registry.emplace<MapSpot>(entity, gridPos, textureName, size);
+	m_registry.emplace<MapSpot>(entity, gridPos, textureName);
 	m_registry.emplace<MeshComponent>(entity, "quad", "texture", textureName);
-	m_registry.emplace<BlendMode>(entity, BlendMode::Type::DestAlpha);
+	m_registry.emplace<RenderOptions>(entity, BlendType::DestAlpha, 2.f);
 
 	auto &transform = m_registry.emplace<Transform>(entity);
-	transform.position = glm::vec3(worldX, worldY, 0.5f); // Slightly above tiles
+	transform.position = glm::vec3(worldX, worldY, 0.1f); // Slightly above tiles
 	transform.scale = glm::vec3(size, size, 1.0f);
 
 	// Store entity for later cleanup
@@ -607,11 +658,14 @@ void Scene::loadSpotsByPattern(int patternId)
     for (const auto& spotPair : patternData.spots)
     {
         const MetaData::SpotData& spot = spotPair.second;
+		if(!spot.location.isValid())
+            continue;
         std::string textureName = "launch";
-        auto spotEntity = addSpot(spot.getGridPos(), textureName, 0.1f);
+        auto spotEntity = addSpot(spot.location.normalized(), textureName, 0.1f);
 		auto& mapSpot = m_registry.get<MapSpot>(spotEntity);
 		mapSpot.label = spotPair.second.attachment.label.empty() ? "UNKNOWN" : spotPair.second.attachment.label;
-		mapSpot.metadata = std::to_string(spotPair.first) + " : " + std::to_string(spotPair.second.attachment.UID());
+		mapSpot.metadata = spotPair.first;
     }
 	loadMapTiles(patternData.map);
+	m_currentPatternId = patternId;
 }
