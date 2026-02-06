@@ -16,7 +16,7 @@ function loadCsv(filename)
             local cellIndex = 1
             for cell in line:gmatch("([^,]*)") do
                 local key = csv.header[cellIndex]
-                row[key] = cell
+                row[key] = tonumber(cell) or cell
                 cellIndex = cellIndex + 1
             end
             table.insert(csv, row)
@@ -27,14 +27,17 @@ function loadCsv(filename)
     return csv
 end
 
+-- All spots data
 LotResultSmallBaseAndSpot = loadCsv("LotResultSmallBaseAndSpot.csv")
+-- pattern flag data
 LotResultMapPatternFlag = loadCsv("LotResultMapPatternFlag.csv")
+-- night boss data
 NightBossMenuParam = loadCsv("NightBossMenuParam.csv")
-SmallBaseAndSpotAttachPoint = loadCsv("SmallBaseAndSpotAttachPoint.csv")
-SmallBaseMapVariationParam = loadCsv("SmallBaseMapVariationParam.csv")
+-- spot location data
 WorldMapPointParam = loadCsv("WorldMapPointParam.csv")
+-- spot location data (unreliable)
+SmallBaseAndSpotAttachPoint = loadCsv("SmallBaseAndSpotAttachPoint.csv")
+-- spot attachment data
+SmallBaseMapVariationParam = loadCsv("SmallBaseMapVariationParam.csv")
+-- attachment translation data
 User_SpotDefine = loadCsv("User_SpotDefine.csv")
-
-for i, spot in ipairs(LotResultSmallBaseAndSpot) do
-    --print(spot.ID, spot.modifier)
-end
