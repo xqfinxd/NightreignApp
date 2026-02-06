@@ -162,4 +162,15 @@ DataSchema = {
             },
         },
     },
+    locales = {
+        src = "User_SpotDefine",
+        type = "map",
+        key = "ID",
+        values = {
+            label = {
+                type = "string",
+                key = "label",
+            },
+        },
+    },
 }

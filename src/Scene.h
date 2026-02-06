@@ -2,6 +2,7 @@
 #include "public.h"
 #include "components/MapSpot.h"
 #include "MetaData.h"
+#include "LuaScript.h"
 #include <entt/entt.hpp>
 #include <vector>
 
@@ -50,15 +51,21 @@ public:
 
 private:
 	void clearMapTiles();
+	void initLuaBindings();
+	static int addSpotLua(lua_State* lua);
 
 	entt::registry m_registry;
 	std::vector<entt::entity> m_mapTileEntities;
 	std::vector<entt::entity> m_mapSpotEntities;
+
+	LuaScript* m_lua = nullptr;
+
 	int m_currentMapIndex = 0;
 	int m_currentLayer = 0;
 	float m_tileSize = 1.0f;
 	int m_gridWidth = 6;
 	int m_gridHeight = 6;
+	int m_textureTileSize = 256;
 	SpotClickCallback m_spotClickCallback = nullptr;
 	
 	// Mouse interaction state

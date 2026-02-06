@@ -2,7 +2,6 @@
 #include "Renderer.h"
 #include "components/Mesh.h"
 #include "components/Transform.h"
-#include "components/MapTileGrid.h"
 #include "components/MapSpot.h"
 #include "components/RenderOptions.h"
 #include "components/Tag.h"
@@ -124,11 +123,13 @@ struct Ray {
 
 Scene::Scene()
 {
+	m_lua = new LuaScript();
 	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Scene: ECS registry created");
 }
 
 Scene::~Scene()
 {
+	delete m_lua;
 	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Scene: ECS registry destroyed (entities: %zu)", m_registry.size());
 }
 
@@ -167,6 +168,8 @@ void Scene::initialize()
 			newSpot.scale = glm::vec3(0.15f, 0.15f, 1.0f);
 		}
 	});
+
+	initLuaBindings();
 
 	// Add some sample spots on the map with Chinese labels
 	loadSpotsByPattern(0);
@@ -385,32 +388,6 @@ void Scene::drawUI()
 	ImGui::Text("  Pattern ID: %d", m_currentPatternId);
 
 	ImGui::Separator();
-	bool spotDataFound = false;
-	do
-	{
-		if (m_selectedSpotEntity == entt::null)
-			break;
-		auto mapSpot = m_registry.try_get<MapSpot>(m_selectedSpotEntity);
-		if(!mapSpot)
-			break;
-		auto spotID = mapSpot->metadata.has_value() ? std::any_cast<int>(mapSpot->metadata) : -1;
-		auto spotData = m_metaData.queryBySpotID(spotID);
-		if (!spotData)
-			break;
-		
-		ImGui::Text("Selected Spot:");
-		ImGui::Text("  ID: %d", spotID);
-		ImGui::Text("  Grid Position: (%.1f, %.1f)", mapSpot->gridPosition.x, mapSpot->gridPosition.y);
-		ImGui::Text("  Attachment ID: %d", spotData->attachment.UID());
-		ImGui::Text("  Label: %s", spotData->attachment.label.c_str());
-		spotDataFound = true;
-	} while (false);
-	if(!spotDataFound)
-	{
-		ImGui::Text("Selected Spot: None");
-	}
-
-	ImGui::Separator();
 	ImGui::Text("Camera:");
 	if (auto camera = getCamera())
 	{
@@ -594,6 +571,63 @@ void Scene::clearMapTiles()
 	m_mapTileEntities.clear();
 }
 
+void Scene::initLuaBindings()
+{
+	auto* state = m_lua->getState();
+	lua_createtable(state, 0, 7);
+	lua_pushlightuserdata(state, this);
+	lua_setfield(state, -2, "userdata");
+	lua_pushcfunction(state, addSpotLua);
+	lua_setfield(state, -2, "addSpot");
+	lua_pushnumber(state, m_tileSize);
+	lua_setfield(state, -2, "SCENE_TILE_SIZE");
+	lua_pushinteger(state, m_textureTileSize);
+	lua_setfield(state, -2, "TEXTURE_TILE_SIZE");
+	lua_pushinteger(state, m_gridWidth);
+	lua_setfield(state, -2, "GRID_WIDTH");
+	lua_pushinteger(state, m_gridHeight);
+	lua_setfield(state, -2, "GRID_HEIGHT");
+	lua_setglobal(state, "Scene");
+
+	m_lua->executeFile("nightreign/assets/datas/schema.lua");
+	m_lua->executeFile("nightreign/assets/datas/script.lua");
+}
+
+int Scene::addSpotLua(lua_State* lua)
+{
+	if(!lua_istable(lua, 1))
+		return 0;
+	lua_getfield(lua, 1, "userdata");
+	if(!lua_islightuserdata(lua, -1))
+	{
+		lua_pop(lua, 1);
+		return 0;
+	}
+	Scene* scene = static_cast<Scene*>(lua_touserdata(lua, -1));
+	lua_pop(lua, 1);
+
+	float gridX = static_cast<float>(lua_tonumber(lua, 2)); // gridX
+	float gridY = static_cast<float>(lua_tonumber(lua, 3)); // gridY
+
+	std::string textureName = lua_tostring(lua, 4); // textureName
+
+	float size = static_cast<float>(lua_tonumber(lua, 5)); // size
+
+	auto spotEntity = scene->addSpot(glm::vec2(gridX, gridY), textureName, size);
+	auto& mapSpot = scene->m_registry.get<MapSpot>(spotEntity);
+
+	if (lua_gettop(lua) >= 6 && lua_istable(lua, 6))
+	{
+		lua_getfield(lua, 6, "label");
+		if (lua_isstring(lua, -1))
+		{
+			mapSpot.label = lua_tostring(lua, -1);
+		}
+		lua_pop(lua, 1);
+	}
+	return 0;
+}
+
 entt::entity Scene::addSpot(const glm::vec2 &gridPos, const std::string &textureName, float size)
 {
 	// Calculate centering offset (same as tile grid)
@@ -643,29 +677,22 @@ void Scene::loadSpotsByPattern(int patternId)
 	// Clear existing spots
 	clearSpots();
 	
-	if(!m_metaDataLoaded)
-	{
-		m_metaData.load();
-		m_metaDataLoaded = true;
-	}
-	auto patternIt = m_metaData.patterns.find(patternId);
-	if(patternIt == m_metaData.patterns.end())
-	{
-		SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Scene: Pattern ID %d not found in metadata", patternId);
-		return;
-	}
-    const MetaData::PatternData& patternData = patternIt->second;
-    for (const auto& spotPair : patternData.baseSpots)
-    {
-        const MetaData::SpotData& spot = spotPair.second;
-		if(!spot.location.isValid())
-            continue;
-        std::string textureName = "launch";
-        auto spotEntity = addSpot(spot.location.normalized(), textureName, 0.1f);
-		auto& mapSpot = m_registry.get<MapSpot>(spotEntity);
-		mapSpot.label = spotPair.second.attachment.label.empty() ? "UNKNOWN" : spotPair.second.attachment.label;
-		mapSpot.metadata = spotPair.first;
+	auto* state = m_lua->getState();
+	lua_getglobal(state, "loadSpotsByPattern");
+    if (!lua_isfunction(state, -1)) {
+		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Scene: Lua function 'loadSpotsByPattern' not found");
+        lua_pop(state, 1);
+        return;
     }
-	loadMapTiles(patternData.map);
+
+	lua_pushinteger(state, patternId);
+    if (lua_pcall(state, 1, 0, 0) != LUA_OK) {
+		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Scene: Failed to load spots by pattern %d - Lua error: %s", patternId, lua_tostring(state, -1));
+        lua_pop(state, 2);
+        return;
+    }
+
+	loadMapTiles(m_currentMapIndex, 0);
+
 	m_currentPatternId = patternId;
 }

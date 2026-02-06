@@ -1,5 +1,3 @@
-require("schema")
-
 function loadCsv(filename)
     local csv = {}
     csv.header = {}
@@ -98,6 +96,9 @@ function processValue(valueSchema, row)
         local fn = load("return " .. func)()
         return fn(table.unpack(args))
         
+    elseif valueType == "string" then
+        local key = valueSchema.key
+        return row[key] or ""
     end
     
     return nil
@@ -132,18 +133,36 @@ function buildDataFromSchema(schema, csvSources)
     return result
 end
 
--- Build structured data from schema
-local csvSources = {
-    ["LotResultSmallBaseAndSpot"] = loadCsv("LotResultSmallBaseAndSpot.csv"),
-    ["LotResultMapPatternFlag"] = loadCsv("LotResultMapPatternFlag.csv"),
-    ["NightBossMenuParam"] = loadCsv("NightBossMenuParam.csv"),
-    ["WorldMapPointParam"] = loadCsv("WorldMapPointParam.csv"),
-    ["SmallBaseAndSpotAttachPoint"] = loadCsv("SmallBaseAndSpotAttachPoint.csv"),
-    ["SmallBaseMapVariationParam"] = loadCsv("SmallBaseMapVariationParam.csv"),
-    ["User_SpotDefine"] = loadCsv("User_SpotDefine.csv"),
-}
+function normalize(point)
+    local tileSize = Scene.TEXTURE_TILE_SIZE or 256
+    local gridX = point.posX / tileSize + point.gridX - 41
+    local gridZ = point.posZ / tileSize + point.gridZ - 35
+    return gridX, gridZ
+end
 
--- Generate the structured data tables
-Data = buildDataFromSchema(DataSchema, csvSources)
-
-print(Data.categories[1005].maptype)  -- Example access to the generated data
+function loadSpotsByPattern(patternId)
+    if Data == nil then
+        -- Build structured data from schema
+        local csvSources = {
+            ["LotResultSmallBaseAndSpot"] = loadCsv("nightreign/assets/datas/LotResultSmallBaseAndSpot.csv"),
+            ["LotResultMapPatternFlag"] = loadCsv("nightreign/assets/datas/LotResultMapPatternFlag.csv"),
+            ["NightBossMenuParam"] = loadCsv("nightreign/assets/datas/NightBossMenuParam.csv"),
+            ["WorldMapPointParam"] = loadCsv("nightreign/assets/datas/WorldMapPointParam.csv"),
+            ["SmallBaseAndSpotAttachPoint"] = loadCsv("nightreign/assets/datas/SmallBaseAndSpotAttachPoint.csv"),
+            ["SmallBaseMapVariationParam"] = loadCsv("nightreign/assets/datas/SmallBaseMapVariationParam.csv"),
+            ["User_SpotDefine"] = loadCsv("nightreign/assets/datas/User_SpotDefine.csv"),
+        }
+        Data = buildDataFromSchema(DataSchema, csvSources)
+    end
+    
+    for _, spot in ipairs(Data.patterns[patternId].spots) do
+        local point = spot.attachPoint or spot.attachPoint2
+        
+        if point then
+            local x, z = normalize(point)
+            local uid = spot.variationId * 10 + spot.variationIndex
+            local label = Data.locales[uid] and Data.locales[uid].label or "UNKNOWN"
+            Scene:addSpot(x, z, "launch", 0.1, { label = label })
+        end        
+    end
+end
