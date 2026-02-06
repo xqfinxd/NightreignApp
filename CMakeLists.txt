@@ -54,12 +54,14 @@ if(EMSCRIPTEN)
 	)
 elseif(MSVC)
 	add_subdirectory(3rdparty/glad)
+	add_subdirectory(3rdparty/lua)
 	find_package(SDL2 REQUIRED PATHS 3rdparty/SDL2)
 #	find_package(SDL2_TTF REQUIRED  PATHS 3rdparty/SDL2_ttf)
 	target_link_libraries(NightreignApp PRIVATE
 		SDL2::SDL2
 #		SDL2_ttf::SDL2_ttf
 		glad
+		lua
 	)
 	target_include_directories(NightreignApp PRIVATE
 		${SDL2_INCLUDE_DIRS}
