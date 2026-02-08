@@ -421,20 +421,46 @@ void Scene::drawUI()
 	}
 
 	ImGui::Separator();
-	ImGui::Text("Attachment ID:");
-	ImGui::InputInt("##AttachmentID", &m_attachmentInput);
-	if (ImGui::Button("Search Attachment and Load Pattern"))
+	ImGui::Text("Variation ID:");
+	ImGui::InputInt("##VariationID", &m_attachmentInput);
+	if (ImGui::Button("Navigate to Variation"))
 	{
-		int patternId = m_metaData.queryByAttachmentID(m_attachmentInput);
-		if(patternId >= 0)
+		do
 		{
+			if(m_attachmentInput < 0)
+				break;
+
+			auto state = m_lua->getState();
+			lua_getglobal(state, "queryVariation");
+			if(!lua_isfunction(state, -1))
+			{
+				SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Scene: Lua function 'queryVariation' not found");
+				lua_pop(state, 1);
+				break;
+			}
+			
+			lua_pushinteger(state, m_attachmentInput);
+			if(lua_pcall(state, 1, 1, 0) != LUA_OK)
+			{
+				SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Scene: Failed to query Variation - Lua error: %s", lua_tostring(state, -1));
+        		lua_pop(state, 2);
+				break;
+			}
+			if(!lua_isinteger(state, -1))
+			{
+				SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Scene: Lua function 'queryVariation' did not return number");
+				lua_pop(state, 1);
+				break;
+			}
+			int patternId = static_cast<int>(lua_tointeger(state, -1));
+			lua_pop(state, 1);
+			if(patternId < 0)
+			{
+				SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Scene: Variation ID %d not found", m_attachmentInput);
+				break;
+			}
 			loadSpotsByPattern(patternId);
-			m_patternInput = patternId;
-		}
-		else
-		{
-			SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Scene: Attachment ID %d not found in metadata", m_attachmentInput);
-		}
+		} while (false);
 	}
 
 	ImGui::End();
@@ -579,6 +605,8 @@ void Scene::initLuaBindings()
 	lua_setfield(state, -2, "userdata");
 	lua_pushcfunction(state, addSpotLua);
 	lua_setfield(state, -2, "addSpot");
+	lua_pushcfunction(state, loadMapTilesLua);
+	lua_setfield(state, -2, "loadMapTiles");
 	lua_pushnumber(state, m_tileSize);
 	lua_setfield(state, -2, "SCENE_TILE_SIZE");
 	lua_pushinteger(state, m_textureTileSize);
@@ -588,6 +616,8 @@ void Scene::initLuaBindings()
 	lua_pushinteger(state, m_gridHeight);
 	lua_setfield(state, -2, "GRID_HEIGHT");
 	lua_setglobal(state, "Scene");
+	lua_pushliteral(state, "nightreign/assets/datas/");
+	lua_setglobal(state, "DATA_PATH");
 
 	m_lua->executeFile("nightreign/assets/datas/schema.lua");
 	m_lua->executeFile("nightreign/assets/datas/script.lua");
@@ -625,6 +655,31 @@ int Scene::addSpotLua(lua_State* lua)
 		}
 		lua_pop(lua, 1);
 	}
+	return 0;
+}
+
+int Scene::loadMapTilesLua(lua_State *lua)
+{
+	if(!lua_istable(lua, 1))
+		return 0;
+	lua_getfield(lua, 1, "userdata");
+	if(!lua_islightuserdata(lua, -1))
+	{
+		lua_pop(lua, 1);
+		return 0;
+	}
+	Scene* scene = static_cast<Scene*>(lua_touserdata(lua, -1));
+	lua_pop(lua, 1);
+
+	int maptype = static_cast<int>(lua_tonumber(lua, 2));
+	int layer = 0;
+	if (lua_gettop(lua) >= 3)
+	{
+		layer = static_cast<int>(lua_tonumber(lua, 3));
+	}
+	
+	scene->loadMapTiles(maptype, layer);
+	
 	return 0;
 }
 

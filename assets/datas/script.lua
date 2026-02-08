@@ -1,4 +1,6 @@
 function loadCsv(filename)
+    local basedir = DATA_PATH or ""
+    filename = basedir .. filename
     local csv = {}
     csv.header = {}
     local csvFile = io.open(filename, "r")
@@ -144,25 +146,100 @@ function loadSpotsByPattern(patternId)
     if Data == nil then
         -- Build structured data from schema
         local csvSources = {
-            ["LotResultSmallBaseAndSpot"] = loadCsv("nightreign/assets/datas/LotResultSmallBaseAndSpot.csv"),
-            ["LotResultMapPatternFlag"] = loadCsv("nightreign/assets/datas/LotResultMapPatternFlag.csv"),
-            ["NightBossMenuParam"] = loadCsv("nightreign/assets/datas/NightBossMenuParam.csv"),
-            ["WorldMapPointParam"] = loadCsv("nightreign/assets/datas/WorldMapPointParam.csv"),
-            ["SmallBaseAndSpotAttachPoint"] = loadCsv("nightreign/assets/datas/SmallBaseAndSpotAttachPoint.csv"),
-            ["SmallBaseMapVariationParam"] = loadCsv("nightreign/assets/datas/SmallBaseMapVariationParam.csv"),
-            ["User_SpotDefine"] = loadCsv("nightreign/assets/datas/User_SpotDefine.csv"),
+            ["LotResultSmallBaseAndSpot"] = loadCsv("LotResultSmallBaseAndSpot.csv"),
+            ["LotResultMapPatternFlag"] = loadCsv("LotResultMapPatternFlag.csv"),
+            ["NightBossMenuParam"] = loadCsv("NightBossMenuParam.csv"),
+            ["WorldMapPointParam"] = loadCsv("WorldMapPointParam.csv"),
+            ["SmallBaseAndSpotAttachPoint"] = loadCsv("SmallBaseAndSpotAttachPoint.csv"),
+            ["SmallBaseMapVariationParam"] = loadCsv("SmallBaseMapVariationParam.csv"),
+            ["LotResultPlayAreaParam"] = loadCsv("LotResultPlayAreaParam.csv"),
+            ["PlayAreaCreateParam"] = loadCsv("PlayAreaCreateParam.csv"),
+            ["User_SpotDefine"] = loadCsv("User_SpotDefine.csv"),
         }
         Data = buildDataFromSchema(DataSchema, csvSources)
     end
     
+    Scene:loadMapTiles(Data.categories[patternId].maptype, 0)
     for _, spot in ipairs(Data.patterns[patternId].spots) do
         local point = spot.attachPoint or spot.attachPoint2
-        
-        if point then
+        local option = spot.variation and spot.variation.option or {}
+
+        if point and option[1] ~= 180 then
             local x, z = normalize(point)
             local uid = spot.variationId * 10 + spot.variationIndex
             local label = Data.locales[uid] and Data.locales[uid].label or "UNKNOWN"
-            Scene:addSpot(x, z, "launch", 0.1, { label = label })
-        end        
+            if not spot.attachPoint then
+                label = "(alt) " .. label
+            end
+            --Scene:addSpot(x, z, "launch", 0.1, { label = ""..spot.attachId })
+        end
     end
+    local maptype = Data.categories[patternId].maptype
+    local knownIcons = {
+
+        [1] = "site of grace",
+        [2] = "church",
+        [3] = "ruins",
+        [7] = "fort",
+        [11] = "castle",
+        [13] = "spectral hawk tree",
+        [16] = "field boss",
+        [17] = "scarab",
+        [21] = "merchant",
+        [23] = "mine",
+        [25] = "scale-bearing merchant",
+        [28] = "formidable field boss",
+        [30] = "church-completed",
+        [60] = "personal objective",
+        [61] = "shifting earth power",
+        [62] = "buried treasure",
+        [137] = "spiritstream",
+        [178] = "rope door",
+        -- dlc
+        [51] = "city rooftop",
+        [71] = "great crystal",
+        [73] = "divine tower",
+        [74] = "rb city",
+        [75] = "lt city",
+        [76] = "portal",
+        [79] = "star merchant", -- undefined
+    }
+    for id, point in pairs(Data.points) do
+        if point.pad == maptype * 10 and not knownIcons[point.worldMapPointIconId] then
+            local x, z = normalize(point)
+
+            --Scene:addSpot(x, z, "launch", 0.1, { label = ""..point.worldMapPointIconId })
+        end
+    end
+    local newspots = loadCsv("step-03.csv")
+    for _, row in pairs(newspots) do
+        local pos = tostring(row["id"])
+        local map = tonumber(row["map"])
+        local fixed = row["fixed"]
+        if map == maptype and fixed == "true" then
+            local posvalue = {}
+            for ep in pos:gmatch("([^_]*)") do
+                table.insert(posvalue, ep)
+            end
+            local npos = {
+                gridX = tonumber(posvalue[1]),
+                gridZ = tonumber(posvalue[2]),
+                posX = tonumber(posvalue[3]),
+                posZ = tonumber(posvalue[4]),
+            }
+            local x, z = normalize(npos)
+            Scene:addSpot(x, z, "launch", 0.1, { label = ""..map })
+        end
+    end
+end
+
+function queryVariation(variationId)
+    for patternId, patternData in pairs(Data.patterns) do
+        for _, spot in ipairs(patternData.spots) do
+            if spot.variationId == variationId then
+                return patternId
+            end
+        end
+    end
+    return -1
 end

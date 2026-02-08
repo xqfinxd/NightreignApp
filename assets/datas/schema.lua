@@ -8,7 +8,7 @@ DataSchema = {
             spots = {
                 type = "list",
                 values = {
-                    Id = {
+                    id = {
                         type = "number",
                         key = "ID",
                     },
@@ -20,6 +20,10 @@ DataSchema = {
                         type = "number",
                         key = "mapIndex"
                     },
+                    attachId = {
+                        type = "number",
+                        key = "attachId",
+                    },
                     attachPoint = {
                         type = "table",
                         key = "attachId",
@@ -28,7 +32,7 @@ DataSchema = {
                     attachPoint2 = {
                         type = "table",
                         key = "attachId",
-                        ref = "points"
+                        ref = "points2"
                     },
                     variationIndex = {
                         type = "number",
@@ -106,6 +110,14 @@ DataSchema = {
                 type = "number",
                 key = "posZ",
             },
+            pad = {
+                type = "number",
+                key = "pad",
+            },
+            worldMapPointIconId = {
+                type = "number",
+                key = "worldMapPointIconId",
+            },
         },
     },
     points2 = {
@@ -115,11 +127,11 @@ DataSchema = {
         values = {
             gridX = {
                 type = "number",
-                key = "gridXNO",
+                key = "gridXNo",
             },
             gridZ = {
                 type = "number",
-                key = "gridZNO",
+                key = "gridZNo",
             },
             posX = {
                 type = "number",
@@ -128,6 +140,10 @@ DataSchema = {
             posZ = {
                 type = "number",
                 key = "posZ",
+            },
+            pad = {
+                type = "number",
+                key = "pad",
             },
         },
     },

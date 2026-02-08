@@ -17,8 +17,7 @@ add_executable(NightreignApp
 	"src/Texture.cpp"
 	"src/sdlWindow.cpp"
 	"src/glDevice.cpp"
-	"src/CsvReader.cpp"
-	"src/MetaData.cpp")
+	"src/CsvReader.cpp")
 
 target_include_directories(NightreignApp PRIVATE
 	"src"

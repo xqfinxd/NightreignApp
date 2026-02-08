@@ -1,7 +1,6 @@
 #pragma once
 #include "public.h"
 #include "components/MapSpot.h"
-#include "MetaData.h"
 #include "LuaScript.h"
 #include <entt/entt.hpp>
 #include <vector>
@@ -53,6 +52,7 @@ private:
 	void clearMapTiles();
 	void initLuaBindings();
 	static int addSpotLua(lua_State* lua);
+	static int loadMapTilesLua(lua_State* lua);
 
 	entt::registry m_registry;
 	std::vector<entt::entity> m_mapTileEntities;
@@ -74,8 +74,6 @@ private:
 	float m_minZoom = 0.5f;
 	float m_maxZoom = 20.0f;
 	
-	MetaData m_metaData;
-	bool m_metaDataLoaded = false;
 	int m_currentPatternId = -1;
 	
 	int m_patternInput = 0;
