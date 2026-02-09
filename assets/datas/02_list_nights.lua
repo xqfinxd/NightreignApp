@@ -45,4 +45,4 @@ for _, row in pairs(lots.rows) do
     end
 end
 
-return table2Csv(nights, "step-02.csv") and nights
+table2Csv(nights, "step-02.csv")

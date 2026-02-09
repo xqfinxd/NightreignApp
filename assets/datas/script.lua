@@ -171,7 +171,7 @@ function loadSpotsByPattern(patternId)
             if not spot.attachPoint then
                 label = "(alt) " .. label
             end
-            --Scene:addSpot(x, z, "launch", 0.1, { label = ""..spot.attachId })
+            Scene:addSpot(x, z, "launch", 0.1, { label = ""..spot.id })
         end
     end
     local maptype = Data.categories[patternId].maptype
@@ -208,7 +208,7 @@ function loadSpotsByPattern(patternId)
         if point.pad == maptype * 10 and not knownIcons[point.worldMapPointIconId] then
             local x, z = normalize(point)
 
-            --Scene:addSpot(x, z, "launch", 0.1, { label = ""..point.worldMapPointIconId })
+            --Scene:addSpot(x, z, "launch", 0.1, { label = ""..point.id })
         end
     end
     local newspots = loadCsv("step-03.csv")
@@ -228,7 +228,7 @@ function loadSpotsByPattern(patternId)
                 posZ = tonumber(posvalue[4]),
             }
             local x, z = normalize(npos)
-            Scene:addSpot(x, z, "launch", 0.1, { label = ""..map })
+            --Scene:addSpot(x, z, "launch", 0.1, { label = ""..map })
         end
     end
 end

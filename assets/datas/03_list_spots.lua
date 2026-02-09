@@ -37,6 +37,7 @@ for _, row in pairs(lots.rows) do
 end
 
 local spots = {}
+local dynamicSpots = {}
 for ukey, records in pairs(spotdist) do
     for map, _ in pairs(records.maps) do
        local expectedSets = mapPatterns[map]
@@ -54,7 +55,18 @@ for ukey, records in pairs(spotdist) do
                 static = succeed,
             }
         )
+        if not succeed then
+            for patternId, _ in pairs(records.patterns) do
+                local sets = dynamicSpots[patternId] or {}
+                table.insert(sets, ukey)
+                dynamicSpots[patternId] = sets
+            end
+        end
     end
 end
 
-return table2Csv(spots, "step-03.csv") and spots
+for patternId, sets in pairs(dynamicSpots) do
+    print(string.format("Pattern %d has dynamic spots: %s", patternId, #sets))
+end
+
+table2Csv(spots, "step-03.csv")

@@ -1,31 +1,32 @@
 
 require("csv")
 
-local flags = loadCsv("LotResultMapPatternFlag.csv", "ID")
-local staters = {}
-for _, row in pairs(flags.rows) do
-    local map = tonumber(row["rareMap"])
-    local flag = tonumber(row["modifierSet"])
-    if flag == 190 or flag == 160 then
-        local starter = staters[map] or {}
-        local starterid = tonumber(row["modifier"])
-        
-        local num = starter[starterid] or 0
-        starter[starterid] = num + 1
-        
-        staters[map] = starter
-    end
-end
-
--- stage 1 output
-for map, ids in pairs(staters) do
-    local sets = {}
-    for id, num in pairs(ids) do
-        if num > 0 then
-            table.insert(sets, id)
+function print_starter_dist()
+    local flags = loadCsv("LotResultMapPatternFlag.csv", "ID")
+    local staters = {}
+    for _, row in pairs(flags.rows) do
+        local map = tonumber(row["rareMap"])
+        local flag = tonumber(row["modifierSet"])
+        if flag == 190 or flag == 160 then
+            local starter = staters[map] or {}
+            local starterid = tonumber(row["modifier"])
+            
+            local num = starter[starterid] or 0
+            starter[starterid] = num + 1
+            
+            staters[map] = starter
         end
     end
-    print(string.format("Map %d: Starters %s", map, table.concat(sets, ", ")))
+
+    for map, ids in pairs(staters) do
+        local sets = {}
+        for id, num in pairs(ids) do
+            if num > 0 then
+                table.insert(sets, id)
+            end
+        end
+        print(string.format("Map %d: Starters %s", map, table.concat(sets, ", ")))
+    end
 end
 
 local starter_dist = {
@@ -50,3 +51,5 @@ local starter_locations = {
     [707] = "45_37_86.00_4.00",
     [708] = "45_38_-86.00_81.00",
 }
+
+return starter_dist, starter_locations

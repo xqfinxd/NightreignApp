@@ -94,6 +94,10 @@ DataSchema = {
         type = "map",
         key = "ID",
         values = {
+            id = {
+                type = "number",
+                key = "ID",
+            },
             gridX = {
                 type = "number",
                 key = "gridXNo",

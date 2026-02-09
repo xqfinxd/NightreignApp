@@ -16,4 +16,6 @@ for _, row in pairs(flags.rows) do
     end
 end
 
-return table2Csv(patterns, "step-01.csv") and patterns
+table2Csv(patterns, "step-01.csv") 
+
+return patterns
