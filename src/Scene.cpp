@@ -32,6 +32,21 @@ struct Ray {
 	glm::vec3 origin;
 	glm::vec3 direction;
 
+	Ray(const Camera& camera, int x, int y, int w, int h) {
+		// Convert screen coordinates to NDC (Normalized Device Coordinates)
+		// Screen Y is top-down, NDC Y is bottom-up
+		float ndcX = (2.0f * x) / w - 1.0f;
+		float ndcY = 1.0f - (2.0f * y) / h;
+
+		// Convert NDC to world space
+		glm::vec4 nearPointWorld = camera.clip2World(glm::vec4(ndcX, ndcY, -1.0f, 1.0f));
+		glm::vec4 farPointWorld = camera.clip2World(glm::vec4(ndcX, ndcY, 1.0f, 1.0f));
+		nearPointWorld /= nearPointWorld.w;
+		farPointWorld /= farPointWorld.w;
+		origin = glm::vec3(nearPointWorld);
+		direction = glm::normalize(glm::vec3(farPointWorld) - origin);
+	}
+
 	HitResult intersectPlane(const glm::vec3& planePoint, const glm::vec3& planeNormal) const {
 		HitResult result;
 
@@ -194,19 +209,7 @@ void Scene::onMouseClick(int screenX, int screenY, int windowWidth, int windowHe
 	if (!camera)
 		return;
 
-	// Convert screen coordinates to NDC (Normalized Device Coordinates)
-	// Screen Y is top-down, NDC Y is bottom-up
-	float ndcX = (2.0f * screenX) / windowWidth - 1.0f;
-	float ndcY = 1.0f - (2.0f * screenY) / windowHeight;
-
-	// Convert NDC to world space
-	glm::vec4 nearPointWorld = camera->clip2World(glm::vec4(ndcX, ndcY, -1.0f, 1.0f));
-	glm::vec4 farPointWorld = camera->clip2World(glm::vec4(ndcX, ndcY, 1.0f, 1.0f));
-	nearPointWorld /= nearPointWorld.w;
-	farPointWorld /= farPointWorld.w;
-	Ray ray;
-	ray.origin = glm::vec3(nearPointWorld);
-	ray.direction = glm::normalize(glm::vec3(farPointWorld) - ray.origin);
+	Ray ray(*camera, screenX, screenY, windowWidth, windowHeight);
 	
 	// Collect all spots at this click location
 	std::vector<entt::entity> hitsAtLocation;
@@ -273,7 +276,17 @@ void Scene::onMouseButton(int button, bool pressed)
 
 void Scene::onMouseMove(int screenX, int screenY, int windowWidth, int windowHeight)
 {
+	auto camera = getCamera();
+	if (!camera)
+		return;
+	
 	glm::vec2 currentMousePos = glm::vec2(screenX, screenY);
+	Ray ray(*camera, screenX, screenY, windowWidth, windowHeight);
+	auto result = ray.intersectPlane(glm::vec3(0.f), glm::vec3(0.f, 0.f, 1.f));
+	if(result.hit)
+	{
+		m_mouseWorldPos = result.point;
+	}
 	
 	if (m_isMouseDragging && m_lastMousePos != glm::vec2(0.0f))
 	{
@@ -401,6 +414,14 @@ void Scene::drawUI()
 		{
 			ImGui::Text("  FOV: %.2f", camera->fov);
 		}
+		glm::vec2 gridpos{m_mouseWorldPos.x / m_tileSize + (m_gridWidth / 2.0f),
+	                      m_mouseWorldPos.y / m_tileSize + (m_gridHeight / 2.0f)};
+		glm::vec2 gridNo{0,0};
+		glm::vec2 pos = glm::modf(gridpos, gridNo);
+		gridNo += glm::vec2(41,35);
+		pos = pos * (float)m_textureTileSize - (m_textureTileSize / 2.0f);
+		ImGui::Text("  Grid No: (%.2f, %.2f)", gridNo.x, gridNo.y);
+		ImGui::Text("  Local Pos: (%.2f, %.2f)", pos.x, pos.y);
 	}
 	else
 	{

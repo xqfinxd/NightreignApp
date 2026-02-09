@@ -65,7 +65,7 @@ public:
         }
     }
 
-    glm::vec4 clip2World(glm::vec4 clipCoords)
+    glm::vec4 clip2World(glm::vec4 clipCoords) const
     {
         glm::mat4 inverseVP = glm::inverse(projection * view);
         return inverseVP * clipCoords;

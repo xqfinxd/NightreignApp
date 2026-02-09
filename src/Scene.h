@@ -71,6 +71,7 @@ private:
 	// Mouse interaction state
 	bool m_isMouseDragging = false;
 	glm::vec2 m_lastMousePos = glm::vec2(0.0f);
+	glm::vec3 m_mouseWorldPos = glm::vec3(0.0f);
 	float m_minZoom = 0.5f;
 	float m_maxZoom = 20.0f;
 	

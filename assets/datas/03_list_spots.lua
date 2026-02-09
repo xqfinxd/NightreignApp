@@ -51,7 +51,7 @@ for ukey, records in pairs(spotdist) do
         table.insert(spots, {
                 id = ukey,
                 map = map,
-                fixed = succeed,
+                static = succeed,
             }
         )
     end
