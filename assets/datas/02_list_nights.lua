@@ -1,10 +1,10 @@
 require("csv")
 
-local creates = loadCsv("PlayAreaCreateParam.csv", "ID")
-local lots = loadCsv("LotResultPlayAreaParam.csv", "ID")
+local createbase = loadCsv("PlayAreaCreateParam.csv", "ID")
+local areabase = loadCsv("LotResultPlayAreaParam.csv", "ID")
 
 local function findArea(areaId)
-    local area = creates.rows[areaId]
+    local area = createbase.rows[areaId]
     if area == nil then
         return {}
     else
@@ -17,10 +17,10 @@ local function findArea(areaId)
     end
 end
 
-local nights = {}
-for _, row in pairs(lots.rows) do
+local pattern_nights = {}
+for _, row in pairs(areabase.rows) do
     local patternId = tonumber(row["patternId"])
-    if nights[patternId] == nil then
+    if pattern_nights[patternId] == nil then
         local night = {}
         night.id = patternId
 
@@ -41,8 +41,10 @@ for _, row in pairs(lots.rows) do
         night.extraBossId1 = tonumber(row["extraBossId1"]) or 0
         night.extraBossId2 = tonumber(row["extraBossId2"]) or 0
 
-        nights[patternId] = night
+        pattern_nights[patternId] = night
     end
 end
 
-table2Csv(nights, "step-02.csv")
+table2Csv(pattern_nights, "step-02.csv")
+
+return pattern_nights

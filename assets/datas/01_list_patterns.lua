@@ -1,10 +1,10 @@
 require("csv")
 
-local flags = loadCsv("LotResultMapPatternFlag.csv", "ID")
-local patterns = {}
-for _, row in pairs(flags.rows) do
+local flagbase = loadCsv("LotResultMapPatternFlag.csv", "ID")
+local pattern_mapbase = {}
+for _, row in pairs(flagbase.rows) do
     local patternId = tonumber(row["patternId"])
-    if patterns[patternId] == nil then
+    if pattern_mapbase[patternId] == nil then
         local pattern = {}
         pattern.id = patternId
 
@@ -12,10 +12,10 @@ for _, row in pairs(flags.rows) do
         pattern.boss = tonumber(row["targetBoss"])
         pattern.isdlc = tonumber(row["patternSetId"]) >= 1000
 
-        patterns[patternId] = pattern
+        pattern_mapbase[patternId] = pattern
     end
 end
 
-table2Csv(patterns, "step-01.csv") 
+table2Csv(pattern_mapbase, "step-01.csv") 
 
-return patterns
+return pattern_mapbase

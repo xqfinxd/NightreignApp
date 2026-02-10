@@ -1,11 +1,11 @@
 require("csv")
-local patterns = dofile(getPath("01_list_patterns.lua"))
-local lots = loadCsv("LotResultSmallBaseAndSpot.csv", "ID")
-local points = loadCsv("WorldMapPointParam.csv", "ID")
-local altPoints = loadCsv("SmallBaseAndSpotAttachPoint.csv", "ID")
+local pattern_mapbase = dofile(getPath("01_list_patterns.lua"))
+local spotbase = loadCsv("LotResultSmallBaseAndSpot.csv", "ID")
+local pointbase = loadCsv("WorldMapPointParam.csv", "ID")
+local altpointbase = loadCsv("SmallBaseAndSpotAttachPoint.csv", "ID")
 
 local function genKey(attachId)
-    local point = points.rows[attachId] or altPoints.rows[attachId]
+    local point = pointbase.rows[attachId] or altpointbase.rows[attachId]
     if point then
         return string.format("%d_%d_%.2f_%.2f", point.gridXNo, point.gridZNo, point.posX, point.posZ)
     else
@@ -14,16 +14,16 @@ local function genKey(attachId)
 end
 
 local mapPatterns = {}
-for patternId, pattern in pairs(patterns) do
+for patternId, pattern in pairs(pattern_mapbase) do
     local sets = mapPatterns[pattern.map] or {}
     table.insert(sets, patternId)
     mapPatterns[pattern.map] = sets
 end
 
 local spotdist = {}
-for _, row in pairs(lots.rows) do
+for _, row in pairs(spotbase.rows) do
     local patternId = tonumber(row["patternId"])
-    local map = patterns[patternId].map
+    local map = pattern_mapbase[patternId].map
     assert(map ~= nil)
     local attachId = tonumber(row["attachId"])
     
@@ -70,3 +70,5 @@ for patternId, sets in pairs(dynamicSpots) do
 end
 
 table2Csv(spots, "step-03.csv")
+
+return spots
