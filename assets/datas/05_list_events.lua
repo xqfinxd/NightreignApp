@@ -1,4 +1,4 @@
-require("csv")
+local csv = require("csv")
 
 -- Event Flags: 7705, 7725
 local InvasionEvents = {
@@ -18,17 +18,17 @@ local InvasionEvents = {
 }
 
 local EventDefinitions = {
-    [7704] = "Day 1".."Night Horde",
-    [7724] = "Day 2".."Night Horde",
+    [7704] = "Day 1 ".."Night Horde",
+    [7724] = "Day 2 ".."Night Horde",
 
-    [7701] = "Day 1".."Meteor Strike",
-    [7721] = "Day 2".."Meteor Strike",
+    [7701] = "Day 1 ".."Meteor Strike",
+    [7721] = "Day 2 ".."Meteor Strike",
 
     [7702] = "Walking Mausoleum",
     [7722] = "Walking Mausoleum",
 
-    [7700] = "Day 1".."Extra Night Boss",
-    [7720] = "Day 2".."Extra Night Boss",
+    [7700] = "Day 1 ".."Extra Night Boss",
+    [7720] = "Day 2 ".."Extra Night Boss",
 
     [7707] = "Frenzy Tower",
     [7727] = "Frenzy Tower",
@@ -43,12 +43,12 @@ local EventDefinitions = {
     -- [8079] = "Libra Curse",
     -- [8080] = "Caligo Blizzard",
     -- [8081] = "Balancers Raid",
-    [7705] = function(modifier, modifierSet) return "Day 1"..InvasionEvents[modifierSet] end,
-    [7725] = function(modifier, modifierSet) return "Day 2"..InvasionEvents[modifierSet] end,
+    [7705] = function(modifier, modifierSet) return "Day 1 "..InvasionEvents[modifierSet] end,
+    [7725] = function(modifier, modifierSet) return "Day 2 "..InvasionEvents[modifierSet] end,
 }
 
-local flagsortbase = loadCsv("LotBaseMapPatternFlag.csv", "ID")
-local flagdistbase = loadCsv("LotResultMapPatternFlag.csv", "ID")
+local flagsortbase = csv.loadCsv("LotBaseMapPatternFlag.csv", "ID")
+local flagdistbase = csv.loadCsv("LotResultMapPatternFlag.csv", "ID")
 
 local function tableInsertUnique(t, value)
     for _, v in ipairs(t) do
@@ -145,4 +145,4 @@ for patternId, data in pairs(pattern_flags) do
     end
 end
 
-table2Csv(pattern_events, "step-05.csv")
+csv.table2Csv(pattern_events, "step-05.csv")

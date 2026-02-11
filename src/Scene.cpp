@@ -162,6 +162,110 @@ void Scene::initialize()
 
 	// Set up spot click callback
 	setSpotClickCallback([this](entt::entity entity, const MapSpot& spot) {
+		// Handle filter mode
+		if (m_filterMode && spot.metadata.has_value())
+		{
+			try {
+				std::string spotKey = std::any_cast<std::string>(spot.metadata);
+				m_currentSpotKey = spotKey;
+				m_availableVariations.clear();
+				m_selectedVariationIndex = -1;
+				
+				// Query available variations for this spot
+				auto state = m_lua->getState();
+				lua_getglobal(state, "getVariationsAtSpot");
+				if (lua_isfunction(state, -1))
+				{
+					lua_pushinteger(state, m_filterMapSelection);
+					lua_pushstring(state, spotKey.c_str());
+					
+					// Push markedSpots table (excluding current spot if it's marked)
+					lua_newtable(state);
+					for (const auto& [markedSpotKey, markedVarKey] : m_markedSpots)
+					{
+						if (markedSpotKey != spotKey)  // Exclude current spot
+						{
+							lua_pushstring(state, markedSpotKey.c_str());
+							lua_pushinteger(state, markedVarKey);
+							lua_settable(state, -3);
+						}
+					}
+					
+					if (lua_pcall(state, 3, 1, 0) == LUA_OK && lua_istable(state, -1))
+					{
+						// Parse the returned variations table
+						lua_pushnil(state);
+						while (lua_next(state, -2) != 0)
+						{
+							if (lua_istable(state, -1))
+							{
+								VariationOption var;
+								
+								lua_getfield(state, -1, "id");
+								var.id = static_cast<int>(lua_tointeger(state, -1));
+								lua_pop(state, 1);
+								
+								lua_getfield(state, -1, "type");
+								var.type = static_cast<int>(lua_tointeger(state, -1));
+								lua_pop(state, 1);
+								
+								lua_getfield(state, -1, "key");
+								var.key = static_cast<int>(lua_tointeger(state, -1));
+								lua_pop(state, 1);
+								
+								lua_getfield(state, -1, "label");
+								if (lua_isstring(state, -1))
+									var.label = lua_tostring(state, -1);
+								lua_pop(state, 1);
+								
+								lua_getfield(state, -1, "patterns");
+								if (lua_istable(state, -1))
+								{
+									lua_pushnil(state);
+									while (lua_next(state, -2) != 0)
+									{
+										if (lua_isinteger(state, -1))
+											var.patterns.push_back(static_cast<int>(lua_tointeger(state, -1)));
+										lua_pop(state, 1);
+									}
+								}
+								lua_pop(state, 1);
+								
+								m_availableVariations.push_back(var);
+							}
+							lua_pop(state, 1);
+						}
+						
+						SDL_Log("Spot %s: Found %zu variations", spotKey.c_str(), m_availableVariations.size());
+					}
+					else
+					{
+						if (!lua_istable(state, -1))
+							SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "getVariationsAtSpot did not return table");
+					}
+					lua_pop(state, 1);
+				}
+				else
+				{
+					lua_pop(state, 1);
+					SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "getVariationsAtSpot not found");
+				}
+				
+				// Visual feedback - scale up the clicked spot
+				if (m_registry.valid(entity))
+				{
+					auto& transform = m_registry.get<Transform>(entity);
+					transform.scale = glm::vec3(0.15f, 0.15f, 1.0f);
+				}
+				
+				return;
+			}
+			catch (const std::bad_any_cast&) {
+				SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Failed to cast spot metadata");
+			}
+		}
+		
+		// Normal mode - just visual selection
 		if(m_selectedSpotEntity != entt::null)
 		{
 			auto& prevSpot = m_registry.get<Transform>(m_selectedSpotEntity);
@@ -484,6 +588,240 @@ void Scene::drawUI()
 		} while (false);
 	}
 
+	ImGui::Separator();
+	ImGui::Text("=== Pattern Filter Mode ===");
+	ImGui::Checkbox("Enable Filter Mode", &m_filterMode);
+	
+	if (m_filterMode)
+	{
+		ImGui::Text("1. Select Map:");
+		if (ImGui::Combo("##MapSelect", &m_filterMapSelection, "Map 0\0Map 1\0Map 2\0Map 3\0Map 4\0Map 5\0\0"))
+		{
+			// Clear marked spots when changing maps
+			m_markedSpots.clear();
+		}
+		
+		if (ImGui::Button("Load Static Spots"))
+		{
+			clearSpots();
+			auto state = m_lua->getState();
+			lua_getglobal(state, "loadStaticSpotsByMap");
+			if (lua_isfunction(state, -1))
+			{
+				lua_pushinteger(state, m_filterMapSelection);
+				if (lua_pcall(state, 1, 0, 0) != LUA_OK)
+				{
+					SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Lua error: %s", lua_tostring(state, -1));
+					lua_pop(state, 1);
+				}
+			}
+			else
+			{
+				lua_pop(state, 1);
+			}
+		}
+		
+		ImGui::Separator();
+		ImGui::Text("2. Click spots to select:");
+		if (!m_markedSpots.empty())
+		{
+			ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), 
+				"Filter active: %zu spots marked", m_markedSpots.size());
+		}
+		
+		// Show available variations for clicked spot
+		if (!m_currentSpotKey.empty() && !m_availableVariations.empty())
+		{
+			ImGui::Text("Spot: %s", m_currentSpotKey.c_str());
+			ImGui::Text("Available Variations:");
+			
+			ImGui::BeginChild("VariationList", ImVec2(0, 200), true);
+			for (size_t i = 0; i < m_availableVariations.size(); ++i)
+			{
+				const auto& var = m_availableVariations[i];
+				bool isSelected = (m_selectedVariationIndex == static_cast<int>(i));
+				
+				if (ImGui::Selectable(
+					(var.label + " (" + std::to_string(var.key) + ")").c_str(),
+					isSelected))
+				{
+					m_selectedVariationIndex = static_cast<int>(i);
+				}
+				
+				if (isSelected)
+				{
+					ImGui::Text("  ID: %d, Type: %d", var.id, var.type);
+					ImGui::Text("  In %zu patterns", var.patterns.size());
+				}
+			}
+			ImGui::EndChild();
+			
+			if (m_selectedVariationIndex >= 0 && ImGui::Button("Add to Filter"))
+			{
+				const auto& selectedVar = m_availableVariations[m_selectedVariationIndex];
+				m_markedSpots[m_currentSpotKey] = selectedVar.key;
+				SDL_Log("Added filter: spot %s -> variation %d (%s)", 
+					m_currentSpotKey.c_str(), selectedVar.key, selectedVar.label.c_str());
+				
+				// Clear selection for next spot
+				m_currentSpotKey.clear();
+				m_availableVariations.clear();
+				m_selectedVariationIndex = -1;
+				
+				// Reset all spot scales
+				for (auto entity : m_mapSpotEntities)
+				{
+					if (m_registry.valid(entity))
+					{
+						auto& transform = m_registry.get<Transform>(entity);
+						auto* mapSpot = m_registry.try_get<MapSpot>(entity);
+						if (mapSpot && mapSpot->metadata.has_value())
+						{
+							try {
+								std::string spotKey = std::any_cast<std::string>(mapSpot->metadata);
+								// Scale up marked spots
+								if (m_markedSpots.find(spotKey) != m_markedSpots.end())
+									transform.scale = glm::vec3(0.15f, 0.15f, 1.0f);
+								else
+									transform.scale = glm::vec3(0.1f, 0.1f, 1.0f);
+							} catch(...) {}
+						}
+					}
+				}
+			}
+		}
+		else if (!m_currentSpotKey.empty())
+		{
+			ImGui::Text("No variations available at this spot");
+		}
+		
+		ImGui::Separator();
+		ImGui::Text("3. Filter patterns:");
+		ImGui::Text("Marked Spots: %zu", m_markedSpots.size());
+		
+		if (ImGui::Button("Clear Marked Spots"))
+		{
+			m_markedSpots.clear();
+		}
+		
+		if (ImGui::Button("Filter Patterns"))
+		{
+			m_filteredPatterns.clear();
+			auto state = m_lua->getState();
+			lua_getglobal(state, "filterPatternsByMarkedSpots");
+			if (lua_isfunction(state, -1))
+			{
+				lua_pushinteger(state, m_filterMapSelection);
+				
+				// Push markedSpots table
+				lua_newtable(state);
+				for (const auto& [spotKey, variationId] : m_markedSpots)
+				{
+					lua_pushstring(state, spotKey.c_str());
+					lua_pushinteger(state, variationId);
+					lua_settable(state, -3);
+				}
+				
+				if (lua_pcall(state, 2, 1, 0) == LUA_OK)
+				{
+					if (lua_istable(state, -1))
+					{
+						lua_pushnil(state);
+						while (lua_next(state, -2) != 0)
+						{
+							if (lua_isinteger(state, -1))
+							{
+								int patternId = static_cast<int>(lua_tointeger(state, -1));
+								m_filteredPatterns.push_back(patternId);
+							}
+							lua_pop(state, 1);
+						}
+						SDL_Log("Found %zu matching patterns", m_filteredPatterns.size());
+					}
+					lua_pop(state, 1);
+				}
+				else
+				{
+					SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Lua error: %s", lua_tostring(state, -1));
+					lua_pop(state, 1);
+				}
+			}
+			else
+			{
+				lua_pop(state, 1);
+			}
+		}
+		
+		// Display marked spots
+		if (!m_markedSpots.empty())
+		{
+			ImGui::Separator();
+			ImGui::Text("Marked Filters:");
+			ImGui::BeginChild("MarkedSpots", ImVec2(0, 150), true);
+			
+			std::vector<std::string> toRemove;
+			for (const auto& [spotKey, varKey] : m_markedSpots)
+			{
+				ImGui::PushID(spotKey.c_str());
+				ImGui::Text("%s -> Var(%d)", spotKey.c_str(), varKey);
+				ImGui::SameLine();
+				if (ImGui::SmallButton("Remove"))
+				{
+					toRemove.push_back(spotKey);
+				}
+				ImGui::PopID();
+			}
+			
+			// Remove spots marked for deletion
+			for (const auto& key : toRemove)
+			{
+				m_markedSpots.erase(key);
+				
+				// Reset spot scale
+				for (auto entity : m_mapSpotEntities)
+				{
+					if (m_registry.valid(entity))
+					{
+						auto* mapSpot = m_registry.try_get<MapSpot>(entity);
+						if (mapSpot && mapSpot->metadata.has_value())
+						{
+							try {
+								std::string entSpotKey = std::any_cast<std::string>(mapSpot->metadata);
+								if (entSpotKey == key)
+								{
+									auto& transform = m_registry.get<Transform>(entity);
+									transform.scale = glm::vec3(0.1f, 0.1f, 1.0f);
+									break;
+								}
+							} catch(...) {}
+						}
+					}
+				}
+			}
+			
+			ImGui::EndChild();
+		}
+		
+		// Display filtered patterns
+		if (!m_filteredPatterns.empty())
+		{
+			ImGui::Separator();
+			ImGui::Text("Matching Patterns: %zu", m_filteredPatterns.size());
+			ImGui::BeginChild("FilteredPatterns", ImVec2(0, 100), true);
+			for (int patternId : m_filteredPatterns)
+			{
+				ImGui::Text("Pattern %d", patternId);
+				ImGui::SameLine();
+				if (ImGui::SmallButton(("Load##" + std::to_string(patternId)).c_str()))
+				{
+					loadSpotsByPattern(patternId);
+					m_filterMode = false; // Exit filter mode after loading
+				}
+			}
+			ImGui::EndChild();
+		}
+	}
+
 	ImGui::End();
 }
 
@@ -639,8 +977,10 @@ void Scene::initLuaBindings()
 	lua_setglobal(state, "Scene");
 	lua_pushliteral(state, "nightreign/assets/datas/");
 	lua_setglobal(state, "DATA_PATH");
+	lua_pushboolean(state, true);
+	lua_setglobal(state, "CPP_ENV");
 
-	m_lua->executeFile("nightreign/assets/datas/schema.lua");
+	m_lua->executeFile("nightreign/assets/datas/modules.lua");
 	m_lua->executeFile("nightreign/assets/datas/script.lua");
 }
 
@@ -673,6 +1013,13 @@ int Scene::addSpotLua(lua_State* lua)
 		if (lua_isstring(lua, -1))
 		{
 			mapSpot.label = lua_tostring(lua, -1);
+		}
+		lua_pop(lua, 1);
+		
+		lua_getfield(lua, 6, "key");
+		if (lua_isstring(lua, -1))
+		{
+			mapSpot.metadata = std::string(lua_tostring(lua, -1));
 		}
 		lua_pop(lua, 1);
 	}

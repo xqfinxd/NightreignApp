@@ -1,6 +1,6 @@
-require("csv")
+local csv = require("csv")
 
-local flagbase = loadCsv("LotResultMapPatternFlag.csv", "ID")
+local flagbase = csv.loadCsv("LotResultMapPatternFlag.csv", "ID")
 local pattern_mapbase = {}
 for _, row in pairs(flagbase.rows) do
     local patternId = tonumber(row["patternId"])
@@ -16,6 +16,6 @@ for _, row in pairs(flagbase.rows) do
     end
 end
 
-table2Csv(pattern_mapbase, "step-01.csv") 
+csv.table2Csv(pattern_mapbase, "step-01.csv") 
 
 return pattern_mapbase

@@ -1,7 +1,7 @@
-require("csv")
+local csv = require("csv")
 
-local createbase = loadCsv("PlayAreaCreateParam.csv", "ID")
-local areabase = loadCsv("LotResultPlayAreaParam.csv", "ID")
+local createbase = csv.loadCsv("PlayAreaCreateParam.csv", "ID")
+local areabase = csv.loadCsv("LotResultPlayAreaParam.csv", "ID")
 
 local function findArea(areaId)
     local area = createbase.rows[areaId]
@@ -45,6 +45,6 @@ for _, row in pairs(areabase.rows) do
     end
 end
 
-table2Csv(pattern_nights, "step-02.csv")
+csv.table2Csv(pattern_nights, "step-02.csv")
 
 return pattern_nights

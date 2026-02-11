@@ -1,8 +1,7 @@
-
-require("csv")
+local csv = require("csv")
 
 function print_starter_dist()
-    local flagbase = loadCsv("LotResultMapPatternFlag.csv", "ID")
+    local flagbase = csv.loadCsv("LotResultMapPatternFlag.csv", "ID")
     local staters = {}
     for _, row in pairs(flagbase.rows) do
         local map = tonumber(row["rareMap"])
@@ -48,7 +47,7 @@ local starter_locations = {
     [704] = {44,36,-22.00,-72.00},
     [705] = {44,37,-52.00,-76.00},
     [706] = {44,39,-72.00,44.00},
-    [707] = {45,37,86.00,4.00},
+    [707] = {45,37, 86.00,4.00},
     [708] = {45,38,-86.00,81.00},
 }
 

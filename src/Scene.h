@@ -4,6 +4,7 @@
 #include "LuaScript.h"
 #include <entt/entt.hpp>
 #include <vector>
+#include <map>
 
 class Renderer;
 class Device;
@@ -83,4 +84,21 @@ private:
 	bool m_enableB1Overlay = false;
 	
 	entt::entity m_selectedSpotEntity = entt::null;
+	
+	// Pattern filter mode
+	struct VariationOption {
+		int id;
+		int type;
+		int key;
+		std::string label;
+		std::vector<int> patterns;
+	};
+	
+	bool m_filterMode = false;
+	int m_filterMapSelection = 0;
+	std::string m_currentSpotKey;
+	std::vector<VariationOption> m_availableVariations;
+	int m_selectedVariationIndex = -1;
+	std::map<std::string, int> m_markedSpots; // spotKey -> variationKey
+	std::vector<int> m_filteredPatterns; // Result of pattern filtering
 };

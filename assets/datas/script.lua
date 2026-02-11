@@ -1,234 +1,47 @@
-function loadCsv(filename)
-    local basedir = DATA_PATH or ""
-    filename = basedir .. filename
-    local csv = {}
-    csv.header = {}
-    local csvFile = io.open(filename, "r")
-    if not csvFile then
-        return nil
-    end
-    local lineNumber = -1
-    for line in csvFile:lines() do
-        if lineNumber < 0 then
-            for cell in line:gmatch("([^,]*)") do
-                table.insert(csv.header, cell)
-            end
-        else
-            local row = {}
-            local cellIndex = 1
-            for cell in line:gmatch("([^,]*)") do
-                local key = csv.header[cellIndex]
-                row[key] = tonumber(cell) or cell
-                cellIndex = cellIndex + 1
-            end
-            table.insert(csv, row)
-        end
-        lineNumber = lineNumber + 1
-    end
-    csvFile:close()
-    return csv
-end
+local csv = require("csv")
 
-function processRecursively(valueName, valueSchema, row, context, parentnode)
-    local valueType = valueSchema.type
-
-    if valueType == "map" and valueSchema.values then
-        local curnode = parentnode[valueName] or {}
-        local keyField = valueSchema.key
-        local key = row[keyField]
-        local childnode = curnode[key] or {}
-        for childValueName, childValueSchema in pairs(valueSchema.values) do
-            processRecursively(childValueName, childValueSchema, row, context, childnode)
-        end
-        curnode[key] = childnode
-        parentnode[valueName] = curnode
-        
-    elseif valueType == "list" and valueSchema.values then
-        local curnode = parentnode[valueName] or {}
-        local childnode = {}
-        for childValueName, childValueSchema in pairs(valueSchema.values) do
-            processRecursively(childValueName, childValueSchema, row, context, childnode)
-        end
-        table.insert(curnode, childnode)
-        parentnode[valueName] = curnode
-    
-    elseif valueType == "table" then
-        local refKey = valueSchema.key
-        local refId = row[refKey]
-        local refTableName = valueSchema.ref
-        table.insert(context.postProcess, function() 
-            -- Reference to another table
-            if context[refTableName] and refId then
-                parentnode[valueName] = context[refTableName][refId]
-            end
-        end)
-    else
-        parentnode[valueName] = processValue(valueSchema, row)
-    end
-end
-
-function processValue(valueSchema, row)
-    local valueType = valueSchema.type
-    
-    if valueType == "number" then
-        -- Single number extraction
-        local key = valueSchema.key
-        return tonumber(row[key]) or 0
-        
-    elseif valueType == "number[]" then
-        -- Array of numbers from multiple keys
-        local result = {}
-        for _, key in ipairs(valueSchema.key) do
-            local value = tonumber(row[key]) or 0
-            table.insert(result, value)
-        end
-        return result
-        
-    elseif valueType == "function" then
-        -- Evaluate a function
-        local func = valueSchema.func
-        local args = {}
-        -- Get argument values from row
-        if valueSchema.args then
-            for _, argName in ipairs(valueSchema.args) do
-                table.insert(args, row[argName])
-            end
-        end
-        -- Load and execute the function
-        local fn = load("return " .. func)()
-        return fn(table.unpack(args))
-        
-    elseif valueType == "string" then
-        local key = valueSchema.key
-        return row[key] or ""
-    end
-    
-    return nil
-end
-
--- Main function to build data from schema
-function buildDataFromSchema(schema, csvSources)
-    local context = { postProcess = {} }
-    local result = {}
-    
-    for tableName, tableSchema in pairs(schema) do
-        local srcFile = tableSchema.src
-        local csvData = csvSources[srcFile]
-        
-        if not csvData then
-            return
-        end
-        for _, row in ipairs(csvData) do
-            processRecursively(tableName, tableSchema, row, context, context)
-        end
-    end
-
-    for _, fn in ipairs(context.postProcess) do
-        fn()
-    end
-    
-    -- Copy context to result
-    for tableName, _ in pairs(schema) do
-        result[tableName] = context[tableName]
-    end
-    
-    return result
-end
-
-function normalize(point)
+local function normalize(point)
     local tileSize = Scene.TEXTURE_TILE_SIZE or 256
-    local gridX = point.posX / tileSize + point.gridX - 41
-    local gridZ = point.posZ / tileSize + point.gridZ - 35
+    local gridX = point.posX / tileSize + point.gridXNo - 41
+    local gridZ = point.posZ / tileSize + point.gridZNo - 35
     return gridX, gridZ
 end
 
+-- Load variation labels from User_SpotDefine.csv
+local variationLabels = {}
+local function loadVariationLabels()
+    if next(variationLabels) == nil then
+        local spotDefine = csv.loadCsv("User_SpotDefine.csv", "ID")
+        for id, row in pairs(spotDefine.rows) do
+            variationLabels[tonumber(id)] = row.label
+        end
+    end
+    return variationLabels
+end
+
+local function getVariationKey(id, type)
+    return id * 10 + type
+end
+
+local function getVariationLabel(id, type)
+    loadVariationLabels()
+    local key = getVariationKey(id, type)
+    return variationLabels[key] or string.format("Unknown(%d,%d)", id, type)
+end
+
 function loadSpotsByPattern(patternId)
-    if Data == nil then
-        -- Build structured data from schema
-        local csvSources = {
-            ["LotResultSmallBaseAndSpot"] = loadCsv("LotResultSmallBaseAndSpot.csv"),
-            ["LotResultMapPatternFlag"] = loadCsv("LotResultMapPatternFlag.csv"),
-            ["NightBossMenuParam"] = loadCsv("NightBossMenuParam.csv"),
-            ["WorldMapPointParam"] = loadCsv("WorldMapPointParam.csv"),
-            ["SmallBaseAndSpotAttachPoint"] = loadCsv("SmallBaseAndSpotAttachPoint.csv"),
-            ["SmallBaseMapVariationParam"] = loadCsv("SmallBaseMapVariationParam.csv"),
-            ["LotResultPlayAreaParam"] = loadCsv("LotResultPlayAreaParam.csv"),
-            ["PlayAreaCreateParam"] = loadCsv("PlayAreaCreateParam.csv"),
-            ["User_SpotDefine"] = loadCsv("User_SpotDefine.csv"),
-        }
-        Data = buildDataFromSchema(DataSchema, csvSources)
-    end
+    local pattern_mapbase = dofile(getPath("01_list_patterns.lua"))
+    local map = pattern_mapbase[patternId].map
+    Scene:loadMapTiles(map, 0)
     
-    Scene:loadMapTiles(Data.categories[patternId].maptype, 0)
-    for _, spot in ipairs(Data.patterns[patternId].spots) do
-        local point = spot.attachPoint or spot.attachPoint2
-        local option = spot.variation and spot.variation.option or {}
-
-        if point and option[1] ~= 180 then
-            local x, z = normalize(point)
-            local uid = spot.variationId * 10 + spot.variationIndex
-            local label = Data.locales[uid] and Data.locales[uid].label or "UNKNOWN"
-            if not spot.attachPoint then
-                label = "(alt) " .. label
-            end
-            Scene:addSpot(x, z, "launch", 0.1, { label = ""..spot.id })
-        end
-    end
-    local maptype = Data.categories[patternId].maptype
-    local knownIcons = {
-
-        [1] = "site of grace",
-        [2] = "church",
-        [3] = "ruins",
-        [7] = "fort",
-        [11] = "castle",
-        [13] = "spectral hawk tree",
-        [16] = "field boss",
-        [17] = "scarab",
-        [21] = "merchant",
-        [23] = "mine",
-        [25] = "scale-bearing merchant",
-        [28] = "formidable field boss",
-        [30] = "church-completed",
-        [60] = "personal objective",
-        [61] = "shifting earth power",
-        [62] = "buried treasure",
-        [137] = "spiritstream",
-        [178] = "rope door",
-        -- dlc
-        [51] = "city rooftop",
-        [71] = "great crystal",
-        [73] = "divine tower",
-        [74] = "rb city",
-        [75] = "lt city",
-        [76] = "portal",
-        [79] = "star merchant", -- undefined
-    }
-    for id, point in pairs(Data.points) do
-        if point.pad == maptype * 10 and not knownIcons[point.worldMapPointIconId] then
-            local x, z = normalize(point)
-
-            --Scene:addSpot(x, z, "launch", 0.1, { label = ""..point.id })
-        end
-    end
-    local newspots = loadCsv("step-03.csv")
-    for _, row in pairs(newspots) do
-        local pos = tostring(row["id"])
-        local map = tonumber(row["map"])
-        local fixed = row["fixed"]
-        if map == maptype and fixed == "true" then
-            local posvalue = {}
-            for ep in pos:gmatch("([^_]*)") do
-                table.insert(posvalue, ep)
-            end
-            local npos = {
-                gridX = tonumber(posvalue[1]),
-                gridZ = tonumber(posvalue[2]),
-                posX = tonumber(posvalue[3]),
-                posZ = tonumber(posvalue[4]),
-            }
-            local x, z = normalize(npos)
-            --Scene:addSpot(x, z, "launch", 0.1, { label = ""..map })
+    local pattern_spots = dofile(getPath("03_list_spots.lua"))
+    for _, spot in pairs(pattern_spots) do
+        local spotpos = spot.id
+        local spotmap = spot.map
+        local static = spot.static
+        if spotmap == map and static then
+            local x, z = normalize(spotpos)
+            Scene:addSpot(x, z, "launch", 0.1, { label = ""..tostring(static) })
         end
     end
 end
@@ -242,4 +55,201 @@ function queryVariation(variationId)
         end
     end
     return -1
+end
+
+-- Filter mode functions
+function loadStaticSpotsByMap(mapIndex)
+    Scene:loadMapTiles(mapIndex, 0)
+    
+    local pattern_spots = dofile(getPath("03_list_spots.lua"))
+    local spots = {}
+    
+    for _, spot in pairs(pattern_spots) do
+        if spot.map == mapIndex and spot.static then
+            local x, z = normalize(spot.id)
+            local key = string.format("%d_%d_%.2f_%.2f", 
+                spot.id.gridXNo, spot.id.gridZNo, spot.id.posX, spot.id.posZ)
+            spots[key] = {x = x, z = z, id = spot.id}
+            Scene:addSpot(x, z, "launch", 0.1, { label = "", key = key })
+        end
+    end
+    
+    return spots
+end
+
+local spot_variations = dofile(getPath("06_list_variation.lua"))
+function getVariationsAtSpot(mapIndex, spotKey, markedSpots)
+    local status, result = pcall(function()
+        print("getVariationsAtSpot called: mapIndex=" .. tostring(mapIndex) .. ", spotKey=" .. tostring(spotKey))
+        
+        if not spot_variations then
+            print("ERROR: spot_variations is nil")
+            return {}
+        end
+        
+        print("spot_variations loaded, count=" .. #spot_variations)
+        
+        -- If there are marked spots, first get matching patterns
+        local validPatterns = nil
+        if markedSpots and next(markedSpots) ~= nil then
+            local markedCount = 0
+            for _ in pairs(markedSpots) do markedCount = markedCount + 1 end
+            print("Filtering by " .. tostring(markedCount) .. " marked spots")
+            
+            -- Build pattern spots map
+            local patternSpots = {}
+            for _, variation in ipairs(spot_variations) do
+                if variation.map == mapIndex and variation.location then
+                    local key = string.format("%d_%d_%.2f_%.2f",
+                        variation.location.gridXNo, variation.location.gridZNo,
+                        variation.location.posX, variation.location.posZ)
+                    
+                    local patternId = variation.pattern
+                    if not patternSpots[patternId] then
+                        patternSpots[patternId] = {}
+                    end
+                    
+                    if not patternSpots[patternId][key] then
+                        patternSpots[patternId][key] = {}
+                    end
+                    
+                    local varKey = getVariationKey(variation.id, variation.type)
+                    table.insert(patternSpots[patternId][key], varKey)
+                end
+            end
+            
+            -- Filter patterns matching all marked spots
+            validPatterns = {}
+            for patternId, spots in pairs(patternSpots) do
+                local matches = true
+                
+                for markedSpotKey, requiredVarKey in pairs(markedSpots) do
+                    local spotHasVariation = false
+                    if spots[markedSpotKey] then
+                        for _, varKey in ipairs(spots[markedSpotKey]) do
+                            if varKey == requiredVarKey then
+                                spotHasVariation = true
+                                break
+                            end
+                        end
+                    end
+                    
+                    if not spotHasVariation then
+                        matches = false
+                        break
+                    end
+                end
+                
+                if matches then
+                    validPatterns[patternId] = true
+                end
+            end
+            
+            local validCount = 0
+            for _ in pairs(validPatterns) do validCount = validCount + 1 end
+            print("Valid patterns after filtering: " .. tostring(validCount))
+        end
+        
+        local variations = {}
+        local seen = {}
+        
+        for _, variation in ipairs(spot_variations) do
+            if variation.map == mapIndex and variation.location then
+                local key = string.format("%d_%d_%.2f_%.2f",
+                    variation.location.gridXNo, variation.location.gridZNo,
+                    variation.location.posX, variation.location.posZ)
+                
+                if key == spotKey then
+                    -- If we have valid patterns filter, only include variations from those patterns
+                    if validPatterns == nil or validPatterns[variation.pattern] then
+                        local varKey = getVariationKey(variation.id, variation.type)
+                        if not seen[varKey] then
+                            seen[varKey] = true
+                            table.insert(variations, {
+                                id = variation.id,
+                                type = variation.type,
+                                key = varKey,
+                                label = getVariationLabel(variation.id, variation.type),
+                                patterns = {}
+                            })
+                        end
+                        
+                        -- Add pattern to this variation's list
+                        for _, v in ipairs(variations) do
+                            if v.key == varKey then
+                                table.insert(v.patterns, variation.pattern)
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        
+        print("Returning " .. #variations .. " variations")
+        return variations
+    end)
+    
+    if not status then
+        print("ERROR in getVariationsAtSpot: " .. tostring(result))
+        return {}
+    end
+    
+    return result
+end
+
+function filterPatternsByMarkedSpots(mapIndex, markedSpots)
+    local pattern_mapbase = dofile(getPath("01_list_patterns.lua"))
+    
+    -- Build a map of pattern -> spots with variation keys
+    local patternSpots = {}
+    for _, variation in ipairs(spot_variations) do
+        if variation.map == mapIndex and variation.location then
+            local spotKey = string.format("%d_%d_%.2f_%.2f",
+                variation.location.gridXNo, variation.location.gridZNo,
+                variation.location.posX, variation.location.posZ)
+            
+            local patternId = variation.pattern
+            if not patternSpots[patternId] then
+                patternSpots[patternId] = {}
+            end
+            
+            if not patternSpots[patternId][spotKey] then
+                patternSpots[patternId][spotKey] = {}
+            end
+            
+            local varKey = getVariationKey(variation.id, variation.type)
+            table.insert(patternSpots[patternId][spotKey], varKey)
+        end
+    end
+    
+    -- Filter patterns that match ALL marked spots
+    local matchingPatterns = {}
+    for patternId, spots in pairs(patternSpots) do
+        local matches = true
+        
+        for spotKey, requiredVarKey in pairs(markedSpots) do
+            local spotHasVariation = false
+            if spots[spotKey] then
+                for _, varKey in ipairs(spots[spotKey]) do
+                    if varKey == requiredVarKey then
+                        spotHasVariation = true
+                        break
+                    end
+                end
+            end
+            
+            if not spotHasVariation then
+                matches = false
+                break
+            end
+        end
+        
+        if matches then
+            table.insert(matchingPatterns, patternId)
+        end
+    end
+    
+    table.sort(matchingPatterns)
+    return matchingPatterns
 end

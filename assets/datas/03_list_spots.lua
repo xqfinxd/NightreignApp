@@ -1,8 +1,9 @@
-require("csv")
+local csv = require("csv")
+
 local pattern_mapbase = dofile(getPath("01_list_patterns.lua"))
-local spotbase = loadCsv("LotResultSmallBaseAndSpot.csv", "ID")
-local pointbase = loadCsv("WorldMapPointParam.csv", "ID")
-local altpointbase = loadCsv("SmallBaseAndSpotAttachPoint.csv", "ID")
+local spotbase = csv.loadCsv("LotResultSmallBaseAndSpot.csv", "ID")
+local pointbase = csv.loadCsv("WorldMapPointParam.csv", "ID")
+local altpointbase = csv.loadCsv("SmallBaseAndSpotAttachPoint.csv", "ID")
 
 local function genKey(attachId)
     local point = pointbase.rows[attachId] or altpointbase.rows[attachId]
@@ -11,6 +12,19 @@ local function genKey(attachId)
     else
         return "unknown_" .. attachId
     end
+end
+
+local function unpackUkey(ukey)
+    local parts = {}
+    for ep in ukey:gmatch("([^_]*)") do
+        table.insert(parts, ep)
+    end
+    return {
+        gridXNo = tonumber(parts[1]),
+        gridZNo = tonumber(parts[2]),
+        posX = tonumber(parts[3]),
+        posZ = tonumber(parts[4]),
+    }
 end
 
 local mapPatterns = {}
@@ -36,7 +50,7 @@ for _, row in pairs(spotbase.rows) do
     spotdist[ukey] = dist
 end
 
-local spots = {}
+local pattern_spots = {}
 local dynamicSpots = {}
 for ukey, records in pairs(spotdist) do
     for map, _ in pairs(records.maps) do
@@ -49,8 +63,8 @@ for ukey, records in pairs(spotdist) do
                 break
             end
         end
-        table.insert(spots, {
-                id = ukey,
+        table.insert(pattern_spots, {
+                id = unpackUkey(ukey),
                 map = map,
                 static = succeed,
             }
@@ -65,10 +79,12 @@ for ukey, records in pairs(spotdist) do
     end
 end
 
-for patternId, sets in pairs(dynamicSpots) do
-    print(string.format("Pattern %d has dynamic spots: %s", patternId, #sets))
-end
+csv.table2Csv(pattern_spots, "step-03.csv", function(k, v)
+    if k == "id" and v then
+        return string.format("%d_%d_%.2f_%.2f", v.gridXNo, v.gridZNo, v.posX, v.posZ)
+    else
+        return tostring(v)
+    end
+end)
 
-table2Csv(spots, "step-03.csv")
-
-return spots
+return pattern_spots
