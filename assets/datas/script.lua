@@ -1,4 +1,7 @@
 local csv = require("csv")
+local pattern_spots = dofile(getPath("03_list_spots.lua"))
+local pattern_mapbase = dofile(getPath("01_list_patterns.lua"))
+local spot_variations = dofile(getPath("06_list_variation.lua"))
 
 local function normalize(point)
     local tileSize = Scene.TEXTURE_TILE_SIZE or 256
@@ -30,11 +33,9 @@ local function getVariationLabel(id, type)
 end
 
 function loadSpotsByPattern(patternId)
-    local pattern_mapbase = dofile(getPath("01_list_patterns.lua"))
     local map = pattern_mapbase[patternId].map
     Scene:loadMapTiles(map, 0)
     
-    local pattern_spots = dofile(getPath("03_list_spots.lua"))
     for _, spot in pairs(pattern_spots) do
         local spotpos = spot.id
         local spotmap = spot.map
@@ -61,7 +62,6 @@ end
 function loadStaticSpotsByMap(mapIndex)
     Scene:loadMapTiles(mapIndex, 0)
     
-    local pattern_spots = dofile(getPath("03_list_spots.lua"))
     local spots = {}
     
     for _, spot in pairs(pattern_spots) do
@@ -77,7 +77,6 @@ function loadStaticSpotsByMap(mapIndex)
     return spots
 end
 
-local spot_variations = dofile(getPath("06_list_variation.lua"))
 function getVariationsAtSpot(mapIndex, spotKey, markedSpots)
     local status, result = pcall(function()
         print("getVariationsAtSpot called: mapIndex=" .. tostring(mapIndex) .. ", spotKey=" .. tostring(spotKey))
@@ -199,8 +198,6 @@ function getVariationsAtSpot(mapIndex, spotKey, markedSpots)
 end
 
 function filterPatternsByMarkedSpots(mapIndex, markedSpots)
-    local pattern_mapbase = dofile(getPath("01_list_patterns.lua"))
-    
     -- Build a map of pattern -> spots with variation keys
     local patternSpots = {}
     for _, variation in ipairs(spot_variations) do
