@@ -2,6 +2,7 @@ local csv = require("csv")
 local pattern_spots = dofile(getPath("03_list_spots.lua"))
 local pattern_mapbase = dofile(getPath("01_list_patterns.lua"))
 local spot_variations = dofile(getPath("06_list_variation.lua"))
+local spotDefine = csv.loadCsv("Variations.csv", "id")
 
 local function normalize(point)
     local tileSize = Scene.TEXTURE_TILE_SIZE or 256
@@ -10,13 +11,12 @@ local function normalize(point)
     return gridX, gridZ
 end
 
--- Load variation labels from User_SpotDefine.csv
+-- Load variation labels from Variations.csv
 local variationLabels = {}
 local function loadVariationLabels()
     if next(variationLabels) == nil then
-        local spotDefine = csv.loadCsv("User_SpotDefine.csv", "ID")
         for id, row in pairs(spotDefine.rows) do
-            variationLabels[tonumber(id)] = row.label
+            variationLabels[tonumber(id)] = row.label..(row.sublabel or "")
         end
     end
     return variationLabels
@@ -42,7 +42,7 @@ function loadSpotsByPattern(patternId)
         local static = spot.static
         if spotmap == map and static then
             local x, z = normalize(spotpos)
-            Scene:addSpot(x, z, "launch", 0.1, { label = ""..tostring(static) })
+            Scene:addSpot(x, z, "launch", 0.1, { label = "" })
         end
     end
 end
