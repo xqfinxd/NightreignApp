@@ -225,6 +225,16 @@ bool GameData::loadVariationLabels(const std::string& filePath)
         return false;
     }
     
+    // Store additional variation metadata
+    struct VariationMetadata {
+        std::string label;
+        std::string icon;
+        bool visible;
+        float iconScale;
+    };
+    
+    std::map<int, VariationMetadata> metadata;
+    
     for (size_t i = 0; i < csv.getRowCount(); ++i)
     {
         int id = getInt(csv, i, "id");
@@ -234,7 +244,27 @@ bool GameData::loadVariationLabels(const std::string& filePath)
         if (!sublabel.empty())
             label = label + " - " + sublabel;
         
+        VariationMetadata meta;
+        meta.label = label;
+        meta.icon = getString(csv, i, "icon", "");
+        meta.visible = getInt(csv, i, "visible", 1) != 0;
+        meta.iconScale = getFloat(csv, i, "iconScale", 1.0f);
+        
         m_variationLabels[id] = label;
+        metadata[id] = meta;
+    }
+    
+    // Apply metadata to loaded variations
+    for (auto& var : m_variations)
+    {
+        int key = var.getKey();
+        auto it = metadata.find(key);
+        if (it != metadata.end())
+        {
+            var.icon = it->second.icon;
+            var.visible = it->second.visible;
+            var.iconScale = it->second.iconScale;
+        }
     }
     
     return true;

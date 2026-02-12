@@ -56,6 +56,9 @@ struct VariationInfo {
     int getKey() const { return variationId * 10 + variationType; }
     std::string label;
     std::string sublabel;
+    std::string icon;           // Icon texture name
+    bool visible = true;        // Is visible on map
+    float iconScale = 1.0f;     // Icon scale multiplier
 };
 
 // Game data manager - loads and manages all CSV data

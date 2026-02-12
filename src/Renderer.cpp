@@ -150,6 +150,14 @@ void Renderer::renderEntity(entt::registry& registry, const Camera& camera, entt
 {
 	auto& meshComp = registry.get<MeshComponent>(entity);
 	auto& transform = registry.get<Transform>(entity);
+
+	if (meshComp.meshName.empty()
+	|| meshComp.shaderName.empty()
+	|| meshComp.textureName.empty()
+	|| glm::length(transform.scale) == 0.0f) {
+		return;
+	}
+
 	// Get resources by name
 	MeshBuffer* mesh = m_resource_mgr->getMesh(meshComp.meshName);
 	Shader* shader = m_resource_mgr->getShader(meshComp.shaderName);
@@ -173,8 +181,11 @@ void Renderer::renderEntity(entt::registry& registry, const Camera& camera, entt
 	glm::mat4 mvp(1.0f);
 	mvp = camera.getProjectionMatrix() * camera.getViewMatrix();
 
-	// Set model matrix if entity has Transform
-	shader->setMat4("mvp", mvp * transform.getModelMatrix());
+	auto* spotComp = registry.try_get<MapSpot>(entity);
+	if (spotComp && spotComp->selected)
+		shader->setMat4("mvp", mvp * transform.getModelMatrix(spotComp->getScaleMultiplier()));
+	else
+		shader->setMat4("mvp", mvp * transform.getModelMatrix());
 
 	// Set blend mode based on RenderOptions component
 	if (auto* opt = registry.try_get<RenderOptions>(entity)) {
@@ -286,8 +297,10 @@ void Renderer::renderSpotLabels(entt::registry& registry, const Camera& camera,
 	{
 		auto& spot = spotView.get<MapSpot>(entity);
 		auto& transform = spotView.get<Transform>(entity);
+		auto scale = transform.scale * spot.getScaleMultiplier();
 		
-		if (spot.label.empty())
+		// Skip invisible spots
+		if (!spot.visible || spot.label.empty())
 			continue;
 		
 		// Calculate text size
@@ -299,7 +312,7 @@ void Renderer::renderSpotLabels(entt::registry& registry, const Camera& camera,
 		
 		// World-space position for text (below the spot)
 		glm::vec3 textWorldPos = transform.position;
-		textWorldPos.y -= transform.scale.y * 0.5f + textHeight * 1.2f; // Position below spot
+		textWorldPos.y -= scale.y * 0.5f + textHeight * 0.1f; // Slightly below the spot
 		
 		// Draw background rectangle first (if background color has alpha > 0)
 		if (backgroundColor.a > 0.0f)

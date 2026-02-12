@@ -89,7 +89,6 @@ Texture* ResourceManager::loadTexture(const std::string& name, const std::string
     // Check if texture already exists
     auto it = m_textures.find(name);
     if (it != m_textures.end()) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Texture '%s' already loaded, returning existing texture", name.c_str());
         return it->second;
     }
 
@@ -113,7 +112,7 @@ Texture* ResourceManager::getTexture(const std::string& name)
         return it->second;
     }
     
-    SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Texture '%s' not found", name.c_str());
+    SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Texture '%s' not found", name.c_str());
     return nullptr;
 }
 
@@ -136,7 +135,7 @@ MeshBuffer* ResourceManager::getMesh(const std::string& name)
         return it->second;
     }
     
-    SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Mesh '%s' not found", name.c_str());
+    SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Mesh '%s' not found", name.c_str());
     return nullptr;
 }
 

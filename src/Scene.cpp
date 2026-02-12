@@ -20,7 +20,8 @@
 #include <set>
 #include <SDL_events.h>
 
-float MapSpot::textScale = 0.005f;
+float MapSpot::textScale = 0.004f;
+float MapSpot::iconSize = 0.2f;
 
 struct HitResult {
 	bool hit = false;
@@ -185,28 +186,18 @@ void Scene::initialize()
 					continue;
 				}
 				VariationOption var;
-				var.id = res->variationId;
-				var.type = res->variationType;
-				var.label = res->label;
-				var.key = res->getKey();
+				var.info = *res;
 				var.patterns.insert(res->patternId);
 				m_availableVariations.push_back(var);
 				uniqueVars[res->getKey()] = m_availableVariations.size() - 1;
-			}
-
-			// Visual feedback - scale up the clicked spot
-			if (m_registry.valid(entity))
-			{
-				auto& transform = m_registry.get<Transform>(entity);
-				transform.scale = glm::vec3(0.15f, 0.15f, 1.0f);
 			}
 		}
 		
 		// Normal mode - just visual selection
 		if(m_selectedSpotEntity != entt::null)
 		{
-			auto& prevSpot = m_registry.get<Transform>(m_selectedSpotEntity);
-			prevSpot.scale = glm::vec3(0.1f, 0.1f, 1.0f);
+			auto& prevSpot = m_registry.get<MapSpot>(m_selectedSpotEntity);
+			prevSpot.selected = false;
 		}
 
 		if(m_selectedSpotEntity == entity)
@@ -220,8 +211,8 @@ void Scene::initialize()
 
 		if(m_selectedSpotEntity != entt::null)
 		{
-			auto& newSpot = m_registry.get<Transform>(m_selectedSpotEntity);
-			newSpot.scale = glm::vec3(0.15f, 0.15f, 1.0f);
+			auto& newSpot = m_registry.get<MapSpot>(m_selectedSpotEntity);
+			newSpot.selected = true;
 		}
 	});
 
@@ -519,14 +510,14 @@ void Scene::drawUI()
 				const auto& var = m_availableVariations[i];
 				bool isSelected = (m_selectedVariationIndex == static_cast<int>(i));
 				
-				if (ImGui::Selectable(var.label.c_str(), isSelected))
+				if (ImGui::Selectable(var.info.label.c_str(), isSelected))
 				{
 					m_selectedVariationIndex = static_cast<int>(i);
 				}
 				
 				if (isSelected)
 				{
-					ImGui::Text("  ID: %d, Type: %d", var.id, var.type);
+					ImGui::Text("  ID: %d, Type: %d", var.info.variationId, var.info.variationType);
 					ImGui::Text("  In %zu patterns", var.patterns.size());
 				}
 			}
@@ -535,31 +526,26 @@ void Scene::drawUI()
 			if (m_selectedVariationIndex >= 0 && ImGui::Button("Add to Filter"))
 			{
 				const auto& selectedVar = m_availableVariations[m_selectedVariationIndex];
-				m_markedSpots[m_currentSpotId] = selectedVar.key;
-				SDL_Log("Added filter: spot %d -> %s", m_currentSpotId, selectedVar.label.c_str());
-				
-				// Clear selection for next spot
-				m_currentSpotId = -1;
-				m_availableVariations.clear();
-				m_selectedVariationIndex = -1;
+				m_markedSpots[m_currentSpotId] = selectedVar.info.getKey();
+				SDL_Log("Added filter: spot %d -> %s", m_currentSpotId, selectedVar.info.label.c_str());
 				
 				// Reset all spot scales
 				for (auto entity : m_mapSpotEntities)
 				{
-					if (m_registry.valid(entity))
+					if (!m_registry.valid(entity)) continue;
+					auto* mapSpot = m_registry.try_get<MapSpot>(entity);
+					if (!mapSpot) continue;
+					if (mapSpot->spotId == m_currentSpotId)
 					{
-						auto& transform = m_registry.get<Transform>(entity);
-						auto* mapSpot = m_registry.try_get<MapSpot>(entity);
-						if (mapSpot && mapSpot->spotId > 0)
-						{
-							mapSpot->label = selectedVar.label;
-							if (m_markedSpots.find(mapSpot->spotId) != m_markedSpots.end())
-								transform.scale = glm::vec3(0.15f, 0.15f, 1.0f);
-							else
-								transform.scale = glm::vec3(0.1f, 0.1f, 1.0f);
-						}
+						updateSpot(entity, selectedVar.info);
 					}
+					mapSpot->selected = false;
 				}
+
+				// Clear selection for next spot
+				m_currentSpotId = -1;
+				m_availableVariations.clear();
+				m_selectedVariationIndex = -1;
 
 				if (selectedVar.patterns.size() > 0)
 				{
@@ -785,9 +771,18 @@ void Scene::clearMapTiles()
 	m_mapTileEntities.clear();
 }
 
-entt::entity Scene::addSpot(const glm::vec2 &gridPos, const std::string &textureName, float size)
+VariationInfo Scene::getFilterSpot(int spotId) const
 {
-	// Calculate centering offset (same as tile grid)
+    VariationInfo temp{};
+	temp.spotId = spotId;
+	temp.icon = "undefined";
+	temp.label = "标记点";
+	temp.visible = true;
+	return temp;
+}
+
+entt::entity Scene::addSpot(const glm::vec2 &gridPos)
+{
 	float gridTotalWidth = m_gridWidth * m_tileSize;
 	float gridTotalHeight = m_gridHeight * m_tileSize;
 	float offsetX = -gridTotalWidth / 2.0f + m_tileSize / 2.0f;
@@ -797,22 +792,65 @@ entt::entity Scene::addSpot(const glm::vec2 &gridPos, const std::string &texture
 	float worldX = offsetX + gridPos.x * m_tileSize;
 	float worldY = offsetY + gridPos.y * m_tileSize;
 
-	// Create spot entity
+    // Create spot entity
 	auto entity = m_registry.create();
 	m_registry.emplace<Tag>(entity, "spot");
-	m_registry.emplace<MapSpot>(entity, gridPos, textureName);
-	m_registry.emplace<MeshComponent>(entity, "quad", "texture", textureName);
-	m_registry.emplace<RenderOptions>(entity, BlendType::DestAlpha, 2.f);
-
+	m_registry.emplace<MapSpot>(entity);
+	m_registry.emplace<MeshComponent>(entity);
+	m_registry.emplace<RenderOptions>(entity, BlendType::Standard, 2.f);
 	auto &transform = m_registry.emplace<Transform>(entity);
 	transform.position = glm::vec3(worldX, worldY, 0.1f); // Slightly above tiles
-	transform.scale = glm::vec3(size, size, 1.0f);
 
 	// Store entity for later cleanup
 	m_mapSpotEntities.push_back(entity);
 
-	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Scene: Added spot at grid position (%.2f, %.2f)", gridPos.x, gridPos.y);
 	return entity;
+}
+
+entt::entity Scene::addSpot(const glm::vec2 &gridPos, const VariationInfo &info)
+{
+	auto entity = addSpot(gridPos);
+	updateSpot(entity, info);
+    return entity;
+}
+
+void Scene::updateSpot(entt::entity entity, const VariationInfo &info)
+{
+	ResourceManager* resMgr = ResourceManager::getInstance();
+	Texture* texture = nullptr;
+	if (!info.icon.empty() && resMgr)
+	{
+		std::string iconPath = "nightreign/assets/textures/spots/" + info.icon + ".png";
+		texture = resMgr->loadTexture(info.icon, iconPath);
+		if(auto* meshComp = m_registry.try_get<MeshComponent>(entity))
+		{
+			meshComp->textureName = info.icon;
+			meshComp->meshName = "quad";
+			meshComp->shaderName = "texture";
+		}
+	}
+
+	auto& transform = m_registry.get<Transform>(entity);
+	if (texture && texture->isValid())
+	{
+		float scale  = MapSpot::iconSize * info.iconScale;
+		float aspectRatio = static_cast<float>(texture->getWidth()) / static_cast<float>(texture->getHeight());
+		if (aspectRatio < 1.0f && aspectRatio > 0.0f)
+			transform.scale = glm::vec3(scale, scale / aspectRatio, 1.0f);
+		else
+			transform.scale = glm::vec3(scale * aspectRatio, scale, 1.0f);
+	}
+	else
+	{
+		transform.scale = glm::vec3(0, 0, 1.0f);
+	}
+	
+	if (auto* mapSpot = m_registry.try_get<MapSpot>(entity))
+	{
+		mapSpot->label = info.label;
+		mapSpot->spotId = info.spotId;
+		mapSpot->visible = info.visible;
+	}
 }
 
 void Scene::clearSpots()
@@ -835,15 +873,16 @@ void Scene::loadSpotsByPattern(int patternId)
 	clearSpots();
 	auto& gameData = GameData::getInstance();
 	auto results = gameData.getVariationsForPattern(patternId);
+	
 	for (const auto* var: results)
 	{
+		if (!var->visible) continue; // Skip invisible variations
+		
 		auto spot = gameData.getSpot(var->spotId);
 		if (!spot) continue;
 		auto pos = gameData.normalizeSpotPosition(*spot);
-		auto entity = addSpot(pos, "launch", 0.1f);
-		auto& mapSpot = m_registry.get<MapSpot>(entity);
-		mapSpot.label = var->label;
-		mapSpot.spotId = var->spotId;
+		
+		addSpot(pos, *var);
 	}
 
 	loadMapTiles(gameData.getPattern(patternId)->map, 0);
@@ -862,10 +901,8 @@ void Scene::loadSpotsByMap(int map)
 		auto spot = gameData.getSpot(spotId);
 		if (!spot) continue;
 		auto pos = gameData.normalizeSpotPosition(*spot);
-		auto entity = addSpot(pos, "launch", 0.1f);
-		auto& mapSpot = m_registry.get<MapSpot>(entity);
-		mapSpot.label = std::to_string(spotId);
-		mapSpot.spotId = spotId;
+		auto tmp = getFilterSpot(spotId);
+		addSpot(pos, tmp);
 	}
 
 	loadMapTiles(map, 0);

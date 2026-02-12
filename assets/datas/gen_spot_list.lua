@@ -8,7 +8,9 @@ local altpointbase = csv.loadCsv("SmallBaseAndSpotAttachPoint.csv", "ID")
 local function genKey(attachId)
     local point = pointbase.rows[attachId] or altpointbase.rows[attachId]
     if point then
-        return string.format("%d_%d_%.2f_%.2f", point.gridXNo, point.gridZNo, point.posX, point.posZ)
+        local gridX = point.posX / 256 + point.gridXNo - 41;
+        local gridZ = point.posZ / 256 + point.gridZNo - 35;
+        return string.format("%.2f_%.2f", gridX, gridZ)
     else
         return "unknown_spot_" .. attachId
     end
@@ -19,11 +21,13 @@ local function unpackUkey(ukey)
     for ep in ukey:gmatch("([^_]*)") do
         table.insert(parts, ep)
     end
+    local xi, xf = math.modf(parts[1])
+    local yi, yf = math.modf(parts[2])
     return {
-        gridXNo = tonumber(parts[1]),
-        gridZNo = tonumber(parts[2]),
-        posX = tonumber(parts[3]),
-        posZ = tonumber(parts[4]),
+        gridXNo = xi + 41,
+        gridZNo = yi + 35,
+        posX = xf * 256,
+        posZ = yf * 256,
     }
 end
 

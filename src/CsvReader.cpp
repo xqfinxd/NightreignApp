@@ -19,6 +19,11 @@ bool CsvReader::load(const std::string& filePath, bool hasHeader, char delimiter
         return false;
     }
 
+    char bom[3] = {0};
+    file.read(bom, 3);
+    bool isBOM = (bom[0] == char(0xEF) && bom[1] == char(0xBB) && bom[2] == char(0xBF));
+    if(!isBOM) file.seekg(0); // No BOM, rewind
+
     std::string line;
     bool firstLine = true;
 

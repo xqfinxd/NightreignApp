@@ -113,11 +113,4 @@ local csvModule = {
     table2Csv = table2Csv,
 }
 
-if isCmdMode() then
-    return csvModule
-else
-    package.preload["csv"] = function()
-        return csvModule
-    end
-end
-
+return csvModule

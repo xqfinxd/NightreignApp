@@ -1,5 +1,6 @@
 #pragma once
 #include "public.h"
+#include "GameData.h"
 #include "components/MapSpot.h"
 #include <entt/entt.hpp>
 #include <vector>
@@ -27,7 +28,9 @@ public:
 	void loadMapTiles(int mapIndex, int layer = 0);
 
 	// Map spots
-	entt::entity addSpot(const glm::vec2 &gridPos, const std::string &textureName, float size = 0.2f);
+	entt::entity addSpot(const glm::vec2 &gridPos);
+	entt::entity addSpot(const glm::vec2 &gridPos, const VariationInfo& info);
+	void updateSpot(entt::entity entity, const VariationInfo& info);
 	void clearSpots();
 	void loadSpotsByPattern(int patternId);
 	void loadSpotsByMap(int map);
@@ -83,12 +86,10 @@ private:
 	
 	// Pattern filter mode
 	struct VariationOption {
-		int id = 0;
-		int type = -1;
-		int key = 0;
-		std::string label;
+		VariationInfo info;
 		std::set<int> patterns;
 	};
+	VariationInfo getFilterSpot(int spotId) const;
 	
 	bool m_filterMode = false;
 	int m_filterMapSelection = -1;
