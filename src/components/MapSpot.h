@@ -11,7 +11,7 @@ struct MapSpot
     glm::vec2 gridPosition{-1.f, -1.f}; // Position in grid coordinates (x, y)
     std::string textureName;            // Texture to use for this spot
     glm::vec4 tint{ 1.f };              // Color tint
-    std::any metadata;                  // Optional metadata for identifying this spot
+    int spotId = -1;                    // Spot ID from GameData
     std::string label;                  // Text label to display below spot
     
     MapSpot() = default;

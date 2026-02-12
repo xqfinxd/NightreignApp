@@ -1,10 +1,10 @@
 #pragma once
 #include "public.h"
 #include "components/MapSpot.h"
-#include "LuaScript.h"
 #include <entt/entt.hpp>
 #include <vector>
 #include <map>
+#include <set>
 
 class Renderer;
 class Device;
@@ -30,6 +30,7 @@ public:
 	entt::entity addSpot(const glm::vec2 &gridPos, const std::string &textureName, float size = 0.2f);
 	void clearSpots();
 	void loadSpotsByPattern(int patternId);
+	void loadSpotsByMap(int map);
 
 	// Mouse input
 	using SpotClickCallback = std::function<void(entt::entity spotEntity, const MapSpot& spot)>;
@@ -51,15 +52,10 @@ public:
 
 private:
 	void clearMapTiles();
-	void initLuaBindings();
-	static int addSpotLua(lua_State* lua);
-	static int loadMapTilesLua(lua_State* lua);
 
 	entt::registry m_registry;
 	std::vector<entt::entity> m_mapTileEntities;
 	std::vector<entt::entity> m_mapSpotEntities;
-
-	LuaScript* m_lua = nullptr;
 
 	int m_currentMapIndex = 0;
 	int m_currentLayer = 0;
@@ -87,18 +83,18 @@ private:
 	
 	// Pattern filter mode
 	struct VariationOption {
-		int id;
-		int type;
-		int key;
+		int id = 0;
+		int type = -1;
+		int key = 0;
 		std::string label;
-		std::vector<int> patterns;
+		std::set<int> patterns;
 	};
 	
 	bool m_filterMode = false;
-	int m_filterMapSelection = 0;
-	std::string m_currentSpotKey;
+	int m_filterMapSelection = -1;
+	int m_currentSpotId = -1;  // Currently selected spot ID
 	std::vector<VariationOption> m_availableVariations;
 	int m_selectedVariationIndex = -1;
-	std::map<std::string, int> m_markedSpots; // spotKey -> variationKey
-	std::vector<int> m_filteredPatterns; // Result of pattern filtering
+	std::map<int, int> m_markedSpots; // spotId -> variationKey
+	std::set<int> m_filteredPatterns; // Result of pattern filtering
 };

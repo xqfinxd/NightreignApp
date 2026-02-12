@@ -111,7 +111,7 @@ void Application::initialize()
     m_renderer->initialize();
     m_resource_mgr->initialize();
     m_scene_mgr->initialize();
-
+    
     // Add default scene
     m_scene_mgr->addScene("main", new Scene());
 

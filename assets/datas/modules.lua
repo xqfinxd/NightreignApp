@@ -1,10 +1,5 @@
 function getPath(filename)
-    local basedir = DATA_PATH or ""
-    return basedir .. filename
-end
-
-function isCmdMode()
-    return not CPP_ENV
+    return filename
 end
 
 local function loadCsv(filename, keyfield)
@@ -43,12 +38,8 @@ local function loadCsv(filename, keyfield)
 end
 
 local function table2Csv(tableData, filename, postprocess)
-    if not isCmdMode() then
-        return false
-    end
     assert(type(tableData) == "table", "table2Csv: tableData must be a table")
 
-    local basedir = DATA_PATH or ""
     filename = getPath(filename or "output.csv")
     local csvFile = io.open(filename, "w")
     if not csvFile then
