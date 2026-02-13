@@ -6,51 +6,65 @@
 #include <set>
 #include <glm/glm.hpp>
 
+struct MapPoint
+{
+	int gridXNo = 0, gridZNo = 0;
+	float posX = 0.0f, posZ = 0.0f;
+};
+
 // Map information
 struct MapInfo {
-    int id;
+    int id = -1;
     std::string name;
-    bool isdlc;
+
     std::vector<int> patterns;
+    std::vector<int> staticSpots;
+    std::vector<int> starterSpots;
 };
 
 // Pattern information
 struct PatternInfo {
-    int id;
-    int map;
-    int boss;
-    int bossId1;
-    int bossId2;
-    int extraBossId1;
-    int extraBossId2;
-    bool isdlc;
+    int id = -1;
+    int map = -1;
+    int boss = 0;
+    int bossId1 = 0;
+    int bossId2 = 0;
+    int extraBossId1 = 0;
+    int extraBossId2 = 0;
+    bool isdlc = false;
     
-    // Play area 1
-    int playArea1_gridXNo;
-    int playArea1_gridZNo;
-    float playArea1_posX;
-    float playArea1_posZ;
-    
-    // Play area 2
-    int playArea2_gridXNo;
-    int playArea2_gridZNo;
-    float playArea2_posX;
-    float playArea2_posZ;
+	MapPoint playArea1;
+	MapPoint playArea2;
+
+    std::vector<int> spots;
+    int starter = -1;
 };
 
-// Spot position
-struct SpotPosition {
+// Spot
+struct BaseSpot {
     int id;
-    int gridXNo;
-    int gridZNo;
-    float posX;
-    float posZ;
+	MapPoint point;
+    glm::vec2 normalize(int tileSize = 256) const {
+        float gridX = point.posX / tileSize + point.gridXNo - 41;
+        float gridZ = point.posZ / tileSize + point.gridZNo - 35;
+        return glm::vec2(gridX, gridZ);
+	}
+};
+
+struct FilterSpot : public BaseSpot {
+    std::vector<int> attachIds;
+	int variationKey = -1;
+	int attachIndex = -1;
+	int attachId() const {
+        if (attachIndex >= 0 && attachIndex < static_cast<int>(attachIds.size())) {
+            return attachIds[attachIndex];
+        }
+        return -1;
+	}
 };
 
 // Variation info
 struct VariationInfo {
-    int spotId;          // Which spot this variation is at
-    int patternId;       // Which pattern this variation appears in
     int variationId;     // smallBaseMapId
     int variationType;   // variationType
     int getKey() const { return variationId * 10 + variationType; }
@@ -59,6 +73,12 @@ struct VariationInfo {
     std::string icon;           // Icon texture name
     bool visible = true;        // Is visible on map
     float iconScale = 1.0f;     // Icon scale multiplier
+};
+
+struct VariationDistribution {
+    int variationKey;
+    int attachId;
+    int patternId;
 };
 
 // Game data manager - loads and manages all CSV data
@@ -77,9 +97,8 @@ public:
     const std::vector<int>& getPatternsByMap(int map) const;
     
     // Spot queries
-    const SpotPosition* getSpot(int spotId) const;
+    const BaseSpot* getSpot(int spotId) const;
     const std::vector<int>& getStaticSpotsByMap(int map) const;
-    glm::vec2 normalizeSpotPosition(const SpotPosition& spot, int tileSize = 256) const;
     
     // Variation queries
     std::vector<const VariationInfo*> getVariationsAtSpot(int spotId, int map) const;
@@ -106,11 +125,17 @@ private:
     bool loadVariations(const std::string& filePath);
     bool loadVariationLabels(const std::string& filePath);
 	void applyVariationLabels();
+
+	std::map<int, MapInfo> m_mapDB;
+	std::map<int, PatternInfo> m_patternDB;
+	std::map<int, BaseSpot> m_baseSpotDB;
+	std::map<int, FilterSpot> m_filterSpotDB;
+	std::map<int, VariationInfo> m_variationDB;
     
     std::map<int, PatternInfo> m_patterns;
     std::map<int, MapInfo> m_maps;
     
-    std::map<int, SpotPosition> m_spots;
+    std::map<int, BaseSpot> m_spots;
     std::map<int, std::vector<int>> m_staticSpotsByMap;
     
     std::vector<VariationInfo> m_variations;

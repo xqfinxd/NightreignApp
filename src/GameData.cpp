@@ -23,6 +23,28 @@ namespace {
         std::string val = csv.getValue(row, column);
         return val.empty() ? defaultVal : val;
     }
+
+    MapPoint getMapPoint(const CsvReader& csv, size_t row, const std::string& prefix) {
+        MapPoint point;
+        point.gridXNo = getInt(csv, row, prefix + "gridXNo");
+        point.gridZNo = getInt(csv, row, prefix + "gridZNo");
+        point.posX = getFloat(csv, row, prefix + "posX");
+        point.posZ = getFloat(csv, row, prefix + "posZ");
+		return point;
+	}
+
+    std::vector<int> getIntList(const CsvReader& csv, size_t row, const std::string& column, char delimiter = '_') {
+        std::vector<int> result;
+		std::string str = getString(csv, row, column);
+        std::stringstream ss(str);
+        std::string item;
+        while (std::getline(ss, item, delimiter)) {
+            if (!item.empty()) {
+                result.push_back(std::stoi(item));
+            }
+        }
+        return result;
+	}
 }
 
 GameData& GameData::getInstance()
@@ -63,7 +85,7 @@ bool GameData::loadFromCSV(const std::string& dataPath)
 std::vector<const char *> GameData::getMapNames() const
 {
     std::vector<const char *> names;
-    for (const auto& pair : m_maps) {
+    for (const auto& pair : m_mapDB) {
         names.push_back(pair.second.name.c_str());
     }
     return names;
@@ -71,7 +93,7 @@ std::vector<const char *> GameData::getMapNames() const
 
 int GameData::getMapCount() const
 {
-    return static_cast<int>(m_maps.size());
+    return static_cast<int>(m_mapDB.size());
 }
 
 bool GameData::loadMaps(const std::string &filePath)
@@ -88,8 +110,7 @@ bool GameData::loadMaps(const std::string &filePath)
         MapInfo map;
         map.id = getInt(csv, i, "id");
         map.name = getString(csv, i, "name");
-        map.isdlc = map.id == 4;
-        m_maps[map.id] = map;
+        m_mapDB[map.id] = map;
     }
     
     return true;
@@ -116,18 +137,10 @@ bool GameData::loadPatterns(const std::string &filePath)
         pattern.extraBossId2 = getInt(csv, i, "extraBossId2");
         pattern.isdlc = (getString(csv, i, "isdlc") == "true");
         
-        pattern.playArea1_gridXNo = getInt(csv, i, "playArea1_gridXNo");
-        pattern.playArea1_gridZNo = getInt(csv, i, "playArea1_gridZNo");
-        pattern.playArea1_posX = getFloat(csv, i, "playArea1_posX");
-        pattern.playArea1_posZ = getFloat(csv, i, "playArea1_posZ");
-        
-        pattern.playArea2_gridXNo = getInt(csv, i, "playArea2_gridXNo");
-        pattern.playArea2_gridZNo = getInt(csv, i, "playArea2_gridZNo");
-        pattern.playArea2_posX = getFloat(csv, i, "playArea2_posX");
-        pattern.playArea2_posZ = getFloat(csv, i, "playArea2_posZ");
+        pattern.playArea1 = getMapPoint(csv, i, "playArea1_");
+        pattern.playArea2 = getMapPoint(csv, i, "playArea2_");
         
         m_patterns[pattern.id] = pattern;
-        m_maps[pattern.map].patterns.push_back(pattern.id);
     }
     
     return true;
@@ -145,19 +158,7 @@ bool GameData::loadStaticSpots(const std::string& filePath)
     for (size_t i = 0; i < csv.getRowCount(); ++i)
     {
         int map = getInt(csv, i, "map");
-        std::string spotsStr = getString(csv, i, "spots");
-        
-        std::vector<int>& spots = m_staticSpotsByMap[map];
-        std::stringstream ss(spotsStr);
-        std::string spotId;
-        
-        while (std::getline(ss, spotId, '_'))
-        {
-            if (!spotId.empty())
-            {
-                spots.push_back(std::stoi(spotId));
-            }
-        }
+		// TODO: complete MapInfo static spots
     }
     
     return true;
@@ -174,14 +175,12 @@ bool GameData::loadSpotDistribution(const std::string& filePath)
     
     for (size_t i = 0; i < csv.getRowCount(); ++i)
     {
-        SpotPosition spot;
+        FilterSpot spot;
         spot.id = getInt(csv, i, "id");
-        spot.gridXNo = getInt(csv, i, "gridXNo");
-        spot.gridZNo = getInt(csv, i, "gridZNo");
-        spot.posX = getFloat(csv, i, "posX");
-        spot.posZ = getFloat(csv, i, "posZ");
+		spot.point = getMapPoint(csv, i, "");
+		spot.attachIds = getIntList(csv, i, "attachIds", '_');
         
-        m_spots[spot.id] = spot;
+        m_filterSpotDB[spot.id] = spot;
     }
     
     return true;
@@ -201,16 +200,16 @@ bool GameData::loadVariations(const std::string& filePath)
     for (size_t i = 0; i < csv.getRowCount(); ++i)
     {
         VariationInfo var;
-        var.spotId = getInt(csv, i, "spotId");
-        var.patternId = getInt(csv, i, "patternId");
+        //var.spotId = getInt(csv, i, "attachId");
+        //var.patternId = getInt(csv, i, "patternId");
         var.variationId = getInt(csv, i, "variationId");
         var.variationType = getInt(csv, i, "variationType");
         
         m_variations.push_back(var);
         
         // Build indices
-        m_variationsBySpot.insert({var.spotId, &m_variations.back()});
-        m_variationsByPattern.insert({var.patternId, &m_variations.back()});
+        //m_variationsBySpot.insert({var.spotId, &m_variations.back()});
+        //m_variationsByPattern.insert({var.patternId, &m_variations.back()});
     }
     
     return true;
@@ -294,11 +293,11 @@ const PatternInfo* GameData::getPattern(int patternId) const
 
 const std::vector<int>& GameData::getPatternsByMap(int map) const
 {
-    auto it = m_maps.find(map);
-    return (it != m_maps.end()) ? it->second.patterns : s_emptyIntVector;
+    auto it = m_mapDB.find(map);
+    return (it != m_mapDB.end()) ? it->second.patterns : s_emptyIntVector;
 }
 
-const SpotPosition* GameData::getSpot(int spotId) const
+const BaseSpot* GameData::getSpot(int spotId) const
 {
     auto it = m_spots.find(spotId);
     return (it != m_spots.end()) ? &it->second : nullptr;
@@ -308,13 +307,6 @@ const std::vector<int>& GameData::getStaticSpotsByMap(int map) const
 {
     auto it = m_staticSpotsByMap.find(map);
     return (it != m_staticSpotsByMap.end()) ? it->second : s_emptyIntVector;
-}
-
-glm::vec2 GameData::normalizeSpotPosition(const SpotPosition& spot, int tileSize) const
-{
-    float gridX = spot.posX / tileSize + spot.gridXNo - 41;
-    float gridZ = spot.posZ / tileSize + spot.gridZNo - 35;
-    return glm::vec2(gridX, gridZ);
 }
 
 std::vector<const VariationInfo*> GameData::getVariationsAtSpot(int spotId, int map) const

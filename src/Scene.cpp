@@ -880,7 +880,7 @@ void Scene::loadSpotsByPattern(int patternId)
 		
 		auto spot = gameData.getSpot(var->spotId);
 		if (!spot) continue;
-		auto pos = gameData.normalizeSpotPosition(*spot);
+		auto pos = spot->normalize();
 		
 		addSpot(pos, *var);
 	}
@@ -900,7 +900,7 @@ void Scene::loadSpotsByMap(int map)
 	{
 		auto spot = gameData.getSpot(spotId);
 		if (!spot) continue;
-		auto pos = gameData.normalizeSpotPosition(*spot);
+		auto pos = spot->normalize();
 		auto tmp = getFilterSpot(spotId);
 		addSpot(pos, tmp);
 	}

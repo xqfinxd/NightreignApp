@@ -53,6 +53,7 @@ for _, row in pairs(spotbase.rows) do
             maps = {},
             patterns = {},
             variations = {},
+            attachIds = {},
             index = spot_index,
         }
         spot_index = spot_index + 1
@@ -60,10 +61,12 @@ for _, row in pairs(spotbase.rows) do
 
     distribution.maps[map] = true
     distribution.patterns[patternId] = true
+    distribution.attachIds[attachId] = true
     table.insert(distribution.variations, {
         id = tonumber(row["smallBaseMapId"]),
         type = tonumber(row["variationId"]),
         patternId = patternId,
+        attachId = attachId,
     })
 
     spot_distribution[ukey] = distribution
@@ -82,6 +85,7 @@ for ukey, distribution in pairs(spot_distribution) do
         maps = distribution.maps,
         patterns = distribution.patterns,
         variations = distribution.variations,
+        attachIds = distribution.attachIds,
     }
 end
 
@@ -112,7 +116,7 @@ for id, distribution in pairs(remapped_spot_distribution) do
         table.insert(pattern_variationlist, {
             id = variation_index,
             patternId = variation.patternId,
-            spotId = id,
+            attachId = variation.attachId,
             variationType = variation.type,
             variationId = variation.id,
         })
@@ -127,11 +131,18 @@ csv.table2Csv(static_spotlist, "autogen_static_spotlist.csv", function(k, v)
         return tostring(v)
     end
 end)
-csv.table2Csv(remapped_spot_distribution, "autogen_spot_distribution.csv", function(k, v)
+local function dist_output(k, v)
     if k == "patterns" or k == "maps" or k == "variations" then
         return "_"
+    elseif k == "attachIds" and type(v) == "table" then
+        local ids = {}
+        for attachId, _ in pairs(v) do
+            table.insert(ids, tostring(attachId))
+        end
+        return table.concat(ids, "_")
     else
         return tostring(v)
     end
-end)
+end
+csv.table2Csv(remapped_spot_distribution, "autogen_spot_distribution.csv", dist_output)
 csv.table2Csv(pattern_variationlist, "autogen_pattern_variationlist.csv")
