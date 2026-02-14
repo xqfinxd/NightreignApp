@@ -136,6 +136,7 @@ bool GameData::loadPatterns(const std::string &filePath)
         pattern.extraBossId1 = getInt(csv, i, "extraBossId1");
         pattern.extraBossId2 = getInt(csv, i, "extraBossId2");
         pattern.isdlc = (getString(csv, i, "isdlc") == "true");
+        pattern.starter = getInt(csv, i, "starter");
         
         pattern.playArea1 = getMapPoint(csv, i, "playArea1_");
         pattern.playArea2 = getMapPoint(csv, i, "playArea2_");

@@ -23,18 +23,21 @@
 float MapSpot::textScale = 0.004f;
 float MapSpot::iconSize = 0.2f;
 
-struct HitResult {
+struct HitResult
+{
 	bool hit = false;
 	float distance = 0.0f;
-	glm::vec3 point{ 0.f };
-	glm::vec3 normal{ 0.f };
+	glm::vec3 point{0.f};
+	glm::vec3 normal{0.f};
 };
 
-struct Ray {
+struct Ray
+{
 	glm::vec3 origin;
 	glm::vec3 direction;
 
-	Ray(const Camera& camera, int x, int y, int w, int h) {
+	Ray(const Camera &camera, int x, int y, int w, int h)
+	{
 		// Convert screen coordinates to NDC (Normalized Device Coordinates)
 		// Screen Y is top-down, NDC Y is bottom-up
 		float ndcX = (2.0f * x) / w - 1.0f;
@@ -49,15 +52,18 @@ struct Ray {
 		direction = glm::normalize(glm::vec3(farPointWorld) - origin);
 	}
 
-	HitResult intersectPlane(const glm::vec3& planePoint, const glm::vec3& planeNormal) const {
+	HitResult intersectPlane(const glm::vec3 &planePoint, const glm::vec3 &planeNormal) const
+	{
 		HitResult result;
 
 		float denom = glm::dot(planeNormal, direction);
-		if (fabs(denom) > FLT_EPSILON) {
+		if (fabs(denom) > FLT_EPSILON)
+		{
 			glm::vec3 p0l0 = planePoint - origin;
 			float t = glm::dot(p0l0, planeNormal) / denom;
 
-			if (t >= 0) {
+			if (t >= 0)
+			{
 				result.hit = true;
 				result.distance = t;
 				result.point = origin + direction * t;
@@ -68,7 +74,8 @@ struct Ray {
 		return result;
 	}
 
-	HitResult intersectSphere(const glm::vec3& center, float radius) const {
+	HitResult intersectSphere(const glm::vec3 &center, float radius) const
+	{
 		HitResult result;
 
 		glm::vec3 oc = origin - center;
@@ -77,9 +84,11 @@ struct Ray {
 		float c = glm::dot(oc, oc) - radius * radius;
 		float discriminant = b * b - 4 * a * c;
 
-		if (discriminant > 0) {
+		if (discriminant > 0)
+		{
 			float t = (-b - sqrt(discriminant)) / (2.0f * a);
-			if (t >= 0) {
+			if (t >= 0)
+			{
 				result.hit = true;
 				result.distance = t;
 				result.point = origin + direction * t;
@@ -90,31 +99,40 @@ struct Ray {
 		return result;
 	}
 
-	HitResult intersectAABB(const glm::vec3& minBounds, const glm::vec3& maxBounds) const {
+	HitResult intersectAABB(const glm::vec3 &minBounds, const glm::vec3 &maxBounds) const
+	{
 		HitResult result;
 
 		float tmin = 0.0f;
 		float tmax = 100000.0f;
 
-		for (int i = 0; i < 3; i++) {
-			if (fabs(direction[i]) < 1e-6) {
+		for (int i = 0; i < 3; i++)
+		{
+			if (fabs(direction[i]) < 1e-6)
+			{
 				if (origin[i] < minBounds[i] || origin[i] > maxBounds[i])
 					return result;
 			}
-			else {
+			else
+			{
 				float ood = 1.0f / direction[i];
 				float t1 = (minBounds[i] - origin[i]) * ood;
 				float t2 = (maxBounds[i] - origin[i]) * ood;
 
-				if (t1 > t2) std::swap(t1, t2);
-				if (t1 > tmin) tmin = t1;
-				if (t2 < tmax) tmax = t2;
+				if (t1 > t2)
+					std::swap(t1, t2);
+				if (t1 > tmin)
+					tmin = t1;
+				if (t2 < tmax)
+					tmax = t2;
 
-				if (tmin > tmax) return result;
+				if (tmin > tmax)
+					return result;
 			}
 		}
 
-		if (tmin > 0) {
+		if (tmin > 0)
+		{
 			result.hit = true;
 			result.distance = tmin;
 			result.point = origin + direction * tmin;
@@ -124,9 +142,11 @@ struct Ray {
 			glm::vec3 localHit = result.point - center;
 
 			float minDist = FLT_MAX;
-			for (int i = 0; i < 3; i++) {
+			for (int i = 0; i < 3; i++)
+			{
 				float dist = fabs(halfSize[i] - fabs(localHit[i]));
-				if (dist < minDist) {
+				if (dist < minDist)
+				{
 					minDist = dist;
 					result.normal = glm::vec3(0);
 					result.normal[i] = (localHit[i] > 0) ? 1.0f : -1.0f;
@@ -167,58 +187,8 @@ void Scene::initialize()
 	}
 
 	// Set up spot click callback
-	setSpotClickCallback([this](entt::entity entity, const MapSpot& spot) {
-		// Handle filter mode
-		if (m_filterMode && spot.metadata > 0)
-		{
-			m_currentSpotId = spot.metadata;
-			m_availableVariations.clear();
-			m_selectedVariationIndex = -1;
-
-			auto& gameData = GameData::getInstance();
-			auto results = gameData.getVariationsAtSpot(spot.metadata, m_filteredPatterns);
-			std::map<int, size_t> uniqueVars;
-			for (const auto& res : results)
-			{
-				auto outPatterns = gameData.filterByVariation(
-					m_filteredPatterns, spot.metadata, res->getKey());
-				auto it = uniqueVars.find(res->getKey());
-				if (it != uniqueVars.end() && it->second < m_availableVariations.size())
-				{
-					m_availableVariations[it->second].patterns.insert(
-						outPatterns.begin(), outPatterns.end());
-					continue;
-				}
-				VariationOption var;
-				var.info = *res;
-				var.patterns.insert(outPatterns.begin(), outPatterns.end());
-				m_availableVariations.push_back(var);
-				uniqueVars[res->getKey()] = m_availableVariations.size() - 1;
-			}
-		}
-		
-		// Normal mode - just visual selection
-		if(m_selectedSpotEntity != entt::null)
-		{
-			auto& prevSpot = m_registry.get<MapSpot>(m_selectedSpotEntity);
-			prevSpot.selected = false;
-		}
-
-		if(m_selectedSpotEntity == entity)
-		{
-			m_selectedSpotEntity = entt::null;
-		}
-		else
-		{
-			m_selectedSpotEntity = entity;
-		}
-
-		if(m_selectedSpotEntity != entt::null)
-		{
-			auto& newSpot = m_registry.get<MapSpot>(m_selectedSpotEntity);
-			newSpot.selected = true;
-		}
-	});
+	setSpotClickCallback([this](entt::entity entity, const MapSpot &spot)
+						 { handleSpotClick(entity, spot); });
 
 	// Add some sample spots on the map with Chinese labels
 	loadSpotsByPattern(0);
@@ -244,7 +214,7 @@ void Scene::onMouseClick(int screenX, int screenY, int windowWidth, int windowHe
 		return;
 
 	Ray ray(*camera, screenX, screenY, windowWidth, windowHeight);
-	
+
 	// Collect all spots at this click location
 	std::vector<entt::entity> hitsAtLocation;
 	int selectedIndex = -1;
@@ -254,8 +224,8 @@ void Scene::onMouseClick(int screenX, int screenY, int windowWidth, int windowHe
 		if (!m_registry.valid(entity))
 			continue;
 
-		auto* transform = m_registry.try_get<Transform>(entity);
-		auto* mapSpot = m_registry.try_get<MapSpot>(entity);
+		auto *transform = m_registry.try_get<Transform>(entity);
+		auto *mapSpot = m_registry.try_get<MapSpot>(entity);
 		if (!transform || !mapSpot)
 			continue;
 
@@ -272,11 +242,11 @@ void Scene::onMouseClick(int screenX, int screenY, int windowWidth, int windowHe
 			}
 		}
 	}
-	
+
 	if (m_spotClickCallback && !hitsAtLocation.empty())
 	{
 		entt::entity nextSelectedEntity;
-		if(selectedIndex < 0 || static_cast<size_t>(selectedIndex) >= hitsAtLocation.size() - 1)
+		if (selectedIndex < 0 || static_cast<size_t>(selectedIndex) >= hitsAtLocation.size() - 1)
 		{
 			nextSelectedEntity = hitsAtLocation[0];
 		}
@@ -285,10 +255,9 @@ void Scene::onMouseClick(int screenX, int screenY, int windowWidth, int windowHe
 			nextSelectedEntity = hitsAtLocation[selectedIndex + 1];
 		}
 
-		auto* mapSpot = m_registry.try_get<MapSpot>(nextSelectedEntity);
-		auto* tag = m_registry.try_get<Tag>(nextSelectedEntity);
-		bool interactable = tag && (tag->name == "starter spot" || tag->name == "filter spot")
-			&& mapSpot && mapSpot->metadata > 0;
+		auto *mapSpot = m_registry.try_get<MapSpot>(nextSelectedEntity);
+		auto *tag = m_registry.try_get<Tag>(nextSelectedEntity);
+		bool interactable = tag && (tag->name == "starter spot" || tag->name == "filter spot") && mapSpot && mapSpot->metadata > 0;
 		if (interactable)
 		{
 			m_spotClickCallback(nextSelectedEntity, *mapSpot);
@@ -302,7 +271,7 @@ void Scene::onMouseButton(int button, bool pressed)
 	if (button == SDL_BUTTON_LEFT)
 	{
 		m_isMouseDragging = pressed;
-		
+
 		if (!pressed)
 		{
 			// Reset drag state when button released
@@ -311,29 +280,168 @@ void Scene::onMouseButton(int button, bool pressed)
 	}
 }
 
+void Scene::onMouseRightClick(int screenX, int screenY, int windowWidth, int windowHeight)
+{
+	// Only handle right click in filter mode
+	if (!m_filterMode)
+		return;
+
+	auto camera = getCamera();
+	if (!camera)
+		return;
+
+	Ray ray(*camera, screenX, screenY, windowWidth, windowHeight);
+
+	// Find the clicked spot
+	for (auto it = m_mapSpotEntities.rbegin(); it != m_mapSpotEntities.rend(); ++it)
+	{
+		auto entity = *it;
+		if (!m_registry.valid(entity))
+			continue;
+
+		auto *transform = m_registry.try_get<Transform>(entity);
+		auto *mapSpot = m_registry.try_get<MapSpot>(entity);
+		auto *tag = m_registry.try_get<Tag>(entity);
+		if (!transform || !mapSpot || !tag)
+			continue;
+
+		// Check if this is an interactable spot
+		if (mapSpot->metadata <= 0)
+			continue;
+
+		// Check if click is within spot bounds
+		float halfSize = (transform->scale.x * m_tileSize) * 0.5f;
+		auto result = ray.intersectSphere(transform->position, halfSize);
+
+		if (result.hit)
+		{
+			// Determine spot type and show context menu
+			if (tag->name == "filter spot")
+			{
+				m_contextMenuType = SpotType::eFilter;
+				m_contextMenuSpotId = mapSpot->metadata;
+				m_contextMenuStarterId = -1;
+				
+				// Prepare variation options
+				auto &gameData = GameData::getInstance();
+				auto results = gameData.getVariationsAtSpot(mapSpot->metadata, m_filteredPatterns);
+				m_availableVariations.clear();
+				
+				std::map<int, size_t> uniqueVars;
+				for (const auto &res : results)
+				{
+					auto outPatterns = gameData.filterByVariation(
+						m_filteredPatterns, mapSpot->metadata, res->getKey());
+					auto it = uniqueVars.find(res->getKey());
+					if (it != uniqueVars.end() && it->second < m_availableVariations.size())
+					{
+						m_availableVariations[it->second].patterns.insert(
+							outPatterns.begin(), outPatterns.end());
+						continue;
+					}
+					VariationOption var;
+					var.info = *res;
+					var.patterns.insert(outPatterns.begin(), outPatterns.end());
+					m_availableVariations.push_back(var);
+					uniqueVars[res->getKey()] = m_availableVariations.size() - 1;
+				}
+			}
+			else if (tag->name == "starter spot")
+			{
+				m_contextMenuType = SpotType::eStarter;
+				m_contextMenuSpotId = -1;
+				m_contextMenuStarterId = mapSpot->metadata;
+			}
+			else
+			{
+				continue;
+			}
+
+			m_contextMenuEntity = entity;
+			m_contextMenuPos = glm::vec2(screenX, screenY);
+			m_showContextMenu = true;
+			return;
+		}
+	}
+}
+
+void Scene::handleSpotClick(entt::entity entity, const MapSpot &spot)
+{
+	// Handle filter mode
+	if (m_filterMode && spot.metadata > 0)
+	{
+		m_currentSpotId = spot.metadata;
+		m_availableVariations.clear();
+		m_selectedVariationIndex = -1;
+
+		auto &gameData = GameData::getInstance();
+		auto results = gameData.getVariationsAtSpot(spot.metadata, m_filteredPatterns);
+		std::map<int, size_t> uniqueVars;
+		for (const auto &res : results)
+		{
+			auto outPatterns = gameData.filterByVariation(
+				m_filteredPatterns, spot.metadata, res->getKey());
+			auto it = uniqueVars.find(res->getKey());
+			if (it != uniqueVars.end() && it->second < m_availableVariations.size())
+			{
+				m_availableVariations[it->second].patterns.insert(
+					outPatterns.begin(), outPatterns.end());
+				continue;
+			}
+			VariationOption var;
+			var.info = *res;
+			var.patterns.insert(outPatterns.begin(), outPatterns.end());
+			m_availableVariations.push_back(var);
+			uniqueVars[res->getKey()] = m_availableVariations.size() - 1;
+		}
+	}
+
+	// Normal mode - just visual selection
+	if (m_selectedSpotEntity != entt::null)
+	{
+		auto &prevSpot = m_registry.get<MapSpot>(m_selectedSpotEntity);
+		prevSpot.selected = false;
+	}
+
+	if (m_selectedSpotEntity == entity)
+	{
+		m_selectedSpotEntity = entt::null;
+	}
+	else
+	{
+		m_selectedSpotEntity = entity;
+	}
+
+	if (m_selectedSpotEntity != entt::null)
+	{
+		auto &newSpot = m_registry.get<MapSpot>(m_selectedSpotEntity);
+		newSpot.selected = true;
+	}
+}
+
 void Scene::onMouseMove(int screenX, int screenY, int windowWidth, int windowHeight)
 {
 	auto camera = getCamera();
 	if (!camera)
 		return;
-	
+
 	glm::vec2 currentMousePos = glm::vec2(screenX, screenY);
 	Ray ray(*camera, screenX, screenY, windowWidth, windowHeight);
 	auto result = ray.intersectPlane(glm::vec3(0.f), glm::vec3(0.f, 0.f, 1.f));
-	if(result.hit)
+	if (result.hit)
 	{
 		m_mouseWorldPos = result.point;
 	}
-	
+
 	if (m_isMouseDragging && m_lastMousePos != glm::vec2(0.0f))
 	{
 		auto camera = getCamera();
 		if (!camera)
 			return;
-		
+
 		// Calculate mouse delta in screen space
 		glm::vec2 delta = currentMousePos - m_lastMousePos;
-		
+
 		// Convert screen delta to world delta based on camera
 		float worldDeltaScale = 0.01f;
 		if (camera->isOrthographic)
@@ -347,19 +455,19 @@ void Scene::onMouseMove(int screenX, int screenY, int windowWidth, int windowHei
 			float distance = glm::length(camera->position - camera->target);
 			worldDeltaScale = distance * 0.001f;
 		}
-		
+
 		// Calculate world space movement (inverted for natural drag feel)
 		glm::vec3 right = glm::normalize(glm::cross(camera->target - camera->position, camera->up));
 		glm::vec3 worldUp = camera->up;
-		
+
 		glm::vec3 movement = -right * delta.x * worldDeltaScale + worldUp * delta.y * worldDeltaScale;
-		
+
 		// Update camera position and target
 		camera->position += movement;
 		camera->target += movement;
 		camera->updateMatrices();
 	}
-	
+
 	m_lastMousePos = currentMousePos;
 }
 
@@ -368,14 +476,14 @@ void Scene::onMouseWheel(float deltaY)
 	auto camera = getCamera();
 	if (!camera)
 		return;
-	
+
 	// Zoom by adjusting ortho size or camera distance
 	if (camera->isOrthographic)
 	{
 		// Zoom by changing orthographic size
 		float zoomFactor = 1.0f - deltaY * 0.1f;
 		camera->orthoSize *= zoomFactor;
-		
+
 		// Clamp zoom level
 		camera->orthoSize = glm::clamp(camera->orthoSize, m_minZoom, m_maxZoom);
 	}
@@ -385,9 +493,9 @@ void Scene::onMouseWheel(float deltaY)
 		glm::vec3 direction = glm::normalize(camera->target - camera->position);
 		float distance = glm::length(camera->position - camera->target);
 		float zoomAmount = distance * deltaY * 0.1f;
-		
+
 		camera->position += direction * zoomAmount;
-		
+
 		// Clamp distance
 		float newDistance = glm::length(camera->position - camera->target);
 		if (newDistance < m_minZoom)
@@ -399,11 +507,11 @@ void Scene::onMouseWheel(float deltaY)
 			camera->position = camera->target - direction * m_maxZoom;
 		}
 	}
-	
+
 	camera->updateMatrices();
 }
 
-void Scene::render(Renderer* renderer)
+void Scene::render(Renderer *renderer)
 {
 	// Get camera
 	auto camera = getCamera();
@@ -414,7 +522,7 @@ void Scene::render(Renderer* renderer)
 
 	// Render all entities with MeshComponent
 	renderer->renderEntities(m_registry);
-	
+
 	// Render spot labels with ImGui's font texture
 	glm::vec4 black = glm::vec4(0.0f, 0.0f, 0.0f, 0.5f);
 	glm::vec4 white = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
@@ -452,10 +560,10 @@ void Scene::drawUI()
 			ImGui::Text("  FOV: %.2f", camera->fov);
 		}
 		glm::vec2 gridpos{m_mouseWorldPos.x / m_tileSize + (m_gridWidth / 2.0f),
-	                      m_mouseWorldPos.y / m_tileSize + (m_gridHeight / 2.0f)};
-		glm::vec2 gridNo{0,0};
+						  m_mouseWorldPos.y / m_tileSize + (m_gridHeight / 2.0f)};
+		glm::vec2 gridNo{0, 0};
 		glm::vec2 pos = glm::modf(gridpos, gridNo);
-		gridNo += glm::vec2(41,35);
+		gridNo += glm::vec2(41, 35);
 		pos = pos * (float)m_textureTileSize - (m_textureTileSize / 2.0f);
 		ImGui::Text("  Grid No: (%.2f, %.2f)", gridNo.x, gridNo.y);
 		ImGui::Text("  Local Pos: (%.2f, %.2f)", pos.x, pos.y);
@@ -469,7 +577,7 @@ void Scene::drawUI()
 	// Scene tool window
 	ImGui::Begin("Scene Tool");
 	ImGui::Checkbox("Enable B1 Overlay", &m_enableB1Overlay);
-	
+
 	ImGui::Separator();
 	ImGui::Text("Pattern ID:");
 	ImGui::InputInt("##PatternID", &m_patternInput);
@@ -481,7 +589,7 @@ void Scene::drawUI()
 	ImGui::Separator();
 	ImGui::Text("=== Pattern Filter Mode ===");
 	ImGui::Checkbox("Enable Filter Mode", &m_filterMode);
-	
+
 	if (m_filterMode)
 	{
 		ImGui::Text("1. Select Map:");
@@ -496,32 +604,32 @@ void Scene::drawUI()
 			m_filteredPatterns.clear();
 			m_filteredPatterns.insert(patterns.begin(), patterns.end());
 		}
-		
+
 		ImGui::Separator();
 		ImGui::Text("2. Click spots to select:");
 		if (!m_markedSpots.empty())
 		{
-			ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), 
-				"Filter active: %zu spots marked", m_markedSpots.size());
+			ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f),
+							   "Filter active: %zu spots marked", m_markedSpots.size());
 		}
-		
+
 		// Show available variations for clicked spot
 		if (m_currentSpotId > 0 && !m_availableVariations.empty())
 		{
 			ImGui::Text("Spot: %d", m_currentSpotId);
 			ImGui::Text("Available Variations:");
-			
+
 			ImGui::BeginChild("VariationList", ImVec2(0, 200), true);
 			for (size_t i = 0; i < m_availableVariations.size(); ++i)
 			{
-				const auto& var = m_availableVariations[i];
+				const auto &var = m_availableVariations[i];
 				bool isSelected = (m_selectedVariationIndex == static_cast<int>(i));
-				
+
 				if (ImGui::Selectable(var.info.getText().c_str(), isSelected))
 				{
 					m_selectedVariationIndex = static_cast<int>(i);
 				}
-				
+
 				if (isSelected)
 				{
 					ImGui::Text("  ID: %d, Type: %d", var.info.variationId, var.info.variationType);
@@ -529,19 +637,21 @@ void Scene::drawUI()
 				}
 			}
 			ImGui::EndChild();
-			
+
 			if (m_selectedVariationIndex >= 0 && ImGui::Button("Add to Filter"))
 			{
-				const auto& selectedVar = m_availableVariations[m_selectedVariationIndex];
+				const auto &selectedVar = m_availableVariations[m_selectedVariationIndex];
 				m_markedSpots[m_currentSpotId] = selectedVar.info.getKey();
 				SDL_Log("Added filter: spot %d -> %s", m_currentSpotId, selectedVar.info.getText().c_str());
-				
+
 				// Reset all spot scales
 				for (auto entity : m_mapSpotEntities)
 				{
-					if (!m_registry.valid(entity)) continue;
-					auto* mapSpot = m_registry.try_get<MapSpot>(entity);
-					if (!mapSpot) continue;
+					if (!m_registry.valid(entity))
+						continue;
+					auto *mapSpot = m_registry.try_get<MapSpot>(entity);
+					if (!mapSpot)
+						continue;
 					if (mapSpot->metadata == m_currentSpotId)
 					{
 						updateSpot(entity, selectedVar.info);
@@ -566,11 +676,11 @@ void Scene::drawUI()
 		{
 			ImGui::Text("No variations available at this spot");
 		}
-		
+
 		ImGui::Separator();
 		ImGui::Text("3. Filter patterns:");
 		ImGui::Text("Marked Spots: %zu", m_markedSpots.size());
-		
+
 		if (ImGui::Button("Clear Marked Spots"))
 		{
 			m_markedSpots.clear();
@@ -578,16 +688,16 @@ void Scene::drawUI()
 			auto patterns = GameData::getInstance().getPatternsByMap(m_filterMapSelection);
 			m_filteredPatterns.insert(patterns.begin(), patterns.end());
 		}
-		
+
 		// Display marked spots
 		if (!m_markedSpots.empty())
 		{
 			ImGui::Separator();
 			ImGui::Text("Marked Filters:");
 			ImGui::BeginChild("MarkedSpots", ImVec2(0, 150), true);
-			
+
 			std::vector<int> toRemove;
-			for (const auto& [spotId, varKey] : m_markedSpots)
+			for (const auto &[spotId, varKey] : m_markedSpots)
 			{
 				auto varInfo = GameData::getInstance().getVariation(varKey);
 				ImGui::PushID(std::to_string(spotId).c_str());
@@ -599,31 +709,31 @@ void Scene::drawUI()
 				}
 				ImGui::PopID();
 			}
-			
+
 			// Remove spots marked for deletion
-			for (const auto& key : toRemove)
+			for (const auto &key : toRemove)
 			{
 				m_markedSpots.erase(key);
-				
+
 				// Reset spot scale
 				for (auto entity : m_mapSpotEntities)
 				{
 					if (m_registry.valid(entity))
 					{
-						auto* mapSpot = m_registry.try_get<MapSpot>(entity);
+						auto *mapSpot = m_registry.try_get<MapSpot>(entity);
 						if (mapSpot && mapSpot->metadata > 0 && mapSpot->metadata == key)
 						{
-							auto& transform = m_registry.get<Transform>(entity);
+							auto &transform = m_registry.get<Transform>(entity);
 							transform.scale = glm::vec3(0.1f, 0.1f, 1.0f);
 							break;
 						}
 					}
 				}
 			}
-			
+
 			ImGui::EndChild();
 		}
-		
+
 		// Display filtered patterns
 		if (!m_filteredPatterns.empty())
 		{
@@ -645,6 +755,180 @@ void Scene::drawUI()
 	}
 
 	ImGui::End();
+	
+	// Context menu (appears at mouse position)
+	if (m_showContextMenu)
+	{
+		// Get display size
+		ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+		
+		// Estimate menu size (will be accurate after first frame)
+		// For Filter Spot: approximately 200 width + (variations * 25) height
+		// For Starter Spot: approximately 200 width + 60 height
+		float estimatedWidth = 250.0f;
+		float estimatedHeight = 150.0f;
+		
+		if (m_contextMenuType == SpotType::eFilter)
+		{
+			// Estimate based on number of variations
+			estimatedHeight = 80.0f + m_availableVariations.size() * 25.0f;
+			// Cap maximum height
+			if (estimatedHeight > 400.0f)
+				estimatedHeight = 400.0f;
+		}
+		else if (m_contextMenuType == SpotType::eStarter)
+		{
+			estimatedHeight = 80.0f;
+		}
+		
+		// Adjust position to keep menu within window bounds
+		float menuX = m_contextMenuPos.x;
+		float menuY = m_contextMenuPos.y;
+		
+		// Check right boundary
+		if (menuX + estimatedWidth > displaySize.x)
+		{
+			menuX = displaySize.x - estimatedWidth - 10.0f;
+			if (menuX < 10.0f) menuX = 10.0f;
+		}
+		
+		// Check bottom boundary
+		if (menuY + estimatedHeight > displaySize.y)
+		{
+			menuY = displaySize.y - estimatedHeight - 10.0f;
+			if (menuY < 10.0f) menuY = 10.0f;
+		}
+		
+		ImGui::SetNextWindowPos(ImVec2(menuX, menuY), ImGuiCond_Appearing);
+		ImGui::Begin("Context Menu", &m_showContextMenu, 
+			ImGuiWindowFlags_NoTitleBar | 
+			ImGuiWindowFlags_NoResize | 
+			ImGuiWindowFlags_AlwaysAutoResize | 
+			ImGuiWindowFlags_NoSavedSettings);
+		
+		// Get actual window size after rendering and adjust if needed
+		ImVec2 windowSize = ImGui::GetWindowSize();
+		ImVec2 windowPos = ImGui::GetWindowPos();
+		
+		// Check if window is out of bounds and adjust
+		bool needsAdjustment = false;
+		float adjustedX = windowPos.x;
+		float adjustedY = windowPos.y;
+		
+		if (windowPos.x + windowSize.x > displaySize.x)
+		{
+			adjustedX = displaySize.x - windowSize.x - 10.0f;
+			if (adjustedX < 10.0f) adjustedX = 10.0f;
+			needsAdjustment = true;
+		}
+		
+		if (windowPos.y + windowSize.y > displaySize.y)
+		{
+			adjustedY = displaySize.y - windowSize.y - 10.0f;
+			if (adjustedY < 10.0f) adjustedY = 10.0f;
+			needsAdjustment = true;
+		}
+		
+		if (needsAdjustment)
+		{
+			ImGui::SetWindowPos(ImVec2(adjustedX, adjustedY));
+		}
+		
+		if (m_contextMenuType == SpotType::eFilter && m_contextMenuSpotId > 0)
+		{
+			// Filter Spot: show variation list
+			ImGui::Text("Filter Spot %d", m_contextMenuSpotId);
+			ImGui::Separator();
+			
+			if (m_availableVariations.empty())
+			{
+				ImGui::Text("No variations available");
+			}
+			else
+			{
+				for (size_t i = 0; i < m_availableVariations.size(); ++i)
+				{
+					const auto &var = m_availableVariations[i];
+					std::string label = var.info.getText() + " (" + std::to_string(var.patterns.size()) + ")";
+					
+					if (ImGui::MenuItem(label.c_str()))
+					{
+						// Add to filter
+						m_markedSpots[m_contextMenuSpotId] = var.info.getKey();
+						SDL_Log("Added filter: spot %d -> %s", m_contextMenuSpotId, var.info.getText().c_str());
+						
+						// Update spot visual
+						for (auto entity : m_mapSpotEntities)
+						{
+							if (!m_registry.valid(entity))
+								continue;
+							auto *mapSpot = m_registry.try_get<MapSpot>(entity);
+							if (!mapSpot)
+								continue;
+							if (mapSpot->metadata == m_contextMenuSpotId)
+							{
+								updateSpot(entity, var.info);
+							}
+							mapSpot->selected = false;
+						}
+						
+						// Apply filter
+						m_filteredPatterns = GameData::getInstance().filterByVariation(
+							m_filteredPatterns, m_contextMenuSpotId, var.info.getKey());
+						
+						// Close menu
+						m_showContextMenu = false;
+						m_availableVariations.clear();
+					}
+				}
+			}
+		}
+		else if (m_contextMenuType == SpotType::eStarter && m_contextMenuStarterId > 0)
+		{
+			// Starter Spot: show apply filter option
+			ImGui::Text("Starter Spot %d", m_contextMenuStarterId);
+			ImGui::Separator();
+			
+			auto &gameData = GameData::getInstance();
+			auto starterSpot = gameData.getStarterSpot(m_contextMenuStarterId);
+			if (starterSpot)
+			{
+				if (ImGui::MenuItem("Apply Starter Filter"))
+				{
+					// Apply starter filter
+					m_filteredPatterns = gameData.filterByStarter(m_filteredPatterns, m_contextMenuStarterId);
+					SDL_Log("Applied starter filter: %d, remaining patterns: %zu", 
+						m_contextMenuStarterId, m_filteredPatterns.size());
+					
+					// Mark starter spot visually (optional)
+					if (m_contextMenuEntity != entt::null && m_registry.valid(m_contextMenuEntity))
+					{
+						auto *mapSpot = m_registry.try_get<MapSpot>(m_contextMenuEntity);
+						if (mapSpot)
+						{
+							mapSpot->selected = true;
+						}
+					}
+					
+					// Close menu
+					m_showContextMenu = false;
+				}
+			}
+			else
+			{
+				ImGui::Text("Invalid starter spot");
+			}
+		}
+		
+		ImGui::End();
+		
+		// Close menu when clicking outside
+		if (!ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow) && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+		{
+			m_showContextMenu = false;
+			m_availableVariations.clear();
+		}
+	}
 }
 
 Camera *Scene::getCamera()
@@ -741,7 +1025,7 @@ void Scene::loadMapTiles(int mapIndex, int layer)
 				std::string b1TextureName = b1NameStream.str();
 
 				// Try to load B1 texture (may not exist for all tiles)
-				Texture* b1Texture = resMgr->loadTexture(b1TextureName, b1TexturePath);
+				Texture *b1Texture = resMgr->loadTexture(b1TextureName, b1TexturePath);
 				if (b1Texture && b1Texture->isValid())
 				{
 					// Create overlay entity
@@ -762,7 +1046,7 @@ void Scene::loadMapTiles(int mapIndex, int layer)
 	}
 
 	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Scene: Loaded map tiles (index: %d, layer: %d, tiles: %dx%d)",
-			mapIndex, layer, m_gridWidth, m_gridHeight);
+				   mapIndex, layer, m_gridWidth, m_gridHeight);
 }
 
 void Scene::clearMapTiles()
@@ -780,7 +1064,7 @@ void Scene::clearMapTiles()
 
 VariationInfo Scene::getFilterSpot() const
 {
-    VariationInfo temp{};
+	VariationInfo temp{};
 	temp.icon = "undefined";
 	temp.label = "Mark Point";
 	temp.visible = true;
@@ -807,9 +1091,9 @@ entt::entity Scene::addSpot(const glm::vec2 &gridPos)
 	float worldX = offsetX + gridPos.x * m_tileSize;
 	float worldY = offsetY + gridPos.y * m_tileSize;
 
-    // Create spot entity
+	// Create spot entity
 	auto entity = m_registry.create();
-	auto& mapSpot = m_registry.emplace<MapSpot>(entity);
+	auto &mapSpot = m_registry.emplace<MapSpot>(entity);
 	m_registry.emplace<MeshComponent>(entity);
 	m_registry.emplace<RenderOptions>(entity, BlendType::Standard, 2.f);
 	auto &transform = m_registry.emplace<Transform>(entity);
@@ -824,42 +1108,42 @@ entt::entity Scene::addSpot(const glm::vec2 &gridPos)
 entt::entity Scene::addBaseSpot(const glm::vec2 &gridPos, int attachId, const VariationInfo &info)
 {
 	auto entity = addSpot(gridPos);
-	auto& mapSpot = m_registry.get<MapSpot>(entity);
+	auto &mapSpot = m_registry.get<MapSpot>(entity);
 	mapSpot.metadata = attachId;
 	m_registry.emplace<Tag>(entity, "base spot");
 	updateSpot(entity, info);
-    return entity;
+	return entity;
 }
 
 entt::entity Scene::addFilterSpot(const glm::vec2 &gridPos, int spotId, const VariationInfo &info)
 {
 	auto entity = addSpot(gridPos);
-	auto& mapSpot = m_registry.get<MapSpot>(entity);
+	auto &mapSpot = m_registry.get<MapSpot>(entity);
 	mapSpot.metadata = spotId;
 	m_registry.emplace<Tag>(entity, "filter spot");
 	updateSpot(entity, info);
-    return entity;
+	return entity;
 }
 
 entt::entity Scene::addStarterSpot(const glm::vec2 &gridPos, int starterId, const VariationInfo &info)
 {
 	auto entity = addSpot(gridPos);
-	auto& mapSpot = m_registry.get<MapSpot>(entity);
+	auto &mapSpot = m_registry.get<MapSpot>(entity);
 	mapSpot.metadata = starterId;
 	m_registry.emplace<Tag>(entity, "starter spot");
 	updateSpot(entity, info);
-    return entity;
+	return entity;
 }
 
 void Scene::updateSpot(entt::entity entity, const VariationInfo &info)
 {
-	ResourceManager* resMgr = ResourceManager::getInstance();
-	Texture* texture = nullptr;
+	ResourceManager *resMgr = ResourceManager::getInstance();
+	Texture *texture = nullptr;
 	if (!info.icon.empty() && resMgr)
 	{
 		std::string iconPath = "nightreign/assets/textures/spots/" + info.icon + ".png";
 		texture = resMgr->loadTexture(info.icon, iconPath);
-		if(auto* meshComp = m_registry.try_get<MeshComponent>(entity))
+		if (auto *meshComp = m_registry.try_get<MeshComponent>(entity))
 		{
 			meshComp->textureName = info.icon;
 			meshComp->meshName = "quad";
@@ -867,10 +1151,10 @@ void Scene::updateSpot(entt::entity entity, const VariationInfo &info)
 		}
 	}
 
-	auto& transform = m_registry.get<Transform>(entity);
+	auto &transform = m_registry.get<Transform>(entity);
 	if (texture && texture->isValid())
 	{
-		float scale  = MapSpot::iconSize * info.iconScale;
+		float scale = MapSpot::iconSize * info.iconScale;
 		float aspectRatio = static_cast<float>(texture->getWidth()) / static_cast<float>(texture->getHeight());
 		if (aspectRatio < 1.0f && aspectRatio > 0.0f)
 			transform.scale = glm::vec3(scale, scale / aspectRatio, 1.0f);
@@ -881,8 +1165,8 @@ void Scene::updateSpot(entt::entity entity, const VariationInfo &info)
 	{
 		transform.scale = glm::vec3(0, 0, 1.0f);
 	}
-	
-	if (auto* mapSpot = m_registry.try_get<MapSpot>(entity))
+
+	if (auto *mapSpot = m_registry.try_get<MapSpot>(entity))
 	{
 		mapSpot->label = info.getText();
 		mapSpot->visible = info.visible;
@@ -907,17 +1191,18 @@ void Scene::loadSpotsByPattern(int patternId)
 {
 	// Clear existing spots
 	clearSpots();
-	auto& gameData = GameData::getInstance();
-	auto* patternInfo = gameData.getPattern(patternId);
+	auto &gameData = GameData::getInstance();
+	auto *patternInfo = gameData.getPattern(patternId);
 	auto distList = gameData.getDists(patternId);
-	
-	for (const auto dist: distList)
-	{	
+
+	for (const auto dist : distList)
+	{
 		auto spot = gameData.getAttach(dist->attachId);
 		auto varInfo = gameData.getVariation(dist->patternId, dist->attachId);
-		if (!spot || !varInfo) continue;
+		if (!spot || !varInfo)
+			continue;
 		auto pos = spot->normalize();
-		
+
 		addBaseSpot(pos, dist->attachId, *varInfo);
 	}
 
@@ -930,12 +1215,13 @@ void Scene::loadSpotsByMap(int map)
 {
 	// Clear existing spots
 	clearSpots();
-	auto& gameData = GameData::getInstance();
+	auto &gameData = GameData::getInstance();
 	auto staticSpots = gameData.getStaticSpotsByMap(map);
 	for (auto spotId : staticSpots)
 	{
 		auto spot = gameData.getSpot(spotId);
-		if (!spot) continue;
+		if (!spot)
+			continue;
 		auto pos = spot->normalize();
 		auto tmp = getFilterSpot();
 		addFilterSpot(pos, spotId, tmp);
@@ -945,7 +1231,8 @@ void Scene::loadSpotsByMap(int map)
 	for (auto starterId : starterSpots)
 	{
 		auto starter = gameData.getStarterSpot(starterId);
-		if (!starter) continue;
+		if (!starter)
+			continue;
 		auto pos = starter->normalize();
 		auto tmp = getFilterStarter();
 		addStarterSpot(pos, starterId, tmp);

@@ -154,6 +154,20 @@ void Application::processInput()
 				}
 			}
 		}
+		
+		// Handle right click for context menu
+		if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_RIGHT)
+		{
+			// Only handle click if not over ImGui window
+			if (!ImGui::GetIO().WantCaptureMouse)
+			{
+				auto size = m_window->getCanvasSize();
+				if (auto activeScene = m_scene_mgr->getActiveScene())
+				{
+					activeScene->onMouseRightClick(event.button.x, event.button.y, size.x, size.y);
+				}
+			}
+		}
 
 		// Handle mouse button press/release for dragging
 		if (event.type == SDL_MOUSEBUTTONDOWN || event.type == SDL_MOUSEBUTTONUP)

@@ -7,15 +7,20 @@ local areabase = csv.loadCsv("LotResultPlayAreaParam.csv", "ID")
 local pattern_mapbase = {}
 for _, row in pairs(flagbase.rows) do
     local patternId = tonumber(row["patternId"])
-    if pattern_mapbase[patternId] == nil then
-        local pattern = {}
-        pattern.id = patternId
-
-        pattern.map = tonumber(row["rareMap"])
-        pattern.boss = tonumber(row["targetBoss"])
-        pattern.isdlc = tonumber(row["patternSetId"]) >= 1000
-
+    local pattern = pattern_mapbase[patternId]
+    if pattern == nil then
+        pattern = {
+            id = patternId,
+            map = tonumber(row["rareMap"]),
+            boss = tonumber(row["targetBoss"]),
+            isdlc = tonumber(row["patternSetId"]) >= 1000
+        }
+        
         pattern_mapbase[patternId] = pattern
+    end
+    local modifierSet = tonumber(row["modifierSet"])
+    if modifierSet == 190 or modifierSet == 160 then
+        pattern.starter = tonumber(row["modifier"])
     end
 end
 

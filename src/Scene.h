@@ -40,10 +40,12 @@ public:
 	// Mouse input
 	using SpotClickCallback = std::function<void(entt::entity spotEntity, const MapSpot& spot)>;
 	void onMouseClick(int screenX, int screenY, int windowWidth, int windowHeight);
+	void onMouseRightClick(int screenX, int screenY, int windowWidth, int windowHeight);
 	void onMouseMove(int screenX, int screenY, int windowWidth, int windowHeight);
 	void onMouseWheel(float deltaY);
 	void onMouseButton(int button, bool pressed);
 	void setSpotClickCallback(SpotClickCallback callback) { m_spotClickCallback = callback; }
+	void handleSpotClick(entt::entity spotEntity, const MapSpot& spot);
 
 	// ECS access
 	entt::registry &getRegistry() { return m_registry; }
@@ -101,4 +103,12 @@ private:
 	int m_selectedVariationIndex = -1;
 	std::map<int, int> m_markedSpots; // spotId -> variationKey
 	std::set<int> m_filteredPatterns; // Result of pattern filtering
+	
+	// Context menu state
+	bool m_showContextMenu = false;
+	glm::vec2 m_contextMenuPos = glm::vec2(0.0f);
+	entt::entity m_contextMenuEntity = entt::null;
+	int m_contextMenuSpotId = -1;
+	int m_contextMenuStarterId = -1;
+	SpotType m_contextMenuType = SpotType::eNone;
 };
