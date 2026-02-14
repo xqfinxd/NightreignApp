@@ -169,25 +169,29 @@ void Scene::initialize()
 	// Set up spot click callback
 	setSpotClickCallback([this](entt::entity entity, const MapSpot& spot) {
 		// Handle filter mode
-		if (m_filterMode && spot.spotId > 0)
+		if (m_filterMode && spot.metadata > 0)
 		{
-			m_currentSpotId = spot.spotId;
+			m_currentSpotId = spot.metadata;
 			m_availableVariations.clear();
 			m_selectedVariationIndex = -1;
 
-			auto results = GameData::getInstance().getVariationsAtSpotInPatterns(spot.spotId, m_filteredPatterns);
+			auto& gameData = GameData::getInstance();
+			auto results = gameData.getVariationsAtSpot(spot.metadata, m_filteredPatterns);
 			std::map<int, size_t> uniqueVars;
 			for (const auto& res : results)
 			{
+				auto outPatterns = gameData.filterByVariation(
+					m_filteredPatterns, spot.metadata, res->getKey());
 				auto it = uniqueVars.find(res->getKey());
 				if (it != uniqueVars.end() && it->second < m_availableVariations.size())
 				{
-					m_availableVariations[it->second].patterns.insert(res->patternId);
+					m_availableVariations[it->second].patterns.insert(
+						outPatterns.begin(), outPatterns.end());
 					continue;
 				}
 				VariationOption var;
 				var.info = *res;
-				var.patterns.insert(res->patternId);
+				var.patterns.insert(outPatterns.begin(), outPatterns.end());
 				m_availableVariations.push_back(var);
 				uniqueVars[res->getKey()] = m_availableVariations.size() - 1;
 			}
@@ -282,7 +286,10 @@ void Scene::onMouseClick(int screenX, int screenY, int windowWidth, int windowHe
 		}
 
 		auto* mapSpot = m_registry.try_get<MapSpot>(nextSelectedEntity);
-		if (mapSpot)
+		auto* tag = m_registry.try_get<Tag>(nextSelectedEntity);
+		bool interactable = tag && (tag->name == "starter spot" || tag->name == "filter spot")
+			&& mapSpot && mapSpot->metadata > 0;
+		if (interactable)
 		{
 			m_spotClickCallback(nextSelectedEntity, *mapSpot);
 		}
@@ -510,7 +517,7 @@ void Scene::drawUI()
 				const auto& var = m_availableVariations[i];
 				bool isSelected = (m_selectedVariationIndex == static_cast<int>(i));
 				
-				if (ImGui::Selectable(var.info.label.c_str(), isSelected))
+				if (ImGui::Selectable(var.info.getText().c_str(), isSelected))
 				{
 					m_selectedVariationIndex = static_cast<int>(i);
 				}
@@ -527,7 +534,7 @@ void Scene::drawUI()
 			{
 				const auto& selectedVar = m_availableVariations[m_selectedVariationIndex];
 				m_markedSpots[m_currentSpotId] = selectedVar.info.getKey();
-				SDL_Log("Added filter: spot %d -> %s", m_currentSpotId, selectedVar.info.label.c_str());
+				SDL_Log("Added filter: spot %d -> %s", m_currentSpotId, selectedVar.info.getText().c_str());
 				
 				// Reset all spot scales
 				for (auto entity : m_mapSpotEntities)
@@ -535,24 +542,24 @@ void Scene::drawUI()
 					if (!m_registry.valid(entity)) continue;
 					auto* mapSpot = m_registry.try_get<MapSpot>(entity);
 					if (!mapSpot) continue;
-					if (mapSpot->spotId == m_currentSpotId)
+					if (mapSpot->metadata == m_currentSpotId)
 					{
 						updateSpot(entity, selectedVar.info);
 					}
 					mapSpot->selected = false;
 				}
 
+				if (selectedVar.patterns.size() > 0)
+				{
+					std::vector<int> inPatterns{m_filteredPatterns.begin(), m_filteredPatterns.end()};
+					m_filteredPatterns = GameData::getInstance().filterByVariation(
+						m_filteredPatterns, m_currentSpotId, selectedVar.info.getKey());
+				}
+
 				// Clear selection for next spot
 				m_currentSpotId = -1;
 				m_availableVariations.clear();
 				m_selectedVariationIndex = -1;
-
-				if (selectedVar.patterns.size() > 0)
-				{
-					m_filteredPatterns.clear();
-					auto patterns = GameData::getInstance().filterPatternsBySpotVariations(m_filterMapSelection, m_markedSpots);
-					m_filteredPatterns.insert(patterns.begin(), patterns.end());
-				}
 			}
 		}
 		else if (m_currentSpotId <= 0)
@@ -582,9 +589,9 @@ void Scene::drawUI()
 			std::vector<int> toRemove;
 			for (const auto& [spotId, varKey] : m_markedSpots)
 			{
-				auto label = GameData::getInstance().getVariationLabel(varKey);
+				auto varInfo = GameData::getInstance().getVariation(varKey);
 				ImGui::PushID(std::to_string(spotId).c_str());
-				ImGui::Text("%d -> %s", spotId, label.c_str());
+				ImGui::Text("%d -> %s", spotId, varInfo->sublabel.c_str());
 				ImGui::SameLine();
 				if (ImGui::SmallButton("Remove"))
 				{
@@ -604,7 +611,7 @@ void Scene::drawUI()
 					if (m_registry.valid(entity))
 					{
 						auto* mapSpot = m_registry.try_get<MapSpot>(entity);
-						if (mapSpot && mapSpot->spotId > 0 && mapSpot->spotId == key)
+						if (mapSpot && mapSpot->metadata > 0 && mapSpot->metadata == key)
 						{
 							auto& transform = m_registry.get<Transform>(entity);
 							transform.scale = glm::vec3(0.1f, 0.1f, 1.0f);
@@ -771,12 +778,20 @@ void Scene::clearMapTiles()
 	m_mapTileEntities.clear();
 }
 
-VariationInfo Scene::getFilterSpot(int spotId) const
+VariationInfo Scene::getFilterSpot() const
 {
     VariationInfo temp{};
-	temp.spotId = spotId;
 	temp.icon = "undefined";
-	temp.label = "标记点";
+	temp.label = "Mark Point";
+	temp.visible = true;
+	return temp;
+}
+
+VariationInfo Scene::getFilterStarter() const
+{
+	VariationInfo temp{};
+	temp.icon = "launch";
+	temp.label = "Launch Point";
 	temp.visible = true;
 	return temp;
 }
@@ -794,8 +809,7 @@ entt::entity Scene::addSpot(const glm::vec2 &gridPos)
 
     // Create spot entity
 	auto entity = m_registry.create();
-	m_registry.emplace<Tag>(entity, "spot");
-	m_registry.emplace<MapSpot>(entity);
+	auto& mapSpot = m_registry.emplace<MapSpot>(entity);
 	m_registry.emplace<MeshComponent>(entity);
 	m_registry.emplace<RenderOptions>(entity, BlendType::Standard, 2.f);
 	auto &transform = m_registry.emplace<Transform>(entity);
@@ -807,9 +821,32 @@ entt::entity Scene::addSpot(const glm::vec2 &gridPos)
 	return entity;
 }
 
-entt::entity Scene::addSpot(const glm::vec2 &gridPos, const VariationInfo &info)
+entt::entity Scene::addBaseSpot(const glm::vec2 &gridPos, int attachId, const VariationInfo &info)
 {
 	auto entity = addSpot(gridPos);
+	auto& mapSpot = m_registry.get<MapSpot>(entity);
+	mapSpot.metadata = attachId;
+	m_registry.emplace<Tag>(entity, "base spot");
+	updateSpot(entity, info);
+    return entity;
+}
+
+entt::entity Scene::addFilterSpot(const glm::vec2 &gridPos, int spotId, const VariationInfo &info)
+{
+	auto entity = addSpot(gridPos);
+	auto& mapSpot = m_registry.get<MapSpot>(entity);
+	mapSpot.metadata = spotId;
+	m_registry.emplace<Tag>(entity, "filter spot");
+	updateSpot(entity, info);
+    return entity;
+}
+
+entt::entity Scene::addStarterSpot(const glm::vec2 &gridPos, int starterId, const VariationInfo &info)
+{
+	auto entity = addSpot(gridPos);
+	auto& mapSpot = m_registry.get<MapSpot>(entity);
+	mapSpot.metadata = starterId;
+	m_registry.emplace<Tag>(entity, "starter spot");
 	updateSpot(entity, info);
     return entity;
 }
@@ -847,8 +884,7 @@ void Scene::updateSpot(entt::entity entity, const VariationInfo &info)
 	
 	if (auto* mapSpot = m_registry.try_get<MapSpot>(entity))
 	{
-		mapSpot->label = info.label;
-		mapSpot->spotId = info.spotId;
+		mapSpot->label = info.getText();
 		mapSpot->visible = info.visible;
 	}
 }
@@ -872,17 +908,17 @@ void Scene::loadSpotsByPattern(int patternId)
 	// Clear existing spots
 	clearSpots();
 	auto& gameData = GameData::getInstance();
-	auto results = gameData.getVariationsForPattern(patternId);
+	auto* patternInfo = gameData.getPattern(patternId);
+	auto distList = gameData.getDists(patternId);
 	
-	for (const auto* var: results)
-	{
-		if (!var->visible) continue; // Skip invisible variations
-		
-		auto spot = gameData.getSpot(var->spotId);
-		if (!spot) continue;
+	for (const auto dist: distList)
+	{	
+		auto spot = gameData.getAttach(dist->attachId);
+		auto varInfo = gameData.getVariation(dist->patternId, dist->attachId);
+		if (!spot || !varInfo) continue;
 		auto pos = spot->normalize();
 		
-		addSpot(pos, *var);
+		addBaseSpot(pos, dist->attachId, *varInfo);
 	}
 
 	loadMapTiles(gameData.getPattern(patternId)->map, 0);
@@ -895,14 +931,24 @@ void Scene::loadSpotsByMap(int map)
 	// Clear existing spots
 	clearSpots();
 	auto& gameData = GameData::getInstance();
-	auto results = gameData.getStaticSpotsByMap(map);
-	for (auto spotId : results)
+	auto staticSpots = gameData.getStaticSpotsByMap(map);
+	for (auto spotId : staticSpots)
 	{
 		auto spot = gameData.getSpot(spotId);
 		if (!spot) continue;
 		auto pos = spot->normalize();
-		auto tmp = getFilterSpot(spotId);
-		addSpot(pos, tmp);
+		auto tmp = getFilterSpot();
+		addFilterSpot(pos, spotId, tmp);
+	}
+
+	auto starterSpots = gameData.getStarterSpotsByMap(map);
+	for (auto starterId : starterSpots)
+	{
+		auto starter = gameData.getStarterSpot(starterId);
+		if (!starter) continue;
+		auto pos = starter->normalize();
+		auto tmp = getFilterStarter();
+		addStarterSpot(pos, starterId, tmp);
 	}
 
 	loadMapTiles(map, 0);

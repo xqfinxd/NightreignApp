@@ -29,7 +29,9 @@ public:
 
 	// Map spots
 	entt::entity addSpot(const glm::vec2 &gridPos);
-	entt::entity addSpot(const glm::vec2 &gridPos, const VariationInfo& info);
+	entt::entity addBaseSpot(const glm::vec2 &gridPos, int attachId, const VariationInfo& info);
+	entt::entity addFilterSpot(const glm::vec2 &gridPos, int spotId, const VariationInfo& info);
+	entt::entity addStarterSpot(const glm::vec2 &gridPos, int starterId, const VariationInfo& info);
 	void updateSpot(entt::entity entity, const VariationInfo& info);
 	void clearSpots();
 	void loadSpotsByPattern(int patternId);
@@ -89,7 +91,8 @@ private:
 		VariationInfo info;
 		std::set<int> patterns;
 	};
-	VariationInfo getFilterSpot(int spotId) const;
+	VariationInfo getFilterSpot() const;
+	VariationInfo getFilterStarter() const;
 	
 	bool m_filterMode = false;
 	int m_filterMapSelection = -1;

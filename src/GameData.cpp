@@ -24,7 +24,7 @@ namespace {
         return val.empty() ? defaultVal : val;
     }
 
-    MapPoint getMapPoint(const CsvReader& csv, size_t row, const std::string& prefix) {
+    MapPoint getMapPoint(const CsvReader& csv, size_t row, const std::string& prefix = "") {
         MapPoint point;
         point.gridXNo = getInt(csv, row, prefix + "gridXNo");
         point.gridZNo = getInt(csv, row, prefix + "gridZNo");
@@ -55,7 +55,6 @@ GameData& GameData::getInstance()
 
 bool GameData::loadFromCSV(const std::string& dataPath)
 {
-    SDL_Log("GameData: Loading CSV data from %s", dataPath.c_str());
     if (!loadMaps(dataPath + "/manual_maps.csv"))
         return false;
     
@@ -73,11 +72,12 @@ bool GameData::loadFromCSV(const std::string& dataPath)
     
     if (!loadVariationLabels(dataPath + "/manual_variations.csv"))
         return false;
-    
-	applyVariationLabels();
 
-    SDL_Log("GameData: Loaded %zu patterns, %zu spots, %zu variations",
-            m_patterns.size(), m_spots.size(), m_variations.size());
+    if (!loadStarterList(dataPath + "/autogen_starter_list.csv"))
+        return false;
+
+    if (!loadStarterDist(dataPath + "/autogen_starter_distribution.csv"))
+        return false;
     
     return true;
 }
@@ -140,7 +140,40 @@ bool GameData::loadPatterns(const std::string &filePath)
         pattern.playArea1 = getMapPoint(csv, i, "playArea1_");
         pattern.playArea2 = getMapPoint(csv, i, "playArea2_");
         
-        m_patterns[pattern.id] = pattern;
+        m_patternDB[pattern.id] = pattern;
+        m_mapDB[pattern.map].patterns.push_back(pattern.id);
+    }
+    
+    return true;
+}
+
+bool GameData::loadSpotDistribution(const std::string& filePath)
+{
+    CsvReader csv;
+    if (!csv.load(filePath))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "GameData: Failed to load %s", filePath.c_str());
+        return false;
+    }
+    
+    for (size_t i = 0; i < csv.getRowCount(); ++i)
+    {
+        int id = getInt(csv, i, "id");
+		auto point = getMapPoint(csv, i);
+		auto attachIds = getIntList(csv, i, "attachIds", '_');
+        FilterSpot filterSpot;
+        filterSpot.id = id;
+        filterSpot.point = point;
+        filterSpot.attachIds = attachIds;
+        m_filterSpotDB[filterSpot.id] = filterSpot;
+
+        for (auto attachId : attachIds)
+        {
+            BaseSpot baseSpot;
+            baseSpot.id = attachId;
+            baseSpot.point = point;
+            m_baseSpotDB[baseSpot.id] = baseSpot;
+        }
     }
     
     return true;
@@ -158,29 +191,7 @@ bool GameData::loadStaticSpots(const std::string& filePath)
     for (size_t i = 0; i < csv.getRowCount(); ++i)
     {
         int map = getInt(csv, i, "map");
-		// TODO: complete MapInfo static spots
-    }
-    
-    return true;
-}
-
-bool GameData::loadSpotDistribution(const std::string& filePath)
-{
-    CsvReader csv;
-    if (!csv.load(filePath))
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "GameData: Failed to load %s", filePath.c_str());
-        return false;
-    }
-    
-    for (size_t i = 0; i < csv.getRowCount(); ++i)
-    {
-        FilterSpot spot;
-        spot.id = getInt(csv, i, "id");
-		spot.point = getMapPoint(csv, i, "");
-		spot.attachIds = getIntList(csv, i, "attachIds", '_');
-        
-        m_filterSpotDB[spot.id] = spot;
+		m_mapDB[map].staticSpots = getIntList(csv, i, "spots", '_');
     }
     
     return true;
@@ -195,21 +206,19 @@ bool GameData::loadVariations(const std::string& filePath)
         return false;
     }
     
-    m_variations.reserve(csv.getRowCount());
-    
     for (size_t i = 0; i < csv.getRowCount(); ++i)
     {
         VariationInfo var;
-        //var.spotId = getInt(csv, i, "attachId");
-        //var.patternId = getInt(csv, i, "patternId");
         var.variationId = getInt(csv, i, "variationId");
         var.variationType = getInt(csv, i, "variationType");
         
-        m_variations.push_back(var);
-        
-        // Build indices
-        //m_variationsBySpot.insert({var.spotId, &m_variations.back()});
-        //m_variationsByPattern.insert({var.patternId, &m_variations.back()});
+        m_variationDB[var.getKey()] = var;
+
+        VariationDist dist;
+        dist.attachId = getInt(csv, i, "attachId");
+        dist.patternId = getInt(csv, i, "patternId");
+        dist.variationKey = var.getKey();
+        m_variationDist.push_back(dist);
     }
     
     return true;
@@ -224,71 +233,65 @@ bool GameData::loadVariationLabels(const std::string& filePath)
         return false;
     }
     
-    // Store additional variation metadata
-    struct VariationMetadata {
-        std::string label;
-        std::string icon;
-        bool visible;
-        float iconScale;
-    };
-    
-    std::map<int, VariationMetadata> metadata;
-    
     for (size_t i = 0; i < csv.getRowCount(); ++i)
     {
         int id = getInt(csv, i, "id");
-        std::string label = getString(csv, i, "label");
-        std::string sublabel = getString(csv, i, "sublabel");
-        
-        if (!sublabel.empty())
-            label = label + " - " + sublabel;
-        
-        VariationMetadata meta;
-        meta.label = label;
-        meta.icon = getString(csv, i, "icon", "");
-        meta.visible = getInt(csv, i, "visible", 1) != 0;
-        meta.iconScale = getFloat(csv, i, "iconScale", 1.0f);
-        
-        m_variationLabels[id] = label;
-        metadata[id] = meta;
-    }
-    
-    // Apply metadata to loaded variations
-    for (auto& var : m_variations)
-    {
-        int key = var.getKey();
-        auto it = metadata.find(key);
-        if (it != metadata.end())
-        {
-            var.icon = it->second.icon;
-            var.visible = it->second.visible;
-            var.iconScale = it->second.iconScale;
-        }
+        auto it = m_variationDB.find(id);
+        if (it == m_variationDB.end()) continue;
+
+        it->second.label = getString(csv, i, "label");
+        it->second.sublabel = getString(csv, i, "sublabel");
+        it->second.icon = getString(csv, i, "icon", "");
+        it->second.visible = getInt(csv, i, "visible", 1) != 0;
+        it->second.iconScale = getFloat(csv, i, "iconScale", 1.0f);
     }
     
     return true;
 }
 
-void GameData::applyVariationLabels()
+bool GameData::loadStarterList(const std::string &filePath)
 {
-    for(auto& var : m_variations)
+    CsvReader csv;
+    if (!csv.load(filePath))
     {
-        auto it = m_variationLabels.find(var.getKey());
-        if (it != m_variationLabels.end())
-        {
-            var.label = it->second;
-        }
-        else
-        {
-            var.label = "???-" + std::to_string(var.variationId);
-        }
-	}
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "GameData: Failed to load %s", filePath.c_str());
+        return false;
+    }
+
+    for (size_t i = 0; i < csv.getRowCount(); ++i)
+    {
+        int id = getInt(csv, i, "id");
+        auto& starter = m_starterSpotDB[id];
+        starter.id = id;
+        starter.point = getMapPoint(csv, i);
+    }
+    
+    return true;
+}
+
+bool GameData::loadStarterDist(const std::string &filePath)
+{
+    CsvReader csv;
+    if (!csv.load(filePath))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "GameData: Failed to load %s", filePath.c_str());
+        return false;
+    }
+
+    for (size_t i = 0; i < csv.getRowCount(); ++i)
+    {
+        int map = getInt(csv, i, "id");
+        auto& mapInfo = m_mapDB[map];
+        mapInfo.starterSpots = getIntList(csv, i, "starters", '_');
+    }
+    
+    return true;
 }
 
 const PatternInfo* GameData::getPattern(int patternId) const
 {
-    auto it = m_patterns.find(patternId);
-    return (it != m_patterns.end()) ? &it->second : nullptr;
+    auto it = m_patternDB.find(patternId);
+    return (it != m_patternDB.end()) ? &it->second : nullptr;
 }
 
 const std::vector<int>& GameData::getPatternsByMap(int map) const
@@ -297,108 +300,136 @@ const std::vector<int>& GameData::getPatternsByMap(int map) const
     return (it != m_mapDB.end()) ? it->second.patterns : s_emptyIntVector;
 }
 
-const BaseSpot* GameData::getSpot(int spotId) const
+const FilterSpot* GameData::getSpot(int spotId) const
 {
-    auto it = m_spots.find(spotId);
-    return (it != m_spots.end()) ? &it->second : nullptr;
+    auto it = m_filterSpotDB.find(spotId);
+    return (it != m_filterSpotDB.end()) ? &it->second : nullptr;
+}
+
+const BaseSpot* GameData::getAttach(int attachId) const
+{
+    auto it = m_baseSpotDB.find(attachId);
+    return (it != m_baseSpotDB.end()) ? &it->second : nullptr;
 }
 
 const std::vector<int>& GameData::getStaticSpotsByMap(int map) const
 {
-    auto it = m_staticSpotsByMap.find(map);
-    return (it != m_staticSpotsByMap.end()) ? it->second : s_emptyIntVector;
+    auto it = m_mapDB.find(map);
+    return (it != m_mapDB.end()) ? it->second.staticSpots : s_emptyIntVector;
+}
+
+const std::vector<int>& GameData::getStarterSpotsByMap(int map) const
+{
+    auto it = m_mapDB.find(map);
+    return (it != m_mapDB.end()) ? it->second.starterSpots : s_emptyIntVector;
+}
+
+const VariationInfo *GameData::getVariation(int varKey) const
+{
+    auto it = m_variationDB.find(varKey);
+    return it != m_variationDB.end() ? &it->second : nullptr;
+}
+
+const VariationInfo *GameData::getVariation(int patternId, int attachId) const
+{
+    for(const auto& dist : m_variationDist)
+    {
+        if (dist.attachId == attachId && dist.patternId == patternId)
+            return getVariation(dist.variationKey);
+    }
+    return nullptr;
+}
+
+std::vector<const VariationDist*> GameData::getDists(int patternId) const
+{
+    std::vector<const VariationDist*> result;
+    for (auto& dist : m_variationDist)
+    {
+        if(dist.patternId == patternId)
+            result.push_back(&dist);
+    }
+    return result;
+}
+
+const StarterSpot *GameData::getStarterSpot(int starterId) const
+{
+    auto it = m_starterSpotDB.find(starterId);
+    return it != m_starterSpotDB.end() ? &it->second : nullptr;
+}
+
+std::vector<const VariationInfo*> GameData::getVariationsAtSpot(int spotId, const std::set<int>& patterns) const
+{
+    std::vector<const VariationInfo*> result;
+    
+    std::set<int> attachIds;
+    auto fspotIt = m_filterSpotDB.find(spotId);
+    if (fspotIt != m_filterSpotDB.end())
+    {
+        attachIds.insert(
+            fspotIt->second.attachIds.begin(),
+            fspotIt->second.attachIds.end());
+    }
+
+    for(const auto& varDist : m_variationDist)
+    {
+        if (!attachIds.count(varDist.attachId) || !patterns.count(varDist.patternId))
+            continue;
+        auto varIt = m_variationDB.find(varDist.variationKey);
+        if (varIt == m_variationDB.end())
+            continue;
+        result.push_back(&varIt->second);
+    }
+    
+    return result;
 }
 
 std::vector<const VariationInfo*> GameData::getVariationsAtSpot(int spotId, int map) const
 {
-    std::vector<const VariationInfo*> result;
-    const auto& patternsForMap = getPatternsByMap(map);
-    std::set<int> validPatterns(patternsForMap.begin(), patternsForMap.end());
-    
-    return getVariationsAtSpotInPatterns(spotId, validPatterns);
-}
-
-std::vector<const VariationInfo*> GameData::getVariationsAtSpotInPatterns(
-    int spotId,
-    const std::set<int>& validPatterns) const
-{
-    std::vector<const VariationInfo*> result;
-    auto range = m_variationsBySpot.equal_range(spotId);
-    
-    for (auto it = range.first; it != range.second; ++it)
+    std::set<int> patterns;
+    auto mapIt = m_mapDB.find(map);
+    if (mapIt != m_mapDB.end())
     {
-        if (validPatterns.count(it->second->patternId) > 0)
-        {
-            result.push_back(it->second);
-        }
+        patterns.insert(
+            mapIt->second.staticSpots.begin(),
+            mapIt->second.staticSpots.begin());
     }
-    
-    return result;
+    return getVariationsAtSpot(spotId, patterns);
 }
 
-const std::string& GameData::getVariationLabel(int key) const
+std::set<int> GameData::filterByVariation(const std::set<int> &patterns, int spotId, int varKey) const
 {
-    auto it = m_variationLabels.find(key);
-    return (it != m_variationLabels.end()) ? it->second : s_emptyString;
-}
-
-std::vector<const VariationInfo*> GameData::getVariationsForPattern(int patternId) const
-{
-    std::vector<const VariationInfo*> result;
-    auto range = m_variationsByPattern.equal_range(patternId);
-
-    for (auto it = range.first; it != range.second; ++it)
+    std::set<int> result;
+    std::set<int> attachIds;
+    auto spotIt = m_filterSpotDB.find(spotId);
+    if (spotIt != m_filterSpotDB.end())
     {
-        result.push_back(it->second);
+        attachIds.insert(
+            spotIt->second.attachIds.begin(),
+            spotIt->second.attachIds.end());
+    }
+    for(const auto& dist : m_variationDist)
+    {
+        if (dist.variationKey == varKey
+            && attachIds.count(dist.attachId)
+            && patterns.count(dist.patternId))
+            result.insert(dist.patternId);
     }
 
     return result;
 }
 
-std::vector<int> GameData::filterPatternsBySpotVariations(
-    int mapIndex,
-    const std::map<int, int>& spotVariations) const
+std::set<int> GameData::filterByStarter(const std::set<int> &patterns, int starterId) const
 {
-    if (spotVariations.empty())
-        return std::vector<int>();
+    std::set<int> result;
     
-    // Build pattern -> spot -> variations map
-    std::map<int, std::map<int, std::set<int>>> patternSpots;
-    
-    const auto& patternsForMap = getPatternsByMap(mapIndex);
-    for (int patternId : patternsForMap)
+    for (auto patternId : patterns)
     {
-        auto range = m_variationsByPattern.equal_range(patternId);
-        for (auto it = range.first; it != range.second; ++it)
-        {
-            const auto* var = it->second;
-            patternSpots[patternId][var->spotId].insert(var->getKey());
-        }
+        auto patternInfo = getPattern(patternId);
+        if (!patternInfo)
+            continue;
+        if (patternInfo->starter == starterId)
+            result.insert(patternId);
     }
-    
-    // Filter patterns that match ALL marked spots
-    std::vector<int> matchingPatterns;
-    
-    for (const auto& [patternId, spots] : patternSpots)
-    {
-        bool matches = true;
-        
-        for (const auto& [spotId, requiredVarKey] : spotVariations)
-        {
-            auto spotIt = spots.find(spotId);
-            if (spotIt == spots.end() || spotIt->second.count(requiredVarKey) == 0)
-            {
-                matches = false;
-                break;
-            }
-        }
-        
-        if (matches)
-        {
-            matchingPatterns.push_back(patternId);
-        }
-    }
-    
-    std::sort(matchingPatterns.begin(), matchingPatterns.end());
-    return matchingPatterns;
+
+    return result;
 }
