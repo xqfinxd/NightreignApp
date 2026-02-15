@@ -313,6 +313,12 @@ void glDevice::createVertexArray(uint32_t* vao, uint32_t* vbo) {
 	SDL_Log("Device: Created VAO: %u, VBO: %u", *vao, *vbo);
 }
 
+void glDevice::deleteVertexArray(uint32_t vao, uint32_t vbo)
+{
+	if (vbo) glDeleteBuffers(1, &vbo);
+	if (vao) glDeleteVertexArrays(1, &vao);
+}
+
 GLenum glDevice::getGLBufferTarget(BufferType type) {
 	switch (type) {
 	case BufferType::Vertex: return GL_ARRAY_BUFFER;

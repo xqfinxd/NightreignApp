@@ -1,4 +1,5 @@
 #include "Renderer.h"
+#include "public.h"
 #include "Device.h"
 #include "ResourceManager.h"
 #include "Scene.h"

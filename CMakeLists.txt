@@ -38,7 +38,6 @@ if(EMSCRIPTEN)
 		-sUSE_SDL=2
 #		-sUSE_SDL_TTF=2
 		-O3
-		-lidbfs.js
 	)
 	target_link_options(NightreignApp PRIVATE 
 		-sUSE_SDL=2
@@ -47,8 +46,11 @@ if(EMSCRIPTEN)
 		-sMIN_WEBGL_VERSION=2
 		-sMAX_WEBGL_VERSION=2
 		-sALLOW_MEMORY_GROWTH=1
-		-O3
+		-sFORCE_FILESYSTEM=1
 		-lidbfs.js
+		--preload-file ${CMAKE_SOURCE_DIR}/assets@/nightreign/assets
+		-sEXPORTED_RUNTIME_METHODS=[FS,ccall,cwrap]
+		-O3
 	)
 	target_compile_definitions(NightreignApp PRIVATE 
 	)

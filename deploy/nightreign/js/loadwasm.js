@@ -12,6 +12,24 @@ var Module = {
     canvas: canvasElement,
     setStatus: function(text) {
         console.log("status: " + text);
+    },
+    preRun: [
+        function() {
+            console.log('Preparing IndexedDB file system...');
+            FS.mkdir('/nightreign');
+            FS.mount(IDBFS, {}, '/nightreign');
+            // Synchronize from IndexedDB to memory
+            FS.syncfs(true, function(err) {
+                if (err) {
+                    console.error('IDBFS sync from IndexedDB failed:', err);
+                } else {
+                    console.log('IDBFS sync from IndexedDB completed');
+                }
+            });
+        }
+    ],
+    onRuntimeInitialized: function() {
+        console.log('Runtime initialized, IDBFS ready');
     }
 };
 window.onerror = function(event) {

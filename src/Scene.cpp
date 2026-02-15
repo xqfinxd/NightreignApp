@@ -292,7 +292,12 @@ void Scene::onMouseRightClick(int screenX, int screenY, int windowWidth, int win
 
 	Ray ray(*camera, screenX, screenY, windowWidth, windowHeight);
 
-	// Find the clicked spot
+	// Clear previous context menu data
+	m_contextMenuData.clear();
+	
+	// Collect all spots at this click location
+	std::vector<std::pair<entt::entity, float>> hitsAtLocation;
+	
 	for (auto it = m_mapSpotEntities.rbegin(); it != m_mapSpotEntities.rend(); ++it)
 	{
 		auto entity = *it;
@@ -308,6 +313,10 @@ void Scene::onMouseRightClick(int screenX, int screenY, int windowWidth, int win
 		// Check if this is an interactable spot
 		if (mapSpot->metadata <= 0)
 			continue;
+			
+		// Only consider starter and filter spots
+		if (tag->name != "filter spot" && tag->name != "starter spot")
+			continue;
 
 		// Check if click is within spot bounds
 		float halfSize = (transform->scale.x * m_tileSize) * 0.5f;
@@ -315,53 +324,81 @@ void Scene::onMouseRightClick(int screenX, int screenY, int windowWidth, int win
 
 		if (result.hit)
 		{
-			// Determine spot type and show context menu
-			if (tag->name == "filter spot")
-			{
-				m_contextMenuType = SpotType::eFilter;
-				m_contextMenuSpotId = mapSpot->metadata;
-				m_contextMenuStarterId = -1;
-				
-				// Prepare variation options
-				auto &gameData = GameData::getInstance();
-				auto results = gameData.getVariationsAtSpot(mapSpot->metadata, m_filteredPatterns);
-				m_availableVariations.clear();
-				
-				std::map<int, size_t> uniqueVars;
-				for (const auto &res : results)
-				{
-					auto outPatterns = gameData.filterByVariation(
-						m_filteredPatterns, mapSpot->metadata, res->getKey());
-					auto it = uniqueVars.find(res->getKey());
-					if (it != uniqueVars.end() && it->second < m_availableVariations.size())
-					{
-						m_availableVariations[it->second].patterns.insert(
-							outPatterns.begin(), outPatterns.end());
-						continue;
-					}
-					VariationOption var;
-					var.info = *res;
-					var.patterns.insert(outPatterns.begin(), outPatterns.end());
-					m_availableVariations.push_back(var);
-					uniqueVars[res->getKey()] = m_availableVariations.size() - 1;
-				}
-			}
-			else if (tag->name == "starter spot")
-			{
-				m_contextMenuType = SpotType::eStarter;
-				m_contextMenuSpotId = -1;
-				m_contextMenuStarterId = mapSpot->metadata;
-			}
-			else
-			{
-				continue;
-			}
-
-			m_contextMenuEntity = entity;
-			m_contextMenuPos = glm::vec2(screenX, screenY);
-			m_showContextMenu = true;
-			return;
+			hitsAtLocation.push_back({entity, result.distance});
 		}
+	}
+	
+	// If no hits, return early
+	if (hitsAtLocation.empty())
+		return;
+	
+	// Sort by distance (closest first)
+	std::sort(hitsAtLocation.begin(), hitsAtLocation.end(),
+		[](const auto& a, const auto& b) { return a.second < b.second; });
+	
+	// Collect all spot types and IDs at this location
+	auto &gameData = GameData::getInstance();
+	std::map<int, size_t> uniqueVars; // For deduplicating variations
+	
+	for (const auto& [entity, distance] : hitsAtLocation)
+	{
+		auto *mapSpot = m_registry.try_get<MapSpot>(entity);
+		auto *tag = m_registry.try_get<Tag>(entity);
+		auto *transform = m_registry.try_get<Transform>(entity);
+		
+		if (!mapSpot || !tag || !transform)
+			continue;
+		
+		m_contextMenuData.entities.push_back(entity);
+		
+		if (tag->name == "starter spot")
+		{
+			// Add starter ID
+			m_contextMenuData.starterIds.push_back(mapSpot->metadata);
+		}
+		else if (tag->name == "filter spot")
+		{
+			// Add filter spot ID
+			m_contextMenuData.filterSpotIds.push_back(mapSpot->metadata);
+			
+			// Collect variations for this spot
+			auto results = gameData.getVariationsAtSpot(mapSpot->metadata, m_filteredPatterns);
+			for (const auto &res : results)
+			{
+				auto outPatterns = gameData.filterByVariation(
+					m_filteredPatterns, mapSpot->metadata, res->getKey());
+				
+				// Deduplicate variations by key
+				auto it = uniqueVars.find(res->getKey());
+				if (it != uniqueVars.end() && it->second < m_contextMenuData.variations.size())
+				{
+					// Merge patterns into existing variation
+					m_contextMenuData.variations[it->second].patterns.insert(
+						outPatterns.begin(), outPatterns.end());
+					continue;
+				}
+				
+				// Add new variation
+				VariationOption var;
+				var.info = *res;
+				var.patterns.insert(outPatterns.begin(), outPatterns.end());
+				m_contextMenuData.variations.push_back(var);
+				uniqueVars[res->getKey()] = m_contextMenuData.variations.size() - 1;
+			}
+		}
+		
+		// Store world position from the first hit
+		if (m_contextMenuData.worldPosition == glm::vec2(0.0f))
+		{
+			m_contextMenuData.worldPosition = glm::vec2(transform->position.x, transform->position.y);
+		}
+	}
+	
+	// Show context menu if we have any data
+	if (!m_contextMenuData.isEmpty())
+	{
+		m_contextMenuPos = glm::vec2(screenX, screenY);
+		m_showContextMenu = true;
 	}
 }
 
@@ -625,7 +662,22 @@ void Scene::drawUI()
 				const auto &var = m_availableVariations[i];
 				bool isSelected = (m_selectedVariationIndex == static_cast<int>(i));
 
-				if (ImGui::Selectable(var.info.getText().c_str(), isSelected))
+				// Build display label with label and sublabel
+				std::string displayLabel;
+				if (!var.info.label.empty() && !var.info.sublabel.empty())
+				{
+					displayLabel = var.info.label + " - " + var.info.sublabel;
+				}
+				else if (!var.info.label.empty())
+				{
+					displayLabel = var.info.label;
+				}
+				else
+				{
+					displayLabel = var.info.getText();
+				}
+
+				if (ImGui::Selectable(displayLabel.c_str(), isSelected))
 				{
 					m_selectedVariationIndex = static_cast<int>(i);
 				}
@@ -675,18 +727,6 @@ void Scene::drawUI()
 		else if (m_currentSpotId <= 0)
 		{
 			ImGui::Text("No variations available at this spot");
-		}
-
-		ImGui::Separator();
-		ImGui::Text("3. Filter patterns:");
-		ImGui::Text("Marked Spots: %zu", m_markedSpots.size());
-
-		if (ImGui::Button("Clear Marked Spots"))
-		{
-			m_markedSpots.clear();
-			m_filteredPatterns.clear();
-			auto patterns = GameData::getInstance().getPatternsByMap(m_filterMapSelection);
-			m_filteredPatterns.insert(patterns.begin(), patterns.end());
 		}
 
 		// Display marked spots
@@ -748,6 +788,16 @@ void Scene::drawUI()
 				{
 					loadSpotsByPattern(patternId);
 					m_filterMode = false; // Exit filter mode after loading
+					
+					// Reset filter state for next use
+					m_markedSpots.clear();
+					m_filteredPatterns.clear();
+					m_currentSpotId = -1;
+					m_availableVariations.clear();
+					m_selectedVariationIndex = -1;
+					
+					// Break immediately after modifying the container we're iterating
+					break;
 				}
 			}
 			ImGui::EndChild();
@@ -762,24 +812,25 @@ void Scene::drawUI()
 		// Get display size
 		ImVec2 displaySize = ImGui::GetIO().DisplaySize;
 		
-		// Estimate menu size (will be accurate after first frame)
-		// For Filter Spot: approximately 200 width + (variations * 25) height
-		// For Starter Spot: approximately 200 width + 60 height
-		float estimatedWidth = 250.0f;
-		float estimatedHeight = 150.0f;
+		// Estimate menu size dynamically
+		float estimatedWidth = 300.0f;
+		float estimatedHeight = 100.0f;
 		
-		if (m_contextMenuType == SpotType::eFilter)
+		// Add height for starters
+		if (m_contextMenuData.hasStarters())
 		{
-			// Estimate based on number of variations
-			estimatedHeight = 80.0f + m_availableVariations.size() * 25.0f;
-			// Cap maximum height
-			if (estimatedHeight > 400.0f)
-				estimatedHeight = 400.0f;
+			estimatedHeight += 60.0f + m_contextMenuData.starterIds.size() * 25.0f;
 		}
-		else if (m_contextMenuType == SpotType::eStarter)
+		
+		// Add height for filters
+		if (m_contextMenuData.hasFilters())
 		{
-			estimatedHeight = 80.0f;
+			estimatedHeight += 60.0f + m_contextMenuData.variations.size() * 25.0f;
 		}
+		
+		// Cap maximum height
+		if (estimatedHeight > 450.0f)
+			estimatedHeight = 450.0f;
 		
 		// Adjust position to keep menu within window bounds
 		float menuX = m_contextMenuPos.x;
@@ -834,90 +885,223 @@ void Scene::drawUI()
 			ImGui::SetWindowPos(ImVec2(adjustedX, adjustedY));
 		}
 		
-		if (m_contextMenuType == SpotType::eFilter && m_contextMenuSpotId > 0)
+		auto &gameData = GameData::getInstance();
+		
+		// Display header with position info
+		ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "Spot Actions");
+		ImGui::Separator();
+		
+		// === Starter Options Section ===
+		if (m_contextMenuData.hasStarters())
 		{
-			// Filter Spot: show variation list
-			ImGui::Text("Filter Spot %d", m_contextMenuSpotId);
-			ImGui::Separator();
+			ImGui::TextColored(ImVec4(0.3f, 0.7f, 1.0f, 1.0f), "Starter Options:");
+			ImGui::Indent();
 			
-			if (m_availableVariations.empty())
+			int validStarterCount = 0;
+			for (int starterId : m_contextMenuData.starterIds)
 			{
-				ImGui::Text("No variations available");
-			}
-			else
-			{
-				for (size_t i = 0; i < m_availableVariations.size(); ++i)
-				{
-					const auto &var = m_availableVariations[i];
-					std::string label = var.info.getText() + " (" + std::to_string(var.patterns.size()) + ")";
-					
-					if (ImGui::MenuItem(label.c_str()))
-					{
-						// Add to filter
-						m_markedSpots[m_contextMenuSpotId] = var.info.getKey();
-						SDL_Log("Added filter: spot %d -> %s", m_contextMenuSpotId, var.info.getText().c_str());
-						
-						// Update spot visual
-						for (auto entity : m_mapSpotEntities)
-						{
-							if (!m_registry.valid(entity))
-								continue;
-							auto *mapSpot = m_registry.try_get<MapSpot>(entity);
-							if (!mapSpot)
-								continue;
-							if (mapSpot->metadata == m_contextMenuSpotId)
-							{
-								updateSpot(entity, var.info);
-							}
-							mapSpot->selected = false;
-						}
-						
-						// Apply filter
-						m_filteredPatterns = GameData::getInstance().filterByVariation(
-							m_filteredPatterns, m_contextMenuSpotId, var.info.getKey());
-						
-						// Close menu
-						m_showContextMenu = false;
-						m_availableVariations.clear();
-					}
-				}
-			}
-		}
-		else if (m_contextMenuType == SpotType::eStarter && m_contextMenuStarterId > 0)
-		{
-			// Starter Spot: show apply filter option
-			ImGui::Text("Starter Spot %d", m_contextMenuStarterId);
-			ImGui::Separator();
-			
-			auto &gameData = GameData::getInstance();
-			auto starterSpot = gameData.getStarterSpot(m_contextMenuStarterId);
-			if (starterSpot)
-			{
-				if (ImGui::MenuItem("Apply Starter Filter"))
+				auto starterSpot = gameData.getStarterSpot(starterId);
+				if (!starterSpot)
+					continue;
+				
+				// Calculate how many patterns this would leave
+				auto resultPatterns = gameData.filterByStarter(m_filteredPatterns, starterId);
+				
+				// Skip if no patterns match
+				if (resultPatterns.empty())
+					continue;
+				
+				validStarterCount++;
+				std::string label = "Apply Starter #" + std::to_string(starterId);
+				label += " (" + std::to_string(resultPatterns.size()) + " patterns)";
+				
+				if (ImGui::MenuItem(label.c_str()))
 				{
 					// Apply starter filter
-					m_filteredPatterns = gameData.filterByStarter(m_filteredPatterns, m_contextMenuStarterId);
+					m_filteredPatterns = resultPatterns;
 					SDL_Log("Applied starter filter: %d, remaining patterns: %zu", 
-						m_contextMenuStarterId, m_filteredPatterns.size());
+						starterId, m_filteredPatterns.size());
 					
-					// Mark starter spot visually (optional)
-					if (m_contextMenuEntity != entt::null && m_registry.valid(m_contextMenuEntity))
+					// Mark all entities at this location as selected
+					for (auto entity : m_contextMenuData.entities)
 					{
-						auto *mapSpot = m_registry.try_get<MapSpot>(m_contextMenuEntity);
-						if (mapSpot)
+						if (m_registry.valid(entity))
 						{
-							mapSpot->selected = true;
+							auto *mapSpot = m_registry.try_get<MapSpot>(entity);
+							auto *tag = m_registry.try_get<Tag>(entity);
+							if (mapSpot && tag && tag->name == "starter spot" && mapSpot->metadata == starterId)
+							{
+								mapSpot->selected = true;
+							}
 						}
+					}
+					
+					// Auto-load if only one pattern remains
+					if (m_filteredPatterns.size() == 1)
+					{
+						int patternId = *m_filteredPatterns.begin();
+						SDL_Log("Auto-loading pattern %d (only match)", patternId);
+						loadSpotsByPattern(patternId);
+						m_filterMode = false;
+						
+						// Reset filter state for next use
+						m_markedSpots.clear();
+						m_filteredPatterns.clear();
+						m_currentSpotId = -1;
+						m_availableVariations.clear();
+						m_selectedVariationIndex = -1;
 					}
 					
 					// Close menu
 					m_showContextMenu = false;
+					m_contextMenuData.clear();
 				}
+			}
+			
+			// Show message if no valid starters
+			if (validStarterCount == 0)
+			{
+				ImGui::TextDisabled("No matching starters");
+			}
+			
+			ImGui::Unindent();
+			
+			// Add separator if we also have filter options
+			if (m_contextMenuData.hasFilters())
+			{
+				ImGui::Spacing();
+			}
+		}
+		
+		// === Filter/Variation Options Section ===
+		if (m_contextMenuData.hasFilters())
+		{
+			ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Variation Options:");
+			ImGui::Indent();
+			
+			if (m_contextMenuData.variations.empty())
+			{
+				ImGui::TextDisabled("No variations available");
 			}
 			else
 			{
-				ImGui::Text("Invalid starter spot");
+				// Count valid variations (with patterns > 0)
+				int validVariationCount = 0;
+				for (const auto &var : m_contextMenuData.variations)
+				{
+					if (!var.patterns.empty())
+						validVariationCount++;
+				}
+				
+				if (validVariationCount == 0)
+				{
+					ImGui::TextDisabled("No matching variations");
+				}
+				else
+				{
+					// Use scrollable region if there are many variations
+					float maxHeight = 300.0f;
+					bool needsScroll = validVariationCount > 10;
+					
+					if (needsScroll)
+					{
+						ImGui::BeginChild("VariationScroll", ImVec2(0, maxHeight), false);
+					}
+					
+					for (size_t i = 0; i < m_contextMenuData.variations.size(); ++i)
+					{
+						const auto &var = m_contextMenuData.variations[i];
+						
+						// Skip variations with no matching patterns
+						if (var.patterns.empty())
+							continue;
+						
+						// Build menu label with label and sublabel
+						std::string menuLabel;
+						if (!var.info.label.empty() && !var.info.sublabel.empty())
+						{
+							menuLabel = var.info.label + " - " + var.info.sublabel;
+						}
+						else if (!var.info.label.empty())
+						{
+							menuLabel = var.info.label;
+						}
+						else
+						{
+							menuLabel = var.info.getText();
+						}
+						menuLabel += " (" + std::to_string(var.patterns.size()) + " patterns)";
+						
+						if (ImGui::MenuItem(menuLabel.c_str()))
+						{
+							// Find which filter spot this variation belongs to
+							// (use the first filter spot ID in the list)
+							int targetSpotId = m_contextMenuData.filterSpotIds[0];
+						
+						// Add to filter
+						m_markedSpots[targetSpotId] = var.info.getKey();
+						SDL_Log("Added filter: spot %d -> %s", targetSpotId, var.info.getText().c_str());
+						
+						// Update visual for all filter spots at this location
+						for (auto entity : m_contextMenuData.entities)
+						{
+							if (!m_registry.valid(entity))
+								continue;
+							
+							auto *mapSpot = m_registry.try_get<MapSpot>(entity);
+							auto *tag = m_registry.try_get<Tag>(entity);
+							
+							if (!mapSpot || !tag)
+								continue;
+							
+							if (tag->name == "filter spot" && mapSpot->metadata == targetSpotId)
+							{
+								updateSpot(entity, var.info);
+							}
+							
+							mapSpot->selected = false;
+						}
+						
+						// Apply filter
+						m_filteredPatterns = gameData.filterByVariation(
+							m_filteredPatterns, targetSpotId, var.info.getKey());
+						
+						// Auto-load if only one pattern remains
+						if (m_filteredPatterns.size() == 1)
+						{
+							int patternId = *m_filteredPatterns.begin();
+							SDL_Log("Auto-loading pattern %d (only match)", patternId);
+							loadSpotsByPattern(patternId);
+							m_filterMode = false;
+							
+							// Reset filter state for next use
+							m_markedSpots.clear();
+							m_filteredPatterns.clear();
+							m_currentSpotId = -1;
+							m_availableVariations.clear();
+							m_selectedVariationIndex = -1;
+						}
+						
+						// Close menu
+						m_showContextMenu = false;
+						m_contextMenuData.clear();
+					} // End if (ImGui::MenuItem)
+				} // End for each variation
+				
+				if (needsScroll)
+					{
+						ImGui::EndChild();
+					}
+				}
 			}
+			
+			ImGui::Unindent();
+		}
+		
+		// Show message if empty
+		if (m_contextMenuData.isEmpty())
+		{
+			ImGui::TextDisabled("No options available");
 		}
 		
 		ImGui::End();
@@ -926,7 +1110,7 @@ void Scene::drawUI()
 		if (!ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow) && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
 		{
 			m_showContextMenu = false;
-			m_availableVariations.clear();
+			m_contextMenuData.clear();
 		}
 	}
 }

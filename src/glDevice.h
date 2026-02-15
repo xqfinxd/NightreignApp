@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Device.h"
-#include <SDL_video.h>
+#include <SDL.h>
 #include <vector>
 
 class glDevice : public Device
@@ -34,10 +34,7 @@ public:
 
 	void createVertexArray(uint32_t* vao, uint32_t* vbo) override;
 
-	void deleteVertexArray(uint32_t vao, uint32_t vbo) override {
-		if (vbo) glDeleteBuffers(1, &vbo);
-		if (vao) glDeleteVertexArrays(1, &vao);
-	}
+	void deleteVertexArray(uint32_t vao, uint32_t vbo) override;
 
 private:
 	GLenum getGLBufferTarget(BufferType type);

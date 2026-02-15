@@ -93,6 +93,26 @@ private:
 		VariationInfo info;
 		std::set<int> patterns;
 	};
+	
+	struct ContextMenuData {
+		glm::vec2 worldPosition = glm::vec2(0.0f);
+		std::vector<entt::entity> entities;
+		std::vector<int> starterIds;
+		std::vector<int> filterSpotIds;
+		std::vector<VariationOption> variations;
+		
+		void clear() {
+			entities.clear();
+			starterIds.clear();
+			filterSpotIds.clear();
+			variations.clear();
+		}
+		
+		bool hasStarters() const { return !starterIds.empty(); }
+		bool hasFilters() const { return !filterSpotIds.empty(); }
+		bool isEmpty() const { return starterIds.empty() && filterSpotIds.empty(); }
+	};
+	
 	VariationInfo getFilterSpot() const;
 	VariationInfo getFilterStarter() const;
 	
@@ -107,8 +127,5 @@ private:
 	// Context menu state
 	bool m_showContextMenu = false;
 	glm::vec2 m_contextMenuPos = glm::vec2(0.0f);
-	entt::entity m_contextMenuEntity = entt::null;
-	int m_contextMenuSpotId = -1;
-	int m_contextMenuStarterId = -1;
-	SpotType m_contextMenuType = SpotType::eNone;
+	ContextMenuData m_contextMenuData;
 };

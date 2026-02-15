@@ -13,6 +13,10 @@
 #include <SDL_events.h>
 #include <imgui_impl_sdl2.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 Application::Application()
 {
     SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Creating application...");
@@ -232,6 +236,21 @@ void Application::render()
 void Application::cleanup()
 {
     SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Cleaning up subsystems...");
+    
+#ifdef __EMSCRIPTEN__
+    // Synchronize from memory to IndexedDB before cleanup
+    SDL_Log("Application: Syncing file system to IndexedDB...");
+    EM_ASM(
+        FS.syncfs(false, function(err) {
+            if (err) {
+                console.error('IDBFS sync to IndexedDB failed:', err);
+            } else {
+                console.log('IDBFS sync to IndexedDB completed');
+            }
+        });
+    );
+#endif
+    
     m_scene_mgr->cleanup();
     m_resource_mgr->cleanup();
     m_renderer->cleanup();
