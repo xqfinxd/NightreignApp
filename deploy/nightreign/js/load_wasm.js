@@ -10,16 +10,16 @@ canvasElement.addEventListener('webglcontextlost', (e) => {
 
 var Module = {
     canvas: canvasElement,
-    setStatus: function(text) {
+    setStatus: function (text) {
         console.log("status: " + text);
     },
     preRun: [
-        function() {
+        function () {
             console.log('Preparing IndexedDB file system...');
-            FS.mkdir('/nightreign');
-            FS.mount(IDBFS, {}, '/nightreign');
+            FS.mkdir('nightreign');
+            FS.mount(IDBFS, {}, 'nightreign');
             // Synchronize from IndexedDB to memory
-            FS.syncfs(true, function(err) {
+            FS.syncfs(true, function (err) {
                 if (err) {
                     console.error('IDBFS sync from IndexedDB failed:', err);
                 } else {
@@ -28,11 +28,11 @@ var Module = {
             });
         }
     ],
-    onRuntimeInitialized: function() {
-        console.log('Runtime initialized, IDBFS ready');
+    onRuntimeInitialized: function () {
+        
     }
 };
-window.onerror = function(event) {
+window.onerror = function (event) {
     console.log("onerror: " + event);
 };
 

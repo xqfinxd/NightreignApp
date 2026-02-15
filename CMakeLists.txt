@@ -48,7 +48,6 @@ if(EMSCRIPTEN)
 		-sALLOW_MEMORY_GROWTH=1
 		-sFORCE_FILESYSTEM=1
 		-lidbfs.js
-		--preload-file ${CMAKE_SOURCE_DIR}/assets@/nightreign/assets
 		-sEXPORTED_RUNTIME_METHODS=[FS,ccall,cwrap]
 		-O3
 	)
