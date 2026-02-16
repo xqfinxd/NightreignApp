@@ -78,6 +78,80 @@ bool CsvReader::load(const std::string& filePath, bool hasHeader, char delimiter
     return true;
 }
 
+bool CsvReader::loadFromString(const std::string &csvData, bool hasHeader, char delimiter)
+{
+    m_loaded = false;
+    m_hasHeader = hasHeader;
+    m_delimiter = delimiter;
+    m_rows.clear();
+    m_headers.clear();
+    m_columnMap.clear();
+    m_columnCount = 0;
+
+    std::istringstream file(csvData);
+    if (!file)
+    {
+        std::cerr << "CsvReader: Failed to read CSV data" << std::endl;
+        return false;
+    }
+
+    char bom[3] = {0};
+    file.read(bom, 3);
+    bool isBOM = (bom[0] == char(0xEF) && bom[1] == char(0xBB) && bom[2] == char(0xBF));
+    if(!isBOM) file.seekg(0); // No BOM, rewind
+
+    std::string line;
+    bool firstLine = true;
+
+    while (std::getline(file, line))
+    {
+        // Skip empty lines
+        if (line.empty() || line.find_first_not_of(" \t\r\n") == std::string::npos)
+            continue;
+
+        std::vector<std::string> row = parseLine(line, delimiter);
+        
+        if (row.empty())
+            continue;
+
+        if (firstLine)
+        {
+            m_columnCount = row.size();
+            
+            if (hasHeader)
+            {
+                m_headers = row;
+                // Build column name to index map
+                for (size_t i = 0; i < m_headers.size(); ++i)
+                {
+                    m_columnMap[m_headers[i]] = i;
+                }
+            }
+            else
+            {
+                m_rows.push_back(row);
+            }
+            
+            firstLine = false;
+        }
+        else
+        {
+            // Ensure all rows have the same number of columns
+            if (row.size() != m_columnCount)
+            {
+                row.resize(m_columnCount); // Pad with empty strings or truncate
+            }
+            
+            m_rows.push_back(row);
+        }
+    }
+
+    m_loaded = true;
+    std::cout << "CsvReader: Loaded CSV data - " << m_rows.size() << " rows, " << m_columnCount << " columns" << std::endl;
+
+    return true;
+}
+
 std::vector<std::string> CsvReader::parseLine(const std::string& line, char delimiter)
 {
     std::vector<std::string> result;

@@ -63,7 +63,6 @@ Shader* ResourceManager::getShader(const std::string& name)
         return it->second;
     }
     
-    SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Shader '%s' not found", name.c_str());
     return nullptr;
 }
 
@@ -112,7 +111,6 @@ Texture* ResourceManager::getTexture(const std::string& name)
         return it->second;
     }
     
-    SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Texture '%s' not found", name.c_str());
     return nullptr;
 }
 
@@ -135,7 +133,6 @@ MeshBuffer* ResourceManager::getMesh(const std::string& name)
         return it->second;
     }
     
-    SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Mesh '%s' not found", name.c_str());
     return nullptr;
 }
 

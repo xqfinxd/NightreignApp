@@ -14,6 +14,7 @@ public:
 
     // Load CSV file from path
     bool load(const std::string& filePath, bool hasHeader = true, char delimiter = ',');
+    bool loadFromString(const std::string& csvData, bool hasHeader = true, char delimiter = ',');
 
     // Get number of rows (excluding header if present)
     size_t getRowCount() const { return m_rows.size(); }
