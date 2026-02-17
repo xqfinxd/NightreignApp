@@ -12,6 +12,7 @@ class Device;
 class IResource;
 class Texture;
 class AsyncResourceLoader;
+class TextureRegistry;
 
 class ResourceManager
 {
@@ -53,6 +54,9 @@ public:
     
     // Async resource loading (for Emscripten)
     AsyncResourceLoader* getAsyncLoader() { return m_async_loader; }
+    
+    // Texture registry for async texture loading
+    TextureRegistry* getTextureRegistry() { return m_texture_registry; }
 
 private:
     std::unordered_map<std::string, Shader*> m_shaders;
@@ -61,6 +65,7 @@ private:
     
     Device* m_device = nullptr;
     AsyncResourceLoader* m_async_loader = nullptr;
+    TextureRegistry* m_texture_registry = nullptr;
     static ResourceManager* s_instance;
 };
 

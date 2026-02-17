@@ -14,6 +14,7 @@ add_executable(NightreignApp
 	"src/Shader.cpp"
 	"src/ResourceManager.cpp"
 	"src/AsyncResourceLoader.cpp"
+	"src/TextureRegistry.cpp"
 	"src/Buffer.cpp"
 	"src/Texture.cpp"
 	"src/sdlWindow.cpp"

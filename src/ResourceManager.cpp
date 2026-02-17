@@ -4,6 +4,7 @@
 #include "Buffer.h"
 #include "Texture.h"
 #include "AsyncResourceLoader.h"
+#include "TextureRegistry.h"
 #include <SDL_log.h>
 
 ResourceManager* ResourceManager::s_instance = nullptr;
@@ -13,11 +14,13 @@ ResourceManager::ResourceManager(Device* device)
 {
     s_instance = this;
     m_async_loader = new AsyncResourceLoader(this);
+    m_texture_registry = new TextureRegistry();
 }
 
 ResourceManager::~ResourceManager()
 {
     cleanup();
+    delete m_texture_registry;
     delete m_async_loader;
     s_instance = nullptr;
 }
@@ -25,6 +28,14 @@ ResourceManager::~ResourceManager()
 void ResourceManager::initialize()
 {
     SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Initialized");
+    
+    // 加载纹理图集元数据（不预创建占位纹理，按需创建）
+    if (m_texture_registry->LoadAtlas("/nightreign/assets/textures/atlas.csv")) {
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Loaded texture atlas with %zu entries", 
+                    m_texture_registry->GetTextureCount());
+    } else {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Failed to load texture atlas");
+    }
 }
 
 void ResourceManager::cleanup()
@@ -94,7 +105,36 @@ Texture* ResourceManager::loadTexture(const std::string& name, const std::string
         return it->second;
     }
 
-    // Load texture through device
+    // 检查atlas中是否有该纹理的元数据
+    const TextureMetadata* metadata = m_texture_registry->GetMetadata(path);
+    
+    if (metadata) {
+        // atlas中有此纹理，先创建占位纹理
+        GLuint placeholderId = m_texture_registry->CreatePlaceholderForPath(path);
+        
+        if (placeholderId != 0) {
+            // 创建Texture对象包装占位纹理
+            Texture* placeholderTexture = new Texture(placeholderId, metadata->width, metadata->height, metadata->format);
+            m_textures[name] = placeholderTexture;
+            
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Created placeholder for '%s' (ID: %u, Size: %dx%d)",
+                name.c_str(), placeholderId, metadata->width, metadata->height);
+            
+            // 启动异步加载真实纹理
+            m_async_loader->loadTextureDataAsync(path, m_texture_registry, 
+                [path](bool success) {
+                    if (success) {
+                        SDL_Log("ResourceManager: Async texture loaded: %s", path.c_str());
+                    } else {
+                        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Failed to load async texture: %s", path.c_str());
+                    }
+                });
+            
+            return placeholderTexture;
+        }
+    }
+    
+    // 不在atlas中或占位创建失败，走原有同步加载流程
     Texture* texture = m_device->createTexture(path);
     if (!texture || !texture->isValid()) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Failed to load texture '%s' from '%s'", name.c_str(), path.c_str());
