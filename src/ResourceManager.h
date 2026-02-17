@@ -11,6 +11,7 @@ class Shader;
 class Device;
 class IResource;
 class Texture;
+class AsyncResourceLoader;
 
 class ResourceManager
 {
@@ -49,6 +50,9 @@ public:
 
     // Singleton access (optional)
     static ResourceManager* getInstance() { return s_instance; }
+    
+    // Async resource loading (for Emscripten)
+    AsyncResourceLoader* getAsyncLoader() { return m_async_loader; }
 
 private:
     std::unordered_map<std::string, Shader*> m_shaders;
@@ -56,6 +60,7 @@ private:
     std::unordered_map<std::string, MeshBuffer*> m_meshes;
     
     Device* m_device = nullptr;
+    AsyncResourceLoader* m_async_loader = nullptr;
     static ResourceManager* s_instance;
 };
 

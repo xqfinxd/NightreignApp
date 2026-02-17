@@ -3,6 +3,7 @@
 #include "Device.h"
 #include "Buffer.h"
 #include "Texture.h"
+#include "AsyncResourceLoader.h"
 #include <SDL_log.h>
 
 ResourceManager* ResourceManager::s_instance = nullptr;
@@ -11,11 +12,13 @@ ResourceManager::ResourceManager(Device* device)
     : m_device(device)
 {
     s_instance = this;
+    m_async_loader = new AsyncResourceLoader(this);
 }
 
 ResourceManager::~ResourceManager()
 {
     cleanup();
+    delete m_async_loader;
     s_instance = nullptr;
 }
 

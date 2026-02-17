@@ -29,7 +29,27 @@ var Module = {
         }
     ],
     onRuntimeInitialized: function () {
+        console.log('Runtime initialized');
         
+        // 定期保存缓存到 IndexedDB (每 30 秒)
+        setInterval(function() {
+            FS.syncfs(false, function(err) {
+                if (err) {
+                    console.error('Failed to sync cache to IndexedDB:', err);
+                } else {
+                    console.log('Cache synced to IndexedDB');
+                }
+            });
+        }, 30000);
+        
+        // 页面关闭时保存缓存
+        window.addEventListener('beforeunload', function() {
+            FS.syncfs(false, function(err) {
+                if (err) {
+                    console.error('Failed to save cache on exit:', err);
+                }
+            });
+        });
     }
 };
 window.onerror = function (event) {

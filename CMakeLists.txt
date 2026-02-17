@@ -13,6 +13,7 @@ add_executable(NightreignApp
 	"src/SceneManager.cpp"
 	"src/Shader.cpp"
 	"src/ResourceManager.cpp"
+	"src/AsyncResourceLoader.cpp"
 	"src/Buffer.cpp"
 	"src/Texture.cpp"
 	"src/sdlWindow.cpp"
@@ -39,6 +40,7 @@ if(EMSCRIPTEN)
 #		-sUSE_SDL_TTF=2
 		-O3
 	)
+	
 	target_link_options(NightreignApp PRIVATE 
 		-sUSE_SDL=2
 #		-sUSE_SDL_TTF=2
@@ -49,6 +51,10 @@ if(EMSCRIPTEN)
 		-sFORCE_FILESYSTEM=1
 		-lidbfs.js
 		-sEXPORTED_RUNTIME_METHODS=[FS,ccall,cwrap]
+		-sFETCH=1
+		"SHELL:--preload-file ${CMAKE_SOURCE_DIR}/assets/datas@nightreign/assets/datas"
+		"SHELL:--preload-file ${CMAKE_SOURCE_DIR}/assets/fonts@nightreign/assets/fonts"
+		"SHELL:--preload-file ${CMAKE_SOURCE_DIR}/assets/shaders@nightreign/assets/shaders"
 		-O3
 	)
 	target_compile_definitions(NightreignApp PRIVATE 
