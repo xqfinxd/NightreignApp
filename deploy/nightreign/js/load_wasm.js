@@ -15,38 +15,64 @@ var Module = {
     },
     preRun: [
         function () {
-            console.log('Preparing IndexedDB file system...');
-            FS.mkdir('nightreign');
-            FS.mount(IDBFS, {}, 'nightreign');
-            // Synchronize from IndexedDB to memory
-            FS.syncfs(true, function (err) {
-                if (err) {
-                    console.error('IDBFS sync from IndexedDB failed:', err);
-                } else {
-                    console.log('IDBFS sync from IndexedDB completed');
+            console.log('[WASM] Starting bootstrap process...');
+            
+            // 初始化 Bootstrap Loader
+            BootstrapLoader.initialize(
+                // 进度回调
+                function(loaded, total) {
+                    var percent = Math.floor(loaded / total * 100);
+                    console.log('[WASM] Download progress: ' + loaded + '/' + total + ' (' + percent + '%)');
+                    
+                    // 更新简化的状态文本
+                    var loadingStatus = document.getElementById('loading-status');
+                    if (loadingStatus) {
+                        loadingStatus.textContent = 'Loading files: ' + loaded + ' / ' + total + ' (' + percent + '%)';
+                    }
+                },
+                // 阶段变化回调
+                function(phase, message) {
+                    console.log('[WASM] Phase: ' + phase + ' - ' + message);
+                    
+                    // 更新简化的状态文本
+                    var loadingStatus = document.getElementById('loading-status');
+                    if (loadingStatus) {
+                        loadingStatus.textContent = message;
+                    }
+                },
+                // 错误回调
+                function(message, error) {
+                    console.error('[WASM] Bootstrap error: ' + message, error);
+                    
+                    // 显示错误信息
+                    var loadingStatus = document.getElementById('loading-status');
+                    if (loadingStatus) {
+                        loadingStatus.textContent = 'Error: ' + message;
+                        loadingStatus.style.background = 'rgba(255, 68, 68, 0.9)';
+                    }
                 }
-            });
+            );
         }
     ],
     onRuntimeInitialized: function () {
-        console.log('Runtime initialized');
+        console.log('[WASM] Runtime initialized');
         
-        // 定期保存缓存到 IndexedDB (每 30 秒)
+        // 定期保存缓存到 IndexedDB (每 60 秒)
         setInterval(function() {
             FS.syncfs(false, function(err) {
                 if (err) {
-                    console.error('Failed to sync cache to IndexedDB:', err);
+                    console.error('[WASM] Failed to sync cache to IndexedDB:', err);
                 } else {
-                    console.log('Cache synced to IndexedDB');
+                    console.log('[WASM] Cache synced to IndexedDB');
                 }
             });
-        }, 30000);
+        }, 60000);
         
         // 页面关闭时保存缓存
         window.addEventListener('beforeunload', function() {
             FS.syncfs(false, function(err) {
                 if (err) {
-                    console.error('Failed to save cache on exit:', err);
+                    console.error('[WASM] Failed to save cache on exit:', err);
                 }
             });
         });

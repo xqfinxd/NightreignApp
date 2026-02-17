@@ -52,9 +52,6 @@ if(EMSCRIPTEN)
 		-lidbfs.js
 		-sEXPORTED_RUNTIME_METHODS=[FS,ccall,cwrap]
 		-sFETCH=1
-		"SHELL:--preload-file ${CMAKE_SOURCE_DIR}/assets/datas@nightreign/assets/datas"
-		"SHELL:--preload-file ${CMAKE_SOURCE_DIR}/assets/fonts@nightreign/assets/fonts"
-		"SHELL:--preload-file ${CMAKE_SOURCE_DIR}/assets/shaders@nightreign/assets/shaders"
 		-O3
 	)
 	target_compile_definitions(NightreignApp PRIVATE 

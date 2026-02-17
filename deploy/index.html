@@ -7,10 +7,39 @@
   <title>Nightreign App</title>
   <link rel="shortcut icon" href="/nightreign/favicon.ico" type="image/x-icon">
   <link rel="stylesheet" href="/nightreign/css/style.css">
+  <style>
+    /* 简化的加载状态显示 */
+    #loading-status {
+      position: fixed;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.8);
+      color: #ffffff;
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-size: 14px;
+      z-index: 9999;
+      backdrop-filter: blur(5px);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      transition: opacity 0.3s ease-out;
+      max-width: 90%;
+      text-align: center;
+    }
+
+    #loading-status.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+  </style>
 </head>
 
 <body>
 
+  <!-- 简化的加载状态 -->
+  <div id="loading-status">Initializing...</div>
+
+  <!-- 游戏界面 -->
   <div class="fab-group js-toggle-group" role="toolbar" aria-label="View range">
     <button class="btn" type="button" data-value="1">普&emsp;通</button>
     <button class="btn" type="button" data-value="2">雪&emsp;山</button>
@@ -22,8 +51,27 @@
   <canvas class="game" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
 
   <script type="text/javascript" src="/nightreign/js/toggle.js"></script>
+  <script type="text/javascript" src="/nightreign/js/bootstrap.js"></script>
   <script type="text/javascript" src="/nightreign/js/load_wasm.js"></script>
+  
+  <script>
+    // 当 main() 被调用后，隐藏加载状态
+    window.addEventListener('load', function() {
+      // 监听 Module 的 onRuntimeInitialized 后再等一小段时间确保初始化完成
+      var checkReady = setInterval(function() {
+        if (Module && Module.calledRun) {
+          setTimeout(function() {
+            var loadingStatus = document.getElementById('loading-status');
+            if (loadingStatus) {
+              loadingStatus.classList.add('hidden');
+            }
+            console.log('[Loading] Loading complete, game started');
+          }, 500);
+          clearInterval(checkReady);
+        }
+      }, 100);
+    });
+  </script>
 </body>
-
 
 </html>
