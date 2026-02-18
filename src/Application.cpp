@@ -7,11 +7,13 @@
 #include "Scene.h"
 #include "sdlWindow.h"
 #include "glDevice.h"
+#include "InputHandler.h"
 
 #include <SDL_timer.h>
 #include <SDL_log.h>
 #include <SDL_events.h>
 #include <imgui_impl_sdl2.h>
+#include <cmath>
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -25,12 +27,14 @@ Application::Application()
     m_resource_mgr = new ResourceManager(m_device);
     m_renderer = new Renderer(m_device, m_resource_mgr);
     m_scene_mgr = new SceneManager();
+    m_input_handler = new InputHandler();
     SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Application created successfully");
 }
 
 Application::~Application()
 {
     SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Destroying application...");
+    delete m_input_handler;
     delete m_scene_mgr;
     delete m_resource_mgr;
     delete m_renderer;
@@ -41,7 +45,8 @@ Application::~Application()
 
 void Application::start()
 {
-    if (m_running) {
+    if (m_running)
+    {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Application: Already running");
         return;
     }
@@ -57,7 +62,8 @@ void Application::start()
     SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Emscripten setup mainloop...");
     emscripten_set_main_loop_arg(runFrameWrapper, this, 0, 1);
 #else
-    while (m_running) {
+    while (m_running)
+    {
         runFrame();
     }
     SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Exited main loop");
@@ -73,7 +79,8 @@ void Application::quit()
 
 void Application::runFrame()
 {
-    if (!m_running) {
+    if (!m_running)
+    {
 #ifdef __EMSCRIPTEN__
         SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Emscripten terminate mainloop...");
         emscripten_cancel_main_loop();
@@ -91,19 +98,21 @@ void Application::runFrame()
     render();
 
 #ifndef __EMSCRIPTEN__
-    if (m_fps > 0) {
+    if (m_fps > 0)
+    {
         uint32_t frameTime = SDL_GetTicks() - curTime;
         uint32_t minFrameTime = 1000 / m_fps;
-        if (frameTime < minFrameTime) {
+        if (frameTime < minFrameTime)
+        {
             SDL_Delay(minFrameTime - frameTime);
         }
     }
 #endif
 }
 
-void Application::runFrameWrapper(void* userData)
+void Application::runFrameWrapper(void *userData)
 {
-    if (auto* app = static_cast<Application*>(userData))
+    if (auto *app = static_cast<Application *>(userData))
         app->runFrame();
 }
 
@@ -115,7 +124,7 @@ void Application::initialize()
     m_renderer->initialize();
     m_resource_mgr->initialize();
     m_scene_mgr->initialize();
-    
+
     // Add default scene
     m_scene_mgr->addScene("main", new Scene());
 
@@ -128,8 +137,10 @@ void Application::initialize()
 void Application::processInput()
 {
     SDL_Event event;
-    while (SDL_PollEvent(&event)) {
-        if (event.type == SDL_QUIT) {
+    while (SDL_PollEvent(&event))
+    {
+        if (event.type == SDL_QUIT)
+        {
             quit();
             break;
         }
@@ -145,73 +156,41 @@ void Application::processInput()
             }
         }
 
-		// Handle mouse clicks for spots
-		if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT)
-		{
-			// Only handle click if not over ImGui window
-			if (!ImGui::GetIO().WantCaptureMouse)
-			{
-				auto size = m_window->getCanvasSize();
-				if (auto activeScene = m_scene_mgr->getActiveScene())
-				{
-					activeScene->onMouseClick(event.button.x, event.button.y, size.x, size.y);
-				}
-			}
-		}
-		
-		// Handle right click for context menu
-		if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_RIGHT)
-		{
-			// Only handle click if not over ImGui window
-			if (!ImGui::GetIO().WantCaptureMouse)
-			{
-				auto size = m_window->getCanvasSize();
-				if (auto activeScene = m_scene_mgr->getActiveScene())
-				{
-					activeScene->onMouseRightClick(event.button.x, event.button.y, size.x, size.y);
-				}
-			}
-		}
-
-		// Handle mouse button press/release for dragging
-		if (event.type == SDL_MOUSEBUTTONDOWN || event.type == SDL_MOUSEBUTTONUP)
-		{
-			if (!ImGui::GetIO().WantCaptureMouse)
-			{
-				if (auto activeScene = m_scene_mgr->getActiveScene())
-				{
-					bool pressed = (event.type == SDL_MOUSEBUTTONDOWN);
-					activeScene->onMouseButton(event.button.button, pressed);
-				}
-			}
-		}
-
-		// Handle mouse motion for dragging
-		if (event.type == SDL_MOUSEMOTION)
-		{
-			if (!ImGui::GetIO().WantCaptureMouse)
-			{
-				auto size = m_window->getCanvasSize();
-				if (auto activeScene = m_scene_mgr->getActiveScene())
-				{
-					activeScene->onMouseMove(event.motion.x, event.motion.y, size.x, size.y);
-				}
-			}
-		}
-
-		// Handle mouse wheel for zooming
-		if (event.type == SDL_MOUSEWHEEL)
-		{
-			if (!ImGui::GetIO().WantCaptureMouse)
-			{
-				if (auto activeScene = m_scene_mgr->getActiveScene())
-				{
-					activeScene->onMouseWheel(event.wheel.y * 1.0f);
-				}
-			}
-		}
+        auto size = m_window->getCanvasSize();
 
         ImGui_ImplSDL2_ProcessEvent(&event);
+        auto &io = ImGui::GetIO();
+        if (io.WantCaptureMouse)
+        {
+            // If ImGui wants to capture the mouse, we should not process mouse events for the scene
+            if (event.type == SDL_MOUSEBUTTONDOWN 
+                || event.type == SDL_MOUSEBUTTONUP 
+                || event.type == SDL_MOUSEMOTION 
+                || event.type == SDL_MULTIGESTURE 
+                || event.type == SDL_FINGERDOWN 
+                || event.type == SDL_FINGERUP 
+                || event.type == SDL_FINGERMOTION)
+            {
+                continue;
+            }
+        }
+
+        if (io.WantCaptureKeyboard)
+        {
+            // If ImGui wants to capture the keyboard, we should not process keyboard events for the scene
+            if (event.type == SDL_KEYDOWN 
+                || event.type == SDL_KEYUP 
+                || event.type == SDL_TEXTINPUT)
+            {
+                continue;
+            }
+        }
+
+        auto result = m_input_handler->ProcessEvent(event, size.x, size.y);
+        if (auto* scene = m_scene_mgr->getActiveScene())
+        {
+            scene->handleInput(result, size.x, size.y);
+        }
     }
 }
 
@@ -226,7 +205,7 @@ void Application::render()
     if (auto activeScene = m_scene_mgr->getActiveScene())
     {
         m_renderer->drawScene(activeScene);
-        
+
         activeScene->drawUI();
     }
     m_renderer->endFrame();
@@ -236,7 +215,7 @@ void Application::render()
 void Application::cleanup()
 {
     SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Cleaning up subsystems...");
-    
+
 #ifdef __EMSCRIPTEN__
     // Synchronize from memory to IndexedDB before cleanup
     SDL_Log("Application: Syncing file system to IndexedDB...");
@@ -246,11 +225,9 @@ void Application::cleanup()
                 console.error('IDBFS sync to IndexedDB failed:', err);
             } else {
                 console.log('IDBFS sync to IndexedDB completed');
-            }
-        });
-    );
+            } }););
 #endif
-    
+
     m_scene_mgr->cleanup();
     m_resource_mgr->cleanup();
     m_renderer->cleanup();

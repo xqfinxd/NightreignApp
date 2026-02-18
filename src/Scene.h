@@ -2,6 +2,7 @@
 #include "public.h"
 #include "GameData.h"
 #include "components/MapSpot.h"
+#include "InputHandler.h"
 #include <entt/entt.hpp>
 #include <vector>
 #include <map>
@@ -41,11 +42,10 @@ public:
 	using SpotClickCallback = std::function<void(entt::entity spotEntity, const MapSpot& spot)>;
 	void onMouseClick(int screenX, int screenY, int windowWidth, int windowHeight);
 	void onMouseRightClick(int screenX, int screenY, int windowWidth, int windowHeight);
-	void onMouseMove(int screenX, int screenY, int windowWidth, int windowHeight);
-	void onMouseWheel(float deltaY);
-	void onMouseButton(int button, bool pressed);
 	void setSpotClickCallback(SpotClickCallback callback) { m_spotClickCallback = callback; }
 	void handleSpotClick(entt::entity spotEntity, const MapSpot& spot);
+
+	void handleInput(const InputState& result, int windowWidth, int windowHeight);
 
 	// ECS access
 	entt::registry &getRegistry() { return m_registry; }
@@ -73,8 +73,6 @@ private:
 	SpotClickCallback m_spotClickCallback = nullptr;
 	
 	// Mouse interaction state
-	bool m_isMouseDragging = false;
-	glm::vec2 m_lastMousePos = glm::vec2(0.0f);
 	glm::vec3 m_mouseWorldPos = glm::vec3(0.0f);
 	float m_minZoom = 0.5f;
 	float m_maxZoom = 20.0f;

@@ -7,6 +7,7 @@ class Renderer;
 class SceneManager;
 class InputManager;
 class ResourceManager;
+class InputHandler;
 
 class Application {
 public:
@@ -45,4 +46,5 @@ private:
     SceneManager* m_scene_mgr = nullptr;
     InputManager* m_input_mgr = nullptr;
     ResourceManager* m_resource_mgr = nullptr;
+    InputHandler* m_input_handler = nullptr;
 };

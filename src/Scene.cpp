@@ -286,21 +286,6 @@ void Scene::onMouseClick(int screenX, int screenY, int windowWidth, int windowHe
 	}
 }
 
-void Scene::onMouseButton(int button, bool pressed)
-{
-	// Right mouse button for dragging
-	if (button == SDL_BUTTON_LEFT)
-	{
-		m_isMouseDragging = pressed;
-
-		if (!pressed)
-		{
-			// Reset drag state when button released
-			m_lastMousePos = glm::vec2(0.0f);
-		}
-	}
-}
-
 void Scene::onMouseRightClick(int screenX, int screenY, int windowWidth, int windowHeight)
 {
 	// Only handle right click in filter mode
@@ -478,97 +463,192 @@ void Scene::handleSpotClick(entt::entity entity, const MapSpot &spot)
 	}
 }
 
-void Scene::onMouseMove(int screenX, int screenY, int windowWidth, int windowHeight)
+void Scene::handleInput(const InputState &result, int windowWidth, int windowHeight)
 {
 	auto camera = getCamera();
 	if (!camera)
 		return;
 
-	glm::vec2 currentMousePos = glm::vec2(screenX, screenY);
-	Ray ray(*camera, screenX, screenY, windowWidth, windowHeight);
-	auto result = ray.intersectPlane(glm::vec3(0.f), glm::vec3(0.f, 0.f, 1.f));
-	if (result.hit)
+	switch (result.type)
 	{
-		m_mouseWorldPos = result.point;
+	case InputState::eSingleTap:
+	{
+		// Single tap - trigger click
+		onMouseRightClick(static_cast<int>(result.pos.x), static_cast<int>(result.pos.y), windowWidth, windowHeight);
+		break;
 	}
 
-	if (m_isMouseDragging && m_lastMousePos != glm::vec2(0.0f))
+	case InputState::eDoubleTap:
 	{
-		auto camera = getCamera();
-		if (!camera)
-			return;
-
-		// Calculate mouse delta in screen space
-		glm::vec2 delta = currentMousePos - m_lastMousePos;
-
-		// Convert screen delta to world delta based on camera
-		float worldDeltaScale = 0.01f;
+		// Double tap - zoom in with pos as center
 		if (camera->isOrthographic)
 		{
-			// For orthographic camera, scale based on ortho size
-			worldDeltaScale = camera->orthoSize / (float)windowHeight;
+			// Calculate world position at tap location before zoom
+			Ray ray(*camera, static_cast<int>(result.pos.x), static_cast<int>(result.pos.y), windowWidth, windowHeight);
+			auto hitResult = ray.intersectPlane(glm::vec3(0.f), glm::vec3(0.f, 0.f, 1.f));
+			
+			if (hitResult.hit)
+			{
+				glm::vec3 worldPosBefore = hitResult.point;
+				
+				// Apply zoom
+				float zoomFactor = 1.0f / result.scale;
+				camera->orthoSize *= zoomFactor;
+				camera->orthoSize = glm::clamp(camera->orthoSize, m_minZoom, m_maxZoom);
+				
+				// Recalculate world position at same screen location after zoom
+				camera->updateMatrices();
+				Ray rayAfter(*camera, static_cast<int>(result.pos.x), static_cast<int>(result.pos.y), windowWidth, windowHeight);
+				auto hitResultAfter = rayAfter.intersectPlane(glm::vec3(0.f), glm::vec3(0.f, 0.f, 1.f));
+				
+				if (hitResultAfter.hit)
+				{
+					// Adjust camera to keep the tap point at the same screen location
+					glm::vec3 worldPosAfter = hitResultAfter.point;
+					glm::vec3 offset = worldPosBefore - worldPosAfter;
+					camera->position += offset;
+					camera->target += offset;
+					camera->updateMatrices();
+				}
+			}
+		}
+		break;
+	}
+
+	case InputState::eDragMove:
+	{
+		// Drag move - pan camera
+		if (camera->isOrthographic)
+		{
+			// Convert screen delta to world delta
+			float worldDeltaScale = camera->orthoSize / static_cast<float>(windowHeight);
+			
+			// Calculate world space movement (inverted for natural drag feel)
+			glm::vec3 right = glm::normalize(glm::cross(camera->target - camera->position, camera->up));
+			glm::vec3 worldUp = camera->up;
+			
+			glm::vec3 movement = -right * result.delta.x * worldDeltaScale + 
+			                     worldUp * result.delta.y * worldDeltaScale;
+			
+			// Update camera position and target
+			camera->position += movement;
+			camera->target += movement;
+			camera->updateMatrices();
 		}
 		else
 		{
-			// For perspective camera, scale based on distance from target
+			// Perspective camera
 			float distance = glm::length(camera->position - camera->target);
-			worldDeltaScale = distance * 0.001f;
+			float worldDeltaScale = distance * 0.001f;
+			
+			glm::vec3 right = glm::normalize(glm::cross(camera->target - camera->position, camera->up));
+			glm::vec3 worldUp = camera->up;
+			
+			glm::vec3 movement = -right * result.delta.x * worldDeltaScale + 
+			                     worldUp * result.delta.y * worldDeltaScale;
+			
+			camera->position += movement;
+			camera->target += movement;
+			camera->updateMatrices();
 		}
-
-		// Calculate world space movement (inverted for natural drag feel)
-		glm::vec3 right = glm::normalize(glm::cross(camera->target - camera->position, camera->up));
-		glm::vec3 worldUp = camera->up;
-
-		glm::vec3 movement = -right * delta.x * worldDeltaScale + worldUp * delta.y * worldDeltaScale;
-
-		// Update camera position and target
-		camera->position += movement;
-		camera->target += movement;
-		camera->updateMatrices();
+		break;
 	}
 
-	m_lastMousePos = currentMousePos;
+	case InputState::eZoomLocal:
+	{
+		// Zoom with pos as center
+		if (camera->isOrthographic)
+		{
+			// Calculate world position at zoom center before zoom
+			Ray ray(*camera, static_cast<int>(result.pos.x), static_cast<int>(result.pos.y), windowWidth, windowHeight);
+			auto hitResult = ray.intersectPlane(glm::vec3(0.f), glm::vec3(0.f, 0.f, 1.f));
+			
+			if (hitResult.hit)
+			{
+				glm::vec3 worldPosBefore = hitResult.point;
+				
+				// Apply zoom and pan adjustment from result.delta
+				float zoomFactor = 1.0f / result.scale;
+				camera->orthoSize *= zoomFactor;
+				camera->orthoSize = glm::clamp(camera->orthoSize, m_minZoom, m_maxZoom);
+				
+				// Apply panning from multi-touch gesture
+				float worldDeltaScale = camera->orthoSize / static_cast<float>(windowHeight);
+				glm::vec3 right = glm::normalize(glm::cross(camera->target - camera->position, camera->up));
+				glm::vec3 worldUp = camera->up;
+				glm::vec3 panMovement = -right * result.delta.x * worldDeltaScale + 
+				                        worldUp * result.delta.y * worldDeltaScale;
+				
+				camera->position += panMovement;
+				camera->target += panMovement;
+				
+				// Recalculate world position at same screen location after zoom
+				camera->updateMatrices();
+				Ray rayAfter(*camera, static_cast<int>(result.pos.x), static_cast<int>(result.pos.y), windowWidth, windowHeight);
+				auto hitResultAfter = rayAfter.intersectPlane(glm::vec3(0.f), glm::vec3(0.f, 0.f, 1.f));
+				
+				if (hitResultAfter.hit)
+				{
+					// Adjust camera to keep the zoom center at the same screen location
+					glm::vec3 worldPosAfter = hitResultAfter.point;
+					glm::vec3 offset = worldPosBefore - worldPosAfter;
+					camera->position += offset;
+					camera->target += offset;
+					camera->updateMatrices();
+				}
+			}
+		}
+		break;
+	}
+
+	case InputState::eZoomCenter:
+	{
+		// Zoom with camera center as pivot (standard mouse wheel behavior)
+		if (camera->isOrthographic)
+		{
+			float zoomFactor = 1.0f / result.scale;
+			camera->orthoSize *= zoomFactor;
+			camera->orthoSize = glm::clamp(camera->orthoSize, m_minZoom, m_maxZoom);
+			camera->updateMatrices();
+		}
+		else
+		{
+			// Perspective camera - move closer or farther
+			glm::vec3 direction = glm::normalize(camera->target - camera->position);
+			float distance = glm::length(camera->position - camera->target);
+			float zoomAmount = distance * (1.0f - 1.0f / result.scale);
+			
+			camera->position += direction * zoomAmount;
+			
+			// Clamp distance
+			float newDistance = glm::length(camera->position - camera->target);
+			if (newDistance < m_minZoom)
+			{
+				camera->position = camera->target - direction * m_minZoom;
+			}
+			else if (newDistance > m_maxZoom)
+			{
+				camera->position = camera->target - direction * m_maxZoom;
+			}
+			camera->updateMatrices();
+		}
+		break;
+	}
+
+	case InputState::eLongTouch:
+	{
+		// Long touch - trigger right click (context menu)
+		onMouseRightClick(static_cast<int>(result.pos.x), static_cast<int>(result.pos.y), windowWidth, windowHeight);
+		break;
+	}
+
+	case InputState::eNone:
+	default:
+		break;
+	}
 }
 
-void Scene::onMouseWheel(float deltaY)
-{
-	auto camera = getCamera();
-	if (!camera)
-		return;
 
-	// Zoom by adjusting ortho size or camera distance
-	if (camera->isOrthographic)
-	{
-		// Zoom by changing orthographic size
-		float zoomFactor = 1.0f - deltaY * 0.1f;
-		camera->orthoSize *= zoomFactor;
-
-		// Clamp zoom level
-		camera->orthoSize = glm::clamp(camera->orthoSize, m_minZoom, m_maxZoom);
-	}
-	else
-	{
-		// Zoom by moving camera closer/farther from target
-		glm::vec3 direction = glm::normalize(camera->target - camera->position);
-		float distance = glm::length(camera->position - camera->target);
-		float zoomAmount = distance * deltaY * 0.1f;
-
-		camera->position += direction * zoomAmount;
-
-		// Clamp distance
-		float newDistance = glm::length(camera->position - camera->target);
-		if (newDistance < m_minZoom)
-		{
-			camera->position = camera->target - direction * m_minZoom;
-		}
-		else if (newDistance > m_maxZoom)
-		{
-			camera->position = camera->target - direction * m_maxZoom;
-		}
-	}
-
-	camera->updateMatrices();
-}
 
 void Scene::render(Renderer *renderer)
 {
@@ -635,9 +715,9 @@ void Scene::drawUI()
 
 	// Scene tool window
 	ImGui::Begin("Scene Tool");
-	if(ImGui::Checkbox("Enable B1 Overlay", &m_enableB1Overlay))
+	if (ImGui::Checkbox("Enable B1 Overlay", &m_enableB1Overlay))
 	{
-		for(auto entity : m_mapTileEntities)
+		for (auto entity : m_mapTileEntities)
 		{
 			if (!m_registry.valid(entity))
 				continue;
@@ -953,10 +1033,10 @@ void Scene::drawUI()
 
 				validStarterCount++;
 				std::string label = CHS("应用此初始点");
-				#ifdef _DEBUG
+#ifdef _DEBUG
 				label += std::to_string(starterId);
 				label += " (" + std::to_string(resultPatterns.size()) + " patterns)";
-				#endif
+#endif
 
 				if (ImGui::MenuItem(label.c_str()))
 				{
