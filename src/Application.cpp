@@ -166,6 +166,7 @@ void Application::processInput()
             if (event.type == SDL_MOUSEBUTTONDOWN 
                 || event.type == SDL_MOUSEBUTTONUP 
                 || event.type == SDL_MOUSEMOTION 
+                || event.type == SDL_MOUSEWHEEL
                 || event.type == SDL_MULTIGESTURE 
                 || event.type == SDL_FINGERDOWN 
                 || event.type == SDL_FINGERUP 

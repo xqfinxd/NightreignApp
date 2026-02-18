@@ -24,9 +24,12 @@ public:
 	void update(float deltaTime);
 	void render(Renderer* renderer);
 	void drawUI();
+	void drawContextMenu();
 
 	// Map control
 	void loadMapTiles(int mapIndex, int layer = 0);
+	void onFilterPatterns(int patternId);
+	void resetMapFilters();
 
 	// Map spots
 	entt::entity addSpot(const glm::vec2 &gridPos);
