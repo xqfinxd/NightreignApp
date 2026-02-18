@@ -170,6 +170,27 @@ Scene::~Scene()
 
 void Scene::initialize()
 {
+	ResourceManager *resMgr = ResourceManager::getInstance();
+	// Load shaders
+	resMgr->loadShader("texture", "nightreign/assets/shaders/texture.vert", "nightreign/assets/shaders/texture.frag");
+	resMgr->loadShader("font", "nightreign/assets/shaders/font.vert", "nightreign/assets/shaders/font.frag");
+
+	// Create a simple quad mesh for tiles
+	std::vector<Vertex> quadVertices = {
+		Vertex(glm::vec3(-0.5f, -0.5f, 0.0f), glm::vec2(0.0f, 0.0f), glm::vec4(1.0f)),
+		Vertex(glm::vec3(0.5f, -0.5f, 0.0f), glm::vec2(1.0f, 0.0f), glm::vec4(1.0f)),
+		Vertex(glm::vec3(0.5f, 0.5f, 0.0f), glm::vec2(1.0f, 1.0f), glm::vec4(1.0f)),
+		Vertex(glm::vec3(-0.5f, 0.5f, 0.0f), glm::vec2(0.0f, 1.0f), glm::vec4(1.0f))};
+
+	std::vector<uint32_t> quadIndices = {
+		0, 1, 2,
+		2, 3, 0};
+
+	resMgr->createMesh("quad", quadVertices, quadIndices);
+
+	// Load spot texture
+	resMgr->loadTexture("spot_launch");
+
 	// Load game data from CSV files
 	if (!GameData::getInstance().loadFromCSV("nightreign/assets/datas"))
 	{
@@ -294,10 +315,10 @@ void Scene::onMouseRightClick(int screenX, int screenY, int windowWidth, int win
 
 	// Clear previous context menu data
 	m_contextMenuData.clear();
-	
+
 	// Collect all spots at this click location
 	std::vector<std::pair<entt::entity, float>> hitsAtLocation;
-	
+
 	for (auto it = m_mapSpotEntities.rbegin(); it != m_mapSpotEntities.rend(); ++it)
 	{
 		auto entity = *it;
@@ -313,7 +334,7 @@ void Scene::onMouseRightClick(int screenX, int screenY, int windowWidth, int win
 		// Check if this is an interactable spot
 		if (mapSpot->metadata <= 0)
 			continue;
-			
+
 		// Only consider starter and filter spots
 		if (tag->name != "filter spot" && tag->name != "starter spot")
 			continue;
@@ -327,30 +348,31 @@ void Scene::onMouseRightClick(int screenX, int screenY, int windowWidth, int win
 			hitsAtLocation.push_back({entity, result.distance});
 		}
 	}
-	
+
 	// If no hits, return early
 	if (hitsAtLocation.empty())
 		return;
-	
+
 	// Sort by distance (closest first)
 	std::sort(hitsAtLocation.begin(), hitsAtLocation.end(),
-		[](const auto& a, const auto& b) { return a.second < b.second; });
-	
+			  [](const auto &a, const auto &b)
+			  { return a.second < b.second; });
+
 	// Collect all spot types and IDs at this location
 	auto &gameData = GameData::getInstance();
 	std::map<int, size_t> uniqueVars; // For deduplicating variations
-	
-	for (const auto& [entity, distance] : hitsAtLocation)
+
+	for (const auto &[entity, distance] : hitsAtLocation)
 	{
 		auto *mapSpot = m_registry.try_get<MapSpot>(entity);
 		auto *tag = m_registry.try_get<Tag>(entity);
 		auto *transform = m_registry.try_get<Transform>(entity);
-		
+
 		if (!mapSpot || !tag || !transform)
 			continue;
-		
+
 		m_contextMenuData.entities.push_back(entity);
-		
+
 		if (tag->name == "starter spot")
 		{
 			// Add starter ID
@@ -360,14 +382,14 @@ void Scene::onMouseRightClick(int screenX, int screenY, int windowWidth, int win
 		{
 			// Add filter spot ID
 			m_contextMenuData.filterSpotIds.push_back(mapSpot->metadata);
-			
+
 			// Collect variations for this spot
 			auto results = gameData.getVariationsAtSpot(mapSpot->metadata, m_filteredPatterns);
 			for (const auto &res : results)
 			{
 				auto outPatterns = gameData.filterByVariation(
 					m_filteredPatterns, mapSpot->metadata, res->getKey());
-				
+
 				// Deduplicate variations by key
 				auto it = uniqueVars.find(res->getKey());
 				if (it != uniqueVars.end() && it->second < m_contextMenuData.variations.size())
@@ -377,7 +399,7 @@ void Scene::onMouseRightClick(int screenX, int screenY, int windowWidth, int win
 						outPatterns.begin(), outPatterns.end());
 					continue;
 				}
-				
+
 				// Add new variation
 				VariationOption var;
 				var.info = *res;
@@ -386,14 +408,14 @@ void Scene::onMouseRightClick(int screenX, int screenY, int windowWidth, int win
 				uniqueVars[res->getKey()] = m_contextMenuData.variations.size() - 1;
 			}
 		}
-		
+
 		// Store world position from the first hit
 		if (m_contextMenuData.worldPosition == glm::vec2(0.0f))
 		{
 			m_contextMenuData.worldPosition = glm::vec2(transform->position.x, transform->position.y);
 		}
 	}
-	
+
 	// Show context menu if we have any data
 	if (!m_contextMenuData.isEmpty())
 	{
@@ -613,7 +635,21 @@ void Scene::drawUI()
 
 	// Scene tool window
 	ImGui::Begin("Scene Tool");
-	ImGui::Checkbox("Enable B1 Overlay", &m_enableB1Overlay);
+	if(ImGui::Checkbox("Enable B1 Overlay", &m_enableB1Overlay))
+	{
+		for(auto entity : m_mapTileEntities)
+		{
+			if (!m_registry.valid(entity))
+				continue;
+			auto tagComp = m_registry.try_get<Tag>(entity);
+			if (!tagComp || tagComp->name != "tile_b1")
+				continue;
+			auto *meshComp = m_registry.try_get<MeshComponent>(entity);
+			if (!meshComp)
+				continue;
+			meshComp->visible = m_enableB1Overlay;
+		}
+	}
 
 	ImGui::Separator();
 	ImGui::Text("Pattern ID:");
@@ -788,14 +824,14 @@ void Scene::drawUI()
 				{
 					loadSpotsByPattern(patternId);
 					m_filterMode = false; // Exit filter mode after loading
-					
+
 					// Reset filter state for next use
 					m_markedSpots.clear();
 					m_filteredPatterns.clear();
 					m_currentSpotId = -1;
 					m_availableVariations.clear();
 					m_selectedVariationIndex = -1;
-					
+
 					// Break immediately after modifying the container we're iterating
 					break;
 				}
@@ -805,123 +841,127 @@ void Scene::drawUI()
 	}
 
 	ImGui::End();
-	
+
 	// Context menu (appears at mouse position)
 	if (m_showContextMenu)
 	{
 		// Get display size
 		ImVec2 displaySize = ImGui::GetIO().DisplaySize;
-		
+
 		// Estimate menu size dynamically
 		float estimatedWidth = 300.0f;
 		float estimatedHeight = 100.0f;
-		
+
 		// Add height for starters
 		if (m_contextMenuData.hasStarters())
 		{
 			estimatedHeight += 60.0f + m_contextMenuData.starterIds.size() * 25.0f;
 		}
-		
+
 		// Add height for filters
 		if (m_contextMenuData.hasFilters())
 		{
 			estimatedHeight += 60.0f + m_contextMenuData.variations.size() * 25.0f;
 		}
-		
+
 		// Cap maximum height
 		if (estimatedHeight > 450.0f)
 			estimatedHeight = 450.0f;
-		
+
 		// Adjust position to keep menu within window bounds
 		float menuX = m_contextMenuPos.x;
 		float menuY = m_contextMenuPos.y;
-		
+
 		// Check right boundary
 		if (menuX + estimatedWidth > displaySize.x)
 		{
 			menuX = displaySize.x - estimatedWidth - 10.0f;
-			if (menuX < 10.0f) menuX = 10.0f;
+			if (menuX < 10.0f)
+				menuX = 10.0f;
 		}
-		
+
 		// Check bottom boundary
 		if (menuY + estimatedHeight > displaySize.y)
 		{
 			menuY = displaySize.y - estimatedHeight - 10.0f;
-			if (menuY < 10.0f) menuY = 10.0f;
+			if (menuY < 10.0f)
+				menuY = 10.0f;
 		}
-		
+
 		ImGui::SetNextWindowPos(ImVec2(menuX, menuY), ImGuiCond_Appearing);
-		ImGui::Begin("Context Menu", &m_showContextMenu, 
-			ImGuiWindowFlags_NoTitleBar | 
-			ImGuiWindowFlags_NoResize | 
-			ImGuiWindowFlags_AlwaysAutoResize | 
-			ImGuiWindowFlags_NoSavedSettings);
-		
+		ImGui::Begin("Context Menu", &m_showContextMenu,
+					 ImGuiWindowFlags_NoTitleBar |
+						 ImGuiWindowFlags_NoResize |
+						 ImGuiWindowFlags_AlwaysAutoResize |
+						 ImGuiWindowFlags_NoSavedSettings);
+
 		// Get actual window size after rendering and adjust if needed
 		ImVec2 windowSize = ImGui::GetWindowSize();
 		ImVec2 windowPos = ImGui::GetWindowPos();
-		
+
 		// Check if window is out of bounds and adjust
 		bool needsAdjustment = false;
 		float adjustedX = windowPos.x;
 		float adjustedY = windowPos.y;
-		
+
 		if (windowPos.x + windowSize.x > displaySize.x)
 		{
 			adjustedX = displaySize.x - windowSize.x - 10.0f;
-			if (adjustedX < 10.0f) adjustedX = 10.0f;
+			if (adjustedX < 10.0f)
+				adjustedX = 10.0f;
 			needsAdjustment = true;
 		}
-		
+
 		if (windowPos.y + windowSize.y > displaySize.y)
 		{
 			adjustedY = displaySize.y - windowSize.y - 10.0f;
-			if (adjustedY < 10.0f) adjustedY = 10.0f;
+			if (adjustedY < 10.0f)
+				adjustedY = 10.0f;
 			needsAdjustment = true;
 		}
-		
+
 		if (needsAdjustment)
 		{
 			ImGui::SetWindowPos(ImVec2(adjustedX, adjustedY));
 		}
-		
+
 		auto &gameData = GameData::getInstance();
-		
+
 		// Display header with position info
 		ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "Spot Actions");
 		ImGui::Separator();
-		
+
 		// === Starter Options Section ===
 		if (m_contextMenuData.hasStarters())
 		{
 			ImGui::TextColored(ImVec4(0.3f, 0.7f, 1.0f, 1.0f), "Starter Options:");
 			ImGui::Indent();
-			
+
 			int validStarterCount = 0;
 			for (int starterId : m_contextMenuData.starterIds)
 			{
 				auto starterSpot = gameData.getStarterSpot(starterId);
 				if (!starterSpot)
 					continue;
-				
+
 				// Calculate how many patterns this would leave
 				auto resultPatterns = gameData.filterByStarter(m_filteredPatterns, starterId);
-				
+
 				// Skip if no patterns match
 				if (resultPatterns.empty())
 					continue;
-				
+
 				validStarterCount++;
 				std::string label = "Apply Starter #" + std::to_string(starterId);
 				label += " (" + std::to_string(resultPatterns.size()) + " patterns)";
-				
+
 				if (ImGui::MenuItem(label.c_str()))
 				{
 					// Apply starter filter
 					m_filteredPatterns = resultPatterns;
-					SDL_Log("Applied starter filter: %d, remaining patterns: %zu", 
-						starterId, m_filteredPatterns.size());
-					
+					SDL_Log("Applied starter filter: %d, remaining patterns: %zu",
+							starterId, m_filteredPatterns.size());
+
 					// Mark all entities at this location as selected
 					for (auto entity : m_contextMenuData.entities)
 					{
@@ -935,7 +975,7 @@ void Scene::drawUI()
 							}
 						}
 					}
-					
+
 					// Auto-load if only one pattern remains
 					if (m_filteredPatterns.size() == 1)
 					{
@@ -943,7 +983,7 @@ void Scene::drawUI()
 						SDL_Log("Auto-loading pattern %d (only match)", patternId);
 						loadSpotsByPattern(patternId);
 						m_filterMode = false;
-						
+
 						// Reset filter state for next use
 						m_markedSpots.clear();
 						m_filteredPatterns.clear();
@@ -951,34 +991,34 @@ void Scene::drawUI()
 						m_availableVariations.clear();
 						m_selectedVariationIndex = -1;
 					}
-					
+
 					// Close menu
 					m_showContextMenu = false;
 					m_contextMenuData.clear();
 				}
 			}
-			
+
 			// Show message if no valid starters
 			if (validStarterCount == 0)
 			{
 				ImGui::TextDisabled("No matching starters");
 			}
-			
+
 			ImGui::Unindent();
-			
+
 			// Add separator if we also have filter options
 			if (m_contextMenuData.hasFilters())
 			{
 				ImGui::Spacing();
 			}
 		}
-		
+
 		// === Filter/Variation Options Section ===
 		if (m_contextMenuData.hasFilters())
 		{
 			ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Variation Options:");
 			ImGui::Indent();
-			
+
 			if (m_contextMenuData.variations.empty())
 			{
 				ImGui::TextDisabled("No variations available");
@@ -992,7 +1032,7 @@ void Scene::drawUI()
 					if (!var.patterns.empty())
 						validVariationCount++;
 				}
-				
+
 				if (validVariationCount == 0)
 				{
 					ImGui::TextDisabled("No matching variations");
@@ -1002,20 +1042,20 @@ void Scene::drawUI()
 					// Use scrollable region if there are many variations
 					float maxHeight = 300.0f;
 					bool needsScroll = validVariationCount > 10;
-					
+
 					if (needsScroll)
 					{
 						ImGui::BeginChild("VariationScroll", ImVec2(0, maxHeight), false);
 					}
-					
+
 					for (size_t i = 0; i < m_contextMenuData.variations.size(); ++i)
 					{
 						const auto &var = m_contextMenuData.variations[i];
-						
+
 						// Skip variations with no matching patterns
 						if (var.patterns.empty())
 							continue;
-						
+
 						// Build menu label with label and sublabel
 						std::string menuLabel;
 						if (!var.info.label.empty() && !var.info.sublabel.empty())
@@ -1031,81 +1071,81 @@ void Scene::drawUI()
 							menuLabel = var.info.getText();
 						}
 						menuLabel += " (" + std::to_string(var.patterns.size()) + " patterns)";
-						
+
 						if (ImGui::MenuItem(menuLabel.c_str()))
 						{
 							// Find which filter spot this variation belongs to
 							// (use the first filter spot ID in the list)
 							int targetSpotId = m_contextMenuData.filterSpotIds[0];
-						
-						// Add to filter
-						m_markedSpots[targetSpotId] = var.info.getKey();
-						SDL_Log("Added filter: spot %d -> %s", targetSpotId, var.info.getText().c_str());
-						
-						// Update visual for all filter spots at this location
-						for (auto entity : m_contextMenuData.entities)
-						{
-							if (!m_registry.valid(entity))
-								continue;
-							
-							auto *mapSpot = m_registry.try_get<MapSpot>(entity);
-							auto *tag = m_registry.try_get<Tag>(entity);
-							
-							if (!mapSpot || !tag)
-								continue;
-							
-							if (tag->name == "filter spot" && mapSpot->metadata == targetSpotId)
+
+							// Add to filter
+							m_markedSpots[targetSpotId] = var.info.getKey();
+							SDL_Log("Added filter: spot %d -> %s", targetSpotId, var.info.getText().c_str());
+
+							// Update visual for all filter spots at this location
+							for (auto entity : m_contextMenuData.entities)
 							{
-								updateSpot(entity, var.info);
+								if (!m_registry.valid(entity))
+									continue;
+
+								auto *mapSpot = m_registry.try_get<MapSpot>(entity);
+								auto *tag = m_registry.try_get<Tag>(entity);
+
+								if (!mapSpot || !tag)
+									continue;
+
+								if (tag->name == "filter spot" && mapSpot->metadata == targetSpotId)
+								{
+									updateSpot(entity, var.info);
+								}
+
+								mapSpot->selected = false;
 							}
-							
-							mapSpot->selected = false;
-						}
-						
-						// Apply filter
-						m_filteredPatterns = gameData.filterByVariation(
-							m_filteredPatterns, targetSpotId, var.info.getKey());
-						
-						// Auto-load if only one pattern remains
-						if (m_filteredPatterns.size() == 1)
-						{
-							int patternId = *m_filteredPatterns.begin();
-							SDL_Log("Auto-loading pattern %d (only match)", patternId);
-							loadSpotsByPattern(patternId);
-							m_filterMode = false;
-							
-							// Reset filter state for next use
-							m_markedSpots.clear();
-							m_filteredPatterns.clear();
-							m_currentSpotId = -1;
-							m_availableVariations.clear();
-							m_selectedVariationIndex = -1;
-						}
-						
-						// Close menu
-						m_showContextMenu = false;
-						m_contextMenuData.clear();
-					} // End if (ImGui::MenuItem)
-				} // End for each variation
-				
-				if (needsScroll)
+
+							// Apply filter
+							m_filteredPatterns = gameData.filterByVariation(
+								m_filteredPatterns, targetSpotId, var.info.getKey());
+
+							// Auto-load if only one pattern remains
+							if (m_filteredPatterns.size() == 1)
+							{
+								int patternId = *m_filteredPatterns.begin();
+								SDL_Log("Auto-loading pattern %d (only match)", patternId);
+								loadSpotsByPattern(patternId);
+								m_filterMode = false;
+
+								// Reset filter state for next use
+								m_markedSpots.clear();
+								m_filteredPatterns.clear();
+								m_currentSpotId = -1;
+								m_availableVariations.clear();
+								m_selectedVariationIndex = -1;
+							}
+
+							// Close menu
+							m_showContextMenu = false;
+							m_contextMenuData.clear();
+						} // End if (ImGui::MenuItem)
+					} // End for each variation
+
+					if (needsScroll)
 					{
 						ImGui::EndChild();
 					}
 				}
 			}
-			
+
 			ImGui::Unindent();
 		}
-		
+
 		// Show message if empty
 		if (m_contextMenuData.isEmpty())
 		{
 			ImGui::TextDisabled("No options available");
 		}
-		
+
 		ImGui::End();
-		
+
 		// Close menu when clicking outside
 		if (!ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow) && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
 		{
@@ -1169,23 +1209,19 @@ void Scene::loadMapTiles(int mapIndex, int layer)
 	{
 		for (int x = 0; x < m_gridWidth; x++)
 		{
-			// Generate texture path and name
-			std::stringstream ss;
-			ss << "nightreign/assets/textures/" << mapIndex << "/MENU_MapTile_L" << layer
-			   << "_" << std::setw(2) << std::setfill('0') << x
-			   << "_" << std::setw(2) << std::setfill('0') << y << ".png";
-			std::string texturePath = ss.str();
-
+			// Generate texture alias
 			std::stringstream nameStream;
-			nameStream << "tile_" << mapIndex << "_L" << layer << "_" << x << "_" << y;
+			nameStream << "tile_" << mapIndex << "_L" << layer << "_"
+					   << std::setw(2) << std::setfill('0') << x << "_"
+					   << std::setw(2) << std::setfill('0') << y;
 			std::string textureName = nameStream.str();
 
-			// Load texture
-			resMgr->loadTexture(textureName, texturePath);
+			// Load texture using alias
+			resMgr->loadTexture(textureName);
 
 			// Create tile entity
 			auto entity = m_registry.create();
-			m_registry.emplace<Tag>(entity, "map");
+			m_registry.emplace<Tag>(entity, "tile");
 			m_registry.emplace<MeshComponent>(entity, "quad", "texture", textureName);
 
 			auto &transform = m_registry.emplace<Transform>(entity);
@@ -1196,35 +1232,29 @@ void Scene::loadMapTiles(int mapIndex, int layer)
 			m_mapTileEntities.push_back(entity);
 
 			// Load B1 overlay if enabled
-			if (m_enableB1Overlay)
+			// Generate B1 texture alias
+			std::stringstream b1NameStream;
+			b1NameStream << "tile_" << mapIndex << "_L" << layer << "_"
+						 << std::setw(2) << std::setfill('0') << x << "_"
+						 << std::setw(2) << std::setfill('0') << y << "_B1";
+			std::string b1TextureName = b1NameStream.str();
+
+			// Try to load B1 texture using alias (may not exist for all tiles)
+			Texture *b1Texture = resMgr->loadTexture(b1TextureName);
+			if (b1Texture && b1Texture->isValid())
 			{
-				std::stringstream b1Stream;
-				b1Stream << "nightreign/assets/textures/" << mapIndex << "/MENU_MapTile_L" << layer
-						 << "_" << std::setw(2) << std::setfill('0') << x
-						 << "_" << std::setw(2) << std::setfill('0') << y << "_B1.png";
-				std::string b1TexturePath = b1Stream.str();
+				// Create overlay entity
+				auto overlayEntity = m_registry.create();
+				m_registry.emplace<Tag>(overlayEntity, "tile_b1");
+				m_registry.emplace<MeshComponent>(overlayEntity, "quad", "texture", b1TextureName, false);
+				m_registry.emplace<RenderOptions>(overlayEntity).order = 1;
 
-				std::stringstream b1NameStream;
-				b1NameStream << "tile_" << mapIndex << "_L" << layer << "_" << x << "_" << y << "_B1";
-				std::string b1TextureName = b1NameStream.str();
+				auto &overlayTransform = m_registry.emplace<Transform>(overlayEntity);
+				overlayTransform.position = glm::vec3(offsetX + x * m_tileSize, offsetY + y * m_tileSize, 0.01f); // Slightly above base tile
+				overlayTransform.scale = glm::vec3(m_tileSize, m_tileSize, 1.0f);
 
-				// Try to load B1 texture (may not exist for all tiles)
-				Texture *b1Texture = resMgr->loadTexture(b1TextureName, b1TexturePath);
-				if (b1Texture && b1Texture->isValid())
-				{
-					// Create overlay entity
-					auto overlayEntity = m_registry.create();
-					m_registry.emplace<Tag>(overlayEntity, "map_b1");
-					m_registry.emplace<MeshComponent>(overlayEntity, "quad", "texture", b1TextureName);
-					m_registry.emplace<RenderOptions>(overlayEntity).order = 1;
-
-					auto &overlayTransform = m_registry.emplace<Transform>(overlayEntity);
-					overlayTransform.position = glm::vec3(offsetX + x * m_tileSize, offsetY + y * m_tileSize, 0.01f); // Slightly above base tile
-					overlayTransform.scale = glm::vec3(m_tileSize, m_tileSize, 1.0f);
-
-					// Store overlay entity for cleanup
-					m_mapTileEntities.push_back(overlayEntity);
-				}
+				// Store overlay entity for cleanup
+				m_mapTileEntities.push_back(overlayEntity);
 			}
 		}
 	}
@@ -1325,11 +1355,12 @@ void Scene::updateSpot(entt::entity entity, const VariationInfo &info)
 	Texture *texture = nullptr;
 	if (!info.icon.empty() && resMgr)
 	{
-		std::string iconPath = "nightreign/assets/textures/spots/" + info.icon + ".png";
-		texture = resMgr->loadTexture(info.icon, iconPath);
+		// Use alias format: "spot_" + icon name
+		std::string textureAlias = "spot_" + info.icon;
+		texture = resMgr->loadTexture(textureAlias);
 		if (auto *meshComp = m_registry.try_get<MeshComponent>(entity))
 		{
-			meshComp->textureName = info.icon;
+			meshComp->textureName = textureAlias;
 			meshComp->meshName = "quad";
 			meshComp->shaderName = "texture";
 		}

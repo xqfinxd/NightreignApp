@@ -31,26 +31,6 @@ Renderer::~Renderer()
 
 void Renderer::initialize()
 {
-	// Load shaders
-	m_resource_mgr->loadShader("texture", "nightreign/assets/shaders/texture.vert", "nightreign/assets/shaders/texture.frag");
-	m_resource_mgr->loadShader("font", "nightreign/assets/shaders/font.vert", "nightreign/assets/shaders/font.frag");
-
-	// Create a simple quad mesh for tiles
-	std::vector<Vertex> quadVertices = {
-		Vertex(glm::vec3(-0.5f, -0.5f, 0.0f), glm::vec2(0.0f, 0.0f), glm::vec4(1.0f)),
-		Vertex(glm::vec3(0.5f, -0.5f, 0.0f) , glm::vec2(1.0f, 0.0f), glm::vec4(1.0f)),
-		Vertex(glm::vec3(0.5f, 0.5f, 0.0f)  , glm::vec2(1.0f, 1.0f), glm::vec4(1.0f)),
-		Vertex(glm::vec3(-0.5f, 0.5f, 0.0f) , glm::vec2(0.0f, 1.0f), glm::vec4(1.0f))};
-
-	std::vector<uint32_t> quadIndices = {
-		0, 1, 2,
-		2, 3, 0};
-
-	m_resource_mgr->createMesh("quad", quadVertices, quadIndices);
-
-	// Load spot texture
-	m_resource_mgr->loadTexture("launch", "nightreign/assets/textures/spots/launch.png");
-
 	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Renderer initialized");
 }
 

@@ -27,27 +27,28 @@ bool TextureRegistry::LoadAtlas(const std::string& atlasPath) {
         return false;
     }
     
-    // 解析每一行
+    // 解析每一行：alias,path,width,height,format
     int loadedCount = 0;
     for (size_t i = 0; i < csv.getRowCount(); ++i) {
         auto row = csv.getRow(i);
-        if (row.size() < 4) {
+        if (row.size() < 5) {
             std::cerr << "[TextureRegistry] Invalid row " << i << ": insufficient columns" << std::endl;
             continue;
         }
         
         TextureMetadata meta;
-        meta.path = row[0];
-        meta.width = std::stoi(row[1]);
-        meta.height = std::stoi(row[2]);
-        meta.format = ParseFormat(row[3]);
+        meta.alias = row[0];   // 别名
+        meta.path = row[1];    // 路径
+        meta.width = std::stoi(row[2]);
+        meta.height = std::stoi(row[3]);
+        meta.format = ParseFormat(row[4]);
         
         if (meta.width <= 0 || meta.height <= 0) {
-            std::cerr << "[TextureRegistry] Invalid dimensions for " << meta.path << std::endl;
+            std::cerr << "[TextureRegistry] Invalid dimensions for " << meta.alias << std::endl;
             continue;
         }
         
-        m_textures[meta.path] = meta;
+        m_textures[meta.alias] = meta;  // 按别名索引
         loadedCount++;
     }
     
@@ -55,8 +56,8 @@ bool TextureRegistry::LoadAtlas(const std::string& atlasPath) {
     return loadedCount > 0;
 }
 
-GLuint TextureRegistry::CreatePlaceholderForPath(const std::string& path) {
-    auto it = m_textures.find(path);
+GLuint TextureRegistry::CreatePlaceholderForAlias(const std::string& alias) {
+    auto it = m_textures.find(alias);
     if (it == m_textures.end()) {
         // 纹理不在atlas中，返回0
         return 0;
@@ -73,7 +74,7 @@ GLuint TextureRegistry::CreatePlaceholderForPath(const std::string& path) {
     meta.textureId = CreatePlaceholderTexture(meta.width, meta.height, meta.format);
     
     if (meta.textureId != 0) {
-        std::cout << "[TextureRegistry] Created placeholder for: " << path 
+        std::cout << "[TextureRegistry] Created placeholder for: " << alias 
                   << " (" << meta.width << "x" << meta.height << ")" << std::endl;
     }
     
@@ -103,33 +104,33 @@ void TextureRegistry::CreatePlaceholderTextures() {
     std::cout << "[TextureRegistry] Created " << createdCount << " placeholder textures" << std::endl;
 }
 
-const TextureMetadata* TextureRegistry::GetMetadata(const std::string& path) const {
-    auto it = m_textures.find(path);
+const TextureMetadata* TextureRegistry::GetMetadata(const std::string& alias) const {
+    auto it = m_textures.find(alias);
     if (it != m_textures.end()) {
         return &it->second;
     }
     return nullptr;
 }
 
-GLuint TextureRegistry::GetTextureId(const std::string& path) const {
-    auto it = m_textures.find(path);
+GLuint TextureRegistry::GetTextureId(const std::string& alias) const {
+    auto it = m_textures.find(alias);
     if (it != m_textures.end()) {
         return it->second.textureId;
     }
     return 0;
 }
 
-bool TextureRegistry::UpdateTexture(const std::string& path, const void* pixels, size_t dataSize) {
-    auto it = m_textures.find(path);
+bool TextureRegistry::UpdateTexture(const std::string& alias, const void* pixels, size_t dataSize) {
+    auto it = m_textures.find(alias);
     if (it == m_textures.end()) {
-        std::cerr << "[TextureRegistry] Texture not found: " << path << std::endl;
+        std::cerr << "[TextureRegistry] Texture not found: " << alias << std::endl;
         return false;
     }
     
     TextureMetadata& meta = it->second;
     
     if (meta.textureId == 0) {
-        std::cerr << "[TextureRegistry] Texture ID not created: " << path << std::endl;
+        std::cerr << "[TextureRegistry] Texture ID not created: " << alias << std::endl;
         return false;
     }
     
@@ -144,7 +145,7 @@ bool TextureRegistry::UpdateTexture(const std::string& path, const void* pixels,
     
     size_t expectedSize = meta.width * meta.height * channels;
     if (dataSize != expectedSize) {
-        std::cerr << "[TextureRegistry] Data size mismatch for " << path 
+        std::cerr << "[TextureRegistry] Data size mismatch for " << alias 
                   << " (expected " << expectedSize << ", got " << dataSize << ")" << std::endl;
         return false;
     }
@@ -160,11 +161,11 @@ bool TextureRegistry::UpdateTexture(const std::string& path, const void* pixels,
     
     meta.isLoaded = true;
     
-    std::cout << "[TextureRegistry] Updated texture: " << path << std::endl;
+    std::cout << "[TextureRegistry] Updated texture: " << alias << std::endl;
     return true;
 }
 
-std::vector<std::string> TextureRegistry::GetAllTexturePaths() const {
+std::vector<std::string> TextureRegistry::GetAllTextureAliases() const {
     std::vector<std::string> paths;
     paths.reserve(m_textures.size());
     

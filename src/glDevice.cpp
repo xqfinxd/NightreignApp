@@ -41,7 +41,7 @@ void glDevice::initialize() {
 	
 	// Load Chinese font
 	ImGuiIO& io = ImGui::GetIO();
-	io.Fonts->AddFontFromFileTTF("nightreign/assets/fonts/simhei.ttf", 18.0f, nullptr, io.Fonts->GetGlyphRangesChineseFull());
+	io.Fonts->AddFontFromFileTTF("nightreign/assets/fonts/simhei.ttf", 18.0f, nullptr, io.Fonts->GetGlyphRangesChineseSimplifiedCommon());
 	
 	ImGui_ImplSDL2_InitForOpenGL(handle, m_context);
 	ImGui_ImplOpenGL3_Init();

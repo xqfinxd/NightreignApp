@@ -29,7 +29,7 @@ public:
     void unloadShader(const std::string& name);
 
     // Texture management
-    Texture* loadTexture(const std::string& name, const std::string& path, bool generateMipmaps = false);
+    Texture* loadTexture(const std::string& name, const std::string& path = "", bool generateMipmaps = false);
     Texture* getTexture(const std::string& name);
     void unloadTexture(const std::string& name);
 

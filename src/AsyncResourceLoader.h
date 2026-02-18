@@ -27,7 +27,10 @@ public:
     void loadTextureAsync(const std::string& name, const std::string& path, LoadCallback callback = nullptr);
     
     // 异步加载纹理数据并更新已存在的占位纹理
-    void loadTextureDataAsync(const std::string& path, TextureRegistry* registry, UpdateCallback callback = nullptr);
+    // @param alias 纹理别名，用于查找元数据和更新
+    // @param registry 纹理注册表
+    // @param callback 完成后的回调
+    void loadTextureDataAsync(const std::string& alias, TextureRegistry* registry, UpdateCallback callback = nullptr);
     
     // 检查文件是否已在 IDBFS 中缓存
     bool isFileCached(const std::string& path);
@@ -46,7 +49,8 @@ private:
     };
     
     struct UpdateRequest {
-        std::string path;
+        std::string alias;          // 纹理别名
+        std::string path;           // 真实路径（用于下载）
         TextureRegistry* registry;
         UpdateCallback callback;
     };

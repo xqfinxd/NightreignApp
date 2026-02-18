@@ -14,8 +14,12 @@ struct MeshComponent
 
     MeshComponent() = default;
     
-    MeshComponent(const std::string& mesh, const std::string& shader, const std::string& texture = "")
+    MeshComponent(const std::string& mesh, const std::string& shader, const std::string& texture)
         : meshName(mesh), shaderName(shader), textureName(texture)
+    {}
+
+    MeshComponent(const std::string& mesh, const std::string& shader, const std::string& texture, bool visible)
+        : meshName(mesh), shaderName(shader), textureName(texture), visible(visible)
     {}
 };
 

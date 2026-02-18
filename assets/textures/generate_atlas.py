@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
 生成atlas.csv - 扫描textures目录下所有PNG文件，提取元数据
-输出格式: path,width,height,format
+输出格式: alias,path,width,height,format
 """
 
 import os
 import sys
+import re
 from pathlib import Path
 
 try:
@@ -14,6 +15,37 @@ except ImportError:
     print("错误: 需要安装Pillow库")
     print("运行: pip install Pillow")
     sys.exit(1)
+
+
+def generate_alias(rel_path):
+    """根据相对路径生成简短别名"""
+    path_str = rel_path.as_posix()
+    
+    # 移除.png扩展名
+    name_without_ext = path_str.replace('.png', '')
+    
+    # 处理不同的路径模式
+    if path_str.startswith('spots/'):
+        # spots/village.png -> spot_village
+        basename = Path(name_without_ext).name
+        # 替换空格和特殊字符为下划线
+        basename = re.sub(r'[^a-zA-Z0-9_]', '_', basename)
+        return f"spot_{basename}"
+    elif '/' in path_str:
+        # 0/MENU_MapTile_L0_00_00.png -> tile_0_L0_00_00
+        parts = name_without_ext.split('/')
+        folder = parts[0]
+        filename = parts[1]
+        
+        # 简化文件名：MENU_MapTile_L0_00_00 -> L0_00_00
+        if filename.startswith('MENU_MapTile_'):
+            simplified = filename.replace('MENU_MapTile_', '')
+            return f"tile_{folder}_{simplified}"
+        else:
+            return f"{folder}_{filename}"
+    else:
+        # bg.png -> bg
+        return name_without_ext
 
 
 def scan_textures(base_path):
@@ -35,9 +67,13 @@ def scan_textures(base_path):
             rel_path = png_file.relative_to(script_dir)
             
             # 转换为POSIX路径（使用正斜杠）
-            path_str = "assets/textures/" + rel_path.as_posix()
+            path_str = "nightreign/assets/textures/" + rel_path.as_posix()
+            
+            # 生成别名
+            alias = generate_alias(rel_path)
             
             textures.append({
+                'alias': alias,
                 'path': path_str,
                 'width': width,
                 'height': height,
@@ -52,19 +88,24 @@ def scan_textures(base_path):
 
 def write_atlas_csv(textures, output_file):
     """写入atlas.csv文件"""
-    # 按路径排序
-    textures.sort(key=lambda x: x['path'])
+    # 按别名排序
+    textures.sort(key=lambda x: x['alias'])
     
     with open(output_file, 'w', encoding='utf-8') as f:
         # 写入标题行
-        f.write("path,width,height,format\n")
+        f.write("alias,path,width,height,format\n")
         
         # 写入每个纹理的数据
         for tex in textures:
-            f.write(f"{tex['path']},{tex['width']},{tex['height']},{tex['format']}\n")
+            f.write(f"{tex['alias']},{tex['path']},{tex['width']},{tex['height']},{tex['format']}\n")
     
     print(f"✓ 生成 {output_file}")
     print(f"  共 {len(textures)} 个纹理文件")
+    
+    # 显示前几个别名示例
+    print("\n别名示例:")
+    for tex in textures[:5]:
+        print(f"  {tex['alias']} -> {tex['path']}")
 
 
 def main():

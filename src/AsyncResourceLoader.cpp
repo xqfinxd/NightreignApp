@@ -16,6 +16,9 @@
 AsyncResourceLoader::AsyncResourceLoader(ResourceManager* resourceMgr)
     : m_resource_mgr(resourceMgr)
 {
+#ifdef __EMSCRIPTEN__
+    stbi_set_flip_vertically_on_load(1); // 根据需要调整图像加载方向
+#endif
     SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "AsyncResourceLoader: Initialized");
 }
 
@@ -227,7 +230,7 @@ void AsyncResourceLoader::onFileDownloadError(emscripten_fetch_t* fetch)
 }
 #endif
 
-void AsyncResourceLoader::loadTextureDataAsync(const std::string& path, TextureRegistry* registry, UpdateCallback callback)
+void AsyncResourceLoader::loadTextureDataAsync(const std::string& alias, TextureRegistry* registry, UpdateCallback callback)
 {
     if (!registry) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "AsyncResourceLoader: Invalid registry pointer");
@@ -235,17 +238,27 @@ void AsyncResourceLoader::loadTextureDataAsync(const std::string& path, TextureR
         return;
     }
     
+    // 从registry获取元数据（包含真实路径）
+    const TextureMetadata* metadata = registry->GetMetadata(alias);
+    if (!metadata) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "AsyncResourceLoader: Texture alias not found in registry: %s", alias.c_str());
+        if (callback) callback(false);
+        return;
+    }
+    
+    std::string realPath = metadata->path;  // 获取真实路径用于下载
+    
     // 检查是否正在加载
-    if (m_update_requests.find(path) != m_update_requests.end()) {
-        SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "AsyncResourceLoader: Texture data '%s' is already loading", path.c_str());
+    if (m_update_requests.find(alias) != m_update_requests.end()) {
+        SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "AsyncResourceLoader: Texture data '%s' is already loading", alias.c_str());
         return;
     }
     
 #ifdef __EMSCRIPTEN__
-    // 检查文件是否已缓存
-    std::string filePath = "/" + path;
+    // 检查文件是否已缓存（使用真实路径）
+    std::string filePath = "/" + realPath;
     if (isFileCached(filePath)) {
-        SDL_Log("AsyncResourceLoader: Loading cached texture data '%s'", path.c_str());
+        SDL_Log("AsyncResourceLoader: Loading cached texture data '%s' (%s)", alias.c_str(), realPath.c_str());
         
         // 从缓存加载图片
         int width, height, channels;
@@ -254,11 +267,11 @@ void AsyncResourceLoader::loadTextureDataAsync(const std::string& path, TextureR
         bool success = false;
         if (pixels) {
             size_t dataSize = width * height * channels;
-            success = registry->UpdateTexture(path, pixels, dataSize);
+            success = registry->UpdateTexture(alias, pixels, dataSize);
             
             if (success) {
                 SDL_Log("AsyncResourceLoader: Cached texture loaded: '%s' (%dx%d, %d channels)",
-                        path.c_str(), width, height, channels);
+                        alias.c_str(), width, height, channels);
             }
             
             stbi_image_free(pixels);
@@ -268,14 +281,15 @@ void AsyncResourceLoader::loadTextureDataAsync(const std::string& path, TextureR
         return;
     }
     
-    // 异步下载纹理数据
-    SDL_Log("AsyncResourceLoader: Downloading texture data '%s'", path.c_str());
+    // 异步下载纹理数据（使用真实路径）
+    SDL_Log("AsyncResourceLoader: Downloading texture data '%s' from '%s'", alias.c_str(), realPath.c_str());
     
     UpdateRequest request;
-    request.path = path;
+    request.alias = alias;
+    request.path = realPath;
     request.registry = registry;
     request.callback = callback;
-    m_update_requests[path] = request;
+    m_update_requests[alias] = request;
     m_pending_count++;
     
     emscripten_fetch_attr_t attr;
@@ -286,9 +300,8 @@ void AsyncResourceLoader::loadTextureDataAsync(const std::string& path, TextureR
     attr.onerror = onTextureDataDownloadError;
     attr.userData = this;
     
-    // 构建完整URL
-    std::string url = path;
-    emscripten_fetch(&attr, url.c_str());
+    // 使用真实路径构建URL
+    emscripten_fetch(&attr, realPath.c_str());
 #else
     // 非Emscripten环境，暂不支持
     SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "AsyncResourceLoader: Async texture update not supported in non-Emscripten builds");
@@ -301,30 +314,42 @@ void AsyncResourceLoader::onTextureDataDownloadSuccess(emscripten_fetch_t* fetch
 {
     AsyncResourceLoader* loader = static_cast<AsyncResourceLoader*>(fetch->userData);
     
-    // 查找对应的请求
+    // 查找对应的请求（通过path匹配找到alias）
     std::string url = fetch->url;
     
     // 移除URL前缀 "/nightreign/"
-    std::string path = url;
-    size_t pos = path.find("/nightreign/");
+    std::string downloadPath = url;
+    size_t pos = downloadPath.find("/nightreign/");
     if (pos != std::string::npos) {
-        path = path.substr(pos + 12); // strlen("/nightreign/") = 12
+        downloadPath = downloadPath.substr(pos + 12); // strlen("/nightreign/") = 12
     }
     
-    auto it = loader->m_update_requests.find(path);
-    if (it == loader->m_update_requests.end()) {
+    // 通过path匹配找到对应的alias
+    std::string alias;
+    UpdateRequest request;
+    bool found = false;
+    
+    for (auto& pair : loader->m_update_requests) {
+        if (pair.second.path == downloadPath) {
+            alias = pair.first;
+            request = pair.second;
+            found = true;
+            break;
+        }
+    }
+    
+    if (!found) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "AsyncResourceLoader: Unknown texture data download: %s", url.c_str());
         emscripten_fetch_close(fetch);
         return;
     }
     
-    UpdateRequest& request = it->second;
-    SDL_Log("AsyncResourceLoader: Texture data downloaded: '%s' (%llu bytes)", path.c_str(), fetch->numBytes);
+    SDL_Log("AsyncResourceLoader: Texture data downloaded: '%s' (%s) (%llu bytes)", alias.c_str(), downloadPath.c_str(), fetch->numBytes);
     
     bool success = false;
     
     // 先保存原始PNG数据到虚拟文件系统（用于下次启动时缓存）
-    std::string filePath = "/" + path;  // 添加根路径前缀
+    std::string filePath = "/" + downloadPath;  // 添加根路径前缀
     
     // 确保目录结构存在
     size_t lastSlash = filePath.find_last_of('/');
@@ -354,20 +379,20 @@ void AsyncResourceLoader::onTextureDataDownloadSuccess(emscripten_fetch_t* fetch
         // 计算数据大小
         size_t dataSize = width * height * channels;
         
-        // 更新纹理
-        success = request.registry->UpdateTexture(path, pixels, dataSize);
+        // 更新纹理（使用别名）
+        success = request.registry->UpdateTexture(alias, pixels, dataSize);
         
         if (success) {
             SDL_Log("AsyncResourceLoader: Texture updated successfully: '%s' (%dx%d, %d channels)",
-                    path.c_str(), width, height, channels);
+                    alias.c_str(), width, height, channels);
         } else {
-            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "AsyncResourceLoader: Failed to update texture: %s", path.c_str());
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "AsyncResourceLoader: Failed to update texture: %s", alias.c_str());
         }
         
         // 释放stb_image分配的内存
         stbi_image_free(pixels);
     } else {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "AsyncResourceLoader: Failed to decode image data: %s", path.c_str());
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "AsyncResourceLoader: Failed to decode image data: %s", alias.c_str());
     }
     
     // 定期同步到IndexedDB持久化
@@ -380,7 +405,7 @@ void AsyncResourceLoader::onTextureDataDownloadSuccess(emscripten_fetch_t* fetch
         request.callback(success);
     }
     
-    loader->m_update_requests.erase(it);
+    loader->m_update_requests.erase(alias);
     loader->m_pending_count--;
     emscripten_fetch_close(fetch);
 }
@@ -390,24 +415,35 @@ void AsyncResourceLoader::onTextureDataDownloadError(emscripten_fetch_t* fetch)
     AsyncResourceLoader* loader = static_cast<AsyncResourceLoader*>(fetch->userData);
     
     std::string url = fetch->url;
-    std::string path = url;
-    size_t pos = path.find("/nightreign/");
+    std::string downloadPath = url;
+    size_t pos = downloadPath.find("/nightreign/");
     if (pos != std::string::npos) {
-        path = path.substr(pos + 12);
+        downloadPath = downloadPath.substr(pos + 12);
     }
     
-    auto it = loader->m_update_requests.find(path);
-    if (it != loader->m_update_requests.end()) {
-        UpdateRequest& request = it->second;
-        
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "AsyncResourceLoader: Texture data download failed: '%s' (Status: %d)",
-                     path.c_str(), fetch->status);
+    // 通过path匹配找到对应的alias
+    std::string alias;
+    UpdateRequest request;
+    bool found = false;
+    
+    for (auto& pair : loader->m_update_requests) {
+        if (pair.second.path == downloadPath) {
+            alias = pair.first;
+            request = pair.second;
+            found = true;
+            break;
+        }
+    }
+    
+    if (found) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "AsyncResourceLoader: Texture data download failed: '%s' (%s) (Status: %d)",
+                     alias.c_str(), downloadPath.c_str(), fetch->status);
         
         if (request.callback) {
             request.callback(false);
         }
         
-        loader->m_update_requests.erase(it);
+        loader->m_update_requests.erase(alias);
     }
     
     loader->m_pending_count--;

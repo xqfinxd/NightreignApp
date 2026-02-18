@@ -105,12 +105,12 @@ Texture* ResourceManager::loadTexture(const std::string& name, const std::string
         return it->second;
     }
 
-    // 检查atlas中是否有该纹理的元数据
-    const TextureMetadata* metadata = m_texture_registry->GetMetadata(path);
+    // 检查atlas中是否有该纹理的元数据（使用name作为别名）
+    const TextureMetadata* metadata = m_texture_registry->GetMetadata(name);
     
     if (metadata) {
         // atlas中有此纹理，先创建占位纹理
-        GLuint placeholderId = m_texture_registry->CreatePlaceholderForPath(path);
+        GLuint placeholderId = m_texture_registry->CreatePlaceholderForAlias(name);
         
         if (placeholderId != 0) {
             // 创建Texture对象包装占位纹理
@@ -120,13 +120,13 @@ Texture* ResourceManager::loadTexture(const std::string& name, const std::string
             SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Created placeholder for '%s' (ID: %u, Size: %dx%d)",
                 name.c_str(), placeholderId, metadata->width, metadata->height);
             
-            // 启动异步加载真实纹理
-            m_async_loader->loadTextureDataAsync(path, m_texture_registry, 
-                [path](bool success) {
+            // 启动异步加载真实纹理（使用alias查找，使用path下载）
+            m_async_loader->loadTextureDataAsync(name, m_texture_registry, 
+                [name](bool success) {
                     if (success) {
-                        SDL_Log("ResourceManager: Async texture loaded: %s", path.c_str());
+                        SDL_Log("ResourceManager: Async texture loaded: %s", name.c_str());
                     } else {
-                        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Failed to load async texture: %s", path.c_str());
+                        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Failed to load async texture: %s", name.c_str());
                     }
                 });
             
@@ -134,10 +134,11 @@ Texture* ResourceManager::loadTexture(const std::string& name, const std::string
         }
     }
     
-    // 不在atlas中或占位创建失败，走原有同步加载流程
-    Texture* texture = m_device->createTexture(path);
+    // 不在atlas中或占位创建失败，走原有同步加载流程（使用path参数）
+    std::string loadPath = path.empty() ? name : path;
+    Texture* texture = m_device->createTexture(loadPath);
     if (!texture || !texture->isValid()) {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Failed to load texture '%s' from '%s'", name.c_str(), path.c_str());
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Failed to load texture '%s' from '%s'", name.c_str(), loadPath.c_str());
         return nullptr;
     }
 

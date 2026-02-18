@@ -8,7 +8,8 @@
 
 // 纹理元数据结构
 struct TextureMetadata {
-    std::string path;           // 相对路径
+    std::string alias;          // 别名（用于查找）
+    std::string path;           // 相对路径（用于下载）
     int width;                  // 宽度
     int height;                 // 高度
     TextureFormat format;       // 像素格式
@@ -37,12 +38,12 @@ public:
     bool LoadAtlas(const std::string& atlasPath);
     
     /**
-     * 为指定路径创建占位纹理 (1x1白色纹理)
+     * 为指定别名创建占位纹理 (1x1白色纹理)
      * 必须在OpenGL上下文中调用
-     * @param path 纹理路径
+     * @param alias 纹理别名
      * @return 成功返回纹理ID，失败或不存在返回0
      */
-    GLuint CreatePlaceholderForPath(const std::string& path);
+    GLuint CreatePlaceholderForAlias(const std::string& alias);
     
     /**
      * 预创建所有占位纹理 (1x1白色纹理) - 已弃用，建议使用按需创建
@@ -51,18 +52,18 @@ public:
     void CreatePlaceholderTextures();
     
     /**
-     * 根据路径获取纹理元数据
-     * @param path 纹理路径
+     * 根据别名获取纹理元数据
+     * @param alias 纹理别名
      * @return 元数据指针，不存在返回nullptr
      */
-    const TextureMetadata* GetMetadata(const std::string& path) const;
+    const TextureMetadata* GetMetadata(const std::string& alias) const;
     
     /**
      * 获取纹理ID (可能是占位纹理或真实纹理)
-     * @param path 纹理路径
+     * @param alias 纹理别名
      * @return OpenGL纹理ID，不存在返回0
      */
-    GLuint GetTextureId(const std::string& path) const;
+    GLuint GetTextureId(const std::string& alias) const;
     
     /**
      * 更新纹理数据 (当异步加载完成时调用)
@@ -74,9 +75,9 @@ public:
     bool UpdateTexture(const std::string& path, const void* pixels, size_t dataSize);
     
     /**
-     * 获取所有纹理路径列表
+     * 获取所有纹理别名列表
      */
-    std::vector<std::string> GetAllTexturePaths() const;
+    std::vector<std::string> GetAllTextureAliases() const;
     
     /**
      * 获取纹理总数
@@ -104,5 +105,5 @@ private:
     GLuint CreatePlaceholderTexture(int width, int height, TextureFormat format);
     
 private:
-    std::unordered_map<std::string, TextureMetadata> m_textures;
+    std::unordered_map<std::string, TextureMetadata> m_textures;  // 按别名索引
 };
