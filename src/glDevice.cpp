@@ -10,6 +10,8 @@
 #include <stb_image.h>
 #include <fstream>
 #include <sstream>
+#include <vector>
+#include <numeric>
 
 glDevice::~glDevice() {
 
@@ -39,9 +41,32 @@ void glDevice::initialize() {
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	
-	// Load Chinese font
+	// Load Chinese font with limited character set
 	ImGuiIO& io = ImGui::GetIO();
-	io.Fonts->AddFontFromFileTTF("nightreign/assets/fonts/simhei.ttf", 18.0f, nullptr, io.Fonts->GetGlyphRangesChineseSimplifiedCommon());
+	
+	// Read custom Chinese character set from chs.txt
+	ImVector<ImWchar> ranges;
+	std::string chsContent;
+	chsContent.append(127, '\0');
+    std::iota(chsContent.begin(), chsContent.end(), 1);
+	
+	std::ifstream chsFile("nightreign/assets/datas/chs.txt");
+	if (chsFile.is_open()) {
+		// Read all Chinese characters from file
+		chsContent.append(std::istreambuf_iterator<char>(chsFile),
+		                        std::istreambuf_iterator<char>());
+		chsFile.close();
+	} else {
+		SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "ImGui: Failed to open nightreign/assets/datas/chs.txt, using default Chinese font");
+	}
+	chsContent.push_back('\0');
+	ImFontGlyphRangesBuilder myGlyph;
+	myGlyph.AddText(chsContent.c_str());
+	myGlyph.BuildRanges(&ranges);
+
+	// Load font with custom or default ranges
+	io.Fonts->AddFontFromFileTTF("nightreign/assets/fonts/simhei.ttf", 16.0f, nullptr, ranges.Data);
+	io.Fonts->Build();
 	
 	ImGui_ImplSDL2_InitForOpenGL(handle, m_context);
 	ImGui_ImplOpenGL3_Init();

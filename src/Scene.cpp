@@ -928,13 +928,13 @@ void Scene::drawUI()
 		auto &gameData = GameData::getInstance();
 
 		// Display header with position info
-		ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "Spot Actions");
+		ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), CHS("选项"));
 		ImGui::Separator();
 
 		// === Starter Options Section ===
 		if (m_contextMenuData.hasStarters())
 		{
-			ImGui::TextColored(ImVec4(0.3f, 0.7f, 1.0f, 1.0f), "Starter Options:");
+			ImGui::TextColored(ImVec4(0.3f, 0.7f, 1.0f, 1.0f), CHS("初始点:"));
 			ImGui::Indent();
 
 			int validStarterCount = 0;
@@ -952,8 +952,11 @@ void Scene::drawUI()
 					continue;
 
 				validStarterCount++;
-				std::string label = "Apply Starter #" + std::to_string(starterId);
+				std::string label = CHS("应用此初始点");
+				#ifdef _DEBUG
+				label += std::to_string(starterId);
 				label += " (" + std::to_string(resultPatterns.size()) + " patterns)";
+				#endif
 
 				if (ImGui::MenuItem(label.c_str()))
 				{
@@ -1016,12 +1019,12 @@ void Scene::drawUI()
 		// === Filter/Variation Options Section ===
 		if (m_contextMenuData.hasFilters())
 		{
-			ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Variation Options:");
+			ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), CHS("交互点:"));
 			ImGui::Indent();
 
 			if (m_contextMenuData.variations.empty())
 			{
-				ImGui::TextDisabled("No variations available");
+				ImGui::TextDisabled(CHS("无可用交互点"));
 			}
 			else
 			{
@@ -1035,7 +1038,7 @@ void Scene::drawUI()
 
 				if (validVariationCount == 0)
 				{
-					ImGui::TextDisabled("No matching variations");
+					ImGui::TextDisabled(CHS("无可用交互点"));
 				}
 				else
 				{
@@ -1141,7 +1144,7 @@ void Scene::drawUI()
 		// Show message if empty
 		if (m_contextMenuData.isEmpty())
 		{
-			ImGui::TextDisabled("No options available");
+			ImGui::TextDisabled(CHS("无可用选项"));
 		}
 
 		ImGui::End();
