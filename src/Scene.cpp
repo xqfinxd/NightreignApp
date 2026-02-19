@@ -21,7 +21,7 @@
 #include <set>
 #include <SDL_events.h>
 
-float MapSpot::textScale = 0.004f;
+float MapSpot::textScale = 0.003f;
 float MapSpot::iconSize = 0.2f;
 
 struct HitResult
@@ -1017,7 +1017,7 @@ void Scene::drawContextMenu()
 		// Show message if no valid starters
 		if (validStarterCount == 0)
 		{
-			ImGui::TextDisabled(CHS("无可用初始点"));
+			ImGui::TextDisabled(CHS("不可用初始点"));
 		}
 
 		ImGui::Unindent();
@@ -1326,11 +1326,11 @@ void Scene::filterMap(int map)
 	m_filterMode = true;
 	m_markedSpots.clear();
 	loadSpotsByMap(m_filterMapSelection);
-	m_filteredPatterns = GameData::getInstance().filterByMap(m_filterMapSelection);
+	auto& gameData = GameData::getInstance();
+	m_filteredPatterns = gameData.filterByMap(m_filterMapSelection);
 
-	// Show toast notification
-	const char* mapNames[] = {"普通", "雪山", "火山", "腐败", "大空洞", "隐城"};
-	if (map >= 0 && map < 6) {
+	auto mapNames = gameData.getMapNames();
+	if (map >= 0 && map < mapNames.size()) {
 		showToast(std::string("已切换至: ") + mapNames[map]);
 	}
 }
@@ -1378,6 +1378,19 @@ VariationInfo Scene::getFilterStarter() const
 	temp.icon = "launch";
 	temp.label = CHS("启始点");
 	temp.visible = true;
+	return temp;
+}
+
+VariationInfo Scene::getPlayArea(int day) const
+{
+    VariationInfo temp{};
+	temp.icon = "play_area";
+	if (day == 1)
+		temp.label = CHS("第一天");
+	else if (day == 2)
+		temp.label = CHS("第二天");
+	temp.visible = true;
+	temp.iconScale = 2.f;
 	return temp;
 }
 
@@ -1527,10 +1540,33 @@ void Scene::loadSpotsByPattern(int patternId)
 
 		addBaseSpot(pos, dist->attachId, *varInfo);
 	}
+	if (patternInfo)
+	{
+		auto day1Spot = getPlayArea(1);
+		addBaseSpot(patternInfo->playArea1.normalize(), 1, day1Spot);
+		auto day2Spot = getPlayArea(2);
+		addBaseSpot(patternInfo->playArea2.normalize(), 2, day2Spot);
+	}
+	
 
 	loadMapTiles(gameData.getPattern(patternId)->map, 0);
 
 	m_currentPatternId = patternId;
+
+	if (patternInfo)
+	{
+		// Update info panel with map details
+		std::string htmlContent = "<h3>地图信息</h3>";
+		htmlContent += "<p><strong>夜王：</strong>" + std::to_string(patternInfo->boss) + "</p>";
+		htmlContent += "<p><strong>第一夜BOSS：</strong>" + std::to_string(patternInfo->bossId1) + "</p>";
+		htmlContent += "<p><strong>第二夜BOSS：</strong>" + std::to_string(patternInfo->bossId2) + "</p>";
+		if (patternInfo->extraBossId1 > 0)
+			htmlContent += "<p><strong>第一夜额外BOSS：</strong>" + std::to_string(patternInfo->extraBossId1) + "</p>";
+		if (patternInfo->extraBossId2 > 0)
+			htmlContent += "<p><strong>第二夜额外BOSS：</strong>" + std::to_string(patternInfo->extraBossId2) + "</p>";
+		// TODO: Events, Castle, Great Hollow, etc.
+		setInfoPanelContent(htmlContent);
+	}
 }
 
 void Scene::loadSpotsByMap(int map)
@@ -1563,4 +1599,12 @@ void Scene::loadSpotsByMap(int map)
 	loadMapTiles(map, 0);
 
 	m_currentPatternId = -1;
+
+	// Update info panel with map details
+	std::string htmlContent = "<h3>选择模式</h3>";
+	htmlContent += "<p>点击下方地图 -> 选择目标地图</p>";
+	htmlContent += "<p style=\"text-indent: 2em;\">点击初始点和交互点选择类型</p>";
+	htmlContent += "<p style=\"text-indent: 2em;\">点击下方夜王按钮指定夜王</p>";
+	htmlContent += "<p style=\"text-indent: 2em;\">建议优先选择初始点</p>";
+	setInfoPanelContent(htmlContent);
 }

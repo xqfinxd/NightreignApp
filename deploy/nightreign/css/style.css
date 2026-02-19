@@ -297,6 +297,85 @@ pre>code {
   box-shadow: 0 4px 12px rgba(0, 200, 83, 0.4);
 }
 
+/* Info panel container */
+.info-panel-container {
+  position: fixed;
+  top: 152px;
+  right: 20px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+/* Info toggle button */
+.info-toggle-btn {
+  width: 80px;
+  height: 80px;
+  background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
+  border: none;
+  border-radius: 50%;
+  box-shadow: 0 4px 12px rgba(255, 152, 0, 0.4);
+  font: 600 32px/1 system-ui, -apple-system, sans-serif;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  -webkit-tap-highlight-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.info-toggle-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(255, 152, 0, 0.5);
+}
+
+.info-toggle-btn:active {
+  transform: translateY(0);
+}
+
+.info-toggle-btn.expanded {
+  transform: rotate(180deg);
+}
+
+/* Info panel */
+.info-panel {
+  width: 500px;
+  max-height: 600px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: auto;
+}
+
+.info-panel.collapsed {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-10px) scale(0.95);
+  pointer-events: none;
+}
+
+.info-panel-content {
+  padding: 24px;
+  max-height: 600px;
+  overflow-y: auto;
+  font: 400 20px/1.6 system-ui, -apple-system, sans-serif;
+  color: #333;
+  word-wrap: break-word;
+}
+
+.info-panel-content:empty::before {
+  content: '暂无信息';
+  color: #999;
+  font-style: italic;
+}
+
 /* Container for collapsible FAB groups */
 .fab-container {
   position: fixed;

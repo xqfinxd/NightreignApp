@@ -123,6 +123,7 @@ private:
 	
 	VariationInfo getFilterSpot() const;
 	VariationInfo getFilterStarter() const;
+	VariationInfo getPlayArea(int day) const;
 	
 	bool m_filterMode = false;
 	int m_filterMapSelection = -1;

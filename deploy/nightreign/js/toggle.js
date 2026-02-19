@@ -15,6 +15,17 @@ function showToast(message, duration = 1000) {
   }, duration);
 }
 
+/**
+ * Set content for the info panel (supports HTML)
+ * @param {string} htmlContent - HTML content to display
+ */
+function setInfoPanelContent(htmlContent) {
+  const contentDiv = document.querySelector('.info-panel-content');
+  if (!contentDiv) return;
+  
+  contentDiv.innerHTML = htmlContent;
+}
+
  /**
      * Initialize a bottom-centered toggle group:
      * - Click to toggle `.is-active`
@@ -230,6 +241,36 @@ function showToast(message, duration = 1000) {
         if (typeof Module !== 'undefined' && Module.toggleB1Overlay) {
           Module.toggleB1Overlay();
           this.classList.toggle('active');
+        }
+      });
+    }
+
+    // Info panel toggle button
+    const infoToggleBtn = document.getElementById('btn-toggle-info');
+    const infoPanel = document.getElementById('info-panel');
+    if (infoToggleBtn && infoPanel) {
+      let isInfoExpanded = false;
+      
+      infoToggleBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        isInfoExpanded = !isInfoExpanded;
+        
+        if (isInfoExpanded) {
+          infoPanel.classList.remove('collapsed');
+          infoToggleBtn.classList.add('expanded');
+        } else {
+          infoPanel.classList.add('collapsed');
+          infoToggleBtn.classList.remove('expanded');
+        }
+      });
+      
+      // Close on outside click
+      document.addEventListener('click', function(e) {
+        const isClickInside = e.target.closest('.info-panel-container');
+        if (!isClickInside && isInfoExpanded) {
+          isInfoExpanded = false;
+          infoPanel.classList.add('collapsed');
+          infoToggleBtn.classList.remove('expanded');
         }
       });
     }

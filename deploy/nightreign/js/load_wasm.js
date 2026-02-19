@@ -60,6 +60,7 @@ var Module = {
         // Expose showToast to Module for C++ access
         if (typeof Module !== 'undefined') {
             Module.showToast = showToast;
+            Module.setInfoPanelContent = setInfoPanelContent;
         }
         
         // 定期保存缓存到 IndexedDB (每 60 秒)

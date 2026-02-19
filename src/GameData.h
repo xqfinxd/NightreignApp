@@ -10,6 +10,12 @@ struct MapPoint
 {
 	int gridXNo = 0, gridZNo = 0;
 	float posX = 0.0f, posZ = 0.0f;
+
+    glm::vec2 normalize(int tileSize = 256) const {
+        float gridX = posX / tileSize + gridXNo - 41;
+        float gridZ = posZ / tileSize + gridZNo - 35;
+        return glm::vec2(gridX, gridZ);
+	}
 };
 
 // Map information
@@ -43,10 +49,8 @@ struct PatternInfo {
 struct BaseSpot {
     int id;
 	MapPoint point;
-    glm::vec2 normalize(int tileSize = 256) const {
-        float gridX = point.posX / tileSize + point.gridXNo - 41;
-        float gridZ = point.posZ / tileSize + point.gridZNo - 35;
-        return glm::vec2(gridX, gridZ);
+    glm::vec2 normalize() const {
+        return point.normalize();
 	}
 };
 

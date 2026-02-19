@@ -29,6 +29,20 @@ void showToast(const std::string& message, int duration) {
     jsShowToast(message.c_str(), duration);
 }
 
+// C++ function to call JavaScript setInfoPanelContent
+EM_JS(void, jsSetInfoPanelContent, (const char* htmlContent), {
+    if (typeof Module !== 'undefined' && Module.setInfoPanelContent) {
+        Module.setInfoPanelContent(UTF8ToString(htmlContent));
+    } else {
+        console.warn('Module.setInfoPanelContent is not available');
+    }
+});
+
+// Wrapper function with std::string support
+void setInfoPanelContent(const std::string& htmlContent) {
+    jsSetInfoPanelContent(htmlContent.c_str());
+}
+
 void jsFilterMap(int mapIndex) {
     if (!g_app) return;
     
@@ -76,5 +90,7 @@ EMSCRIPTEN_BINDINGS(nightreign_bindings) {
 }
 #else
 void showToast(const std::string& message, int duration) {
+}
+void setInfoPanelContent(const std::string& htmlContent) {
 }
 #endif // __EMSCRIPTEN__

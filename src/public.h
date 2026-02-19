@@ -18,3 +18,4 @@
 #endif
 
 void showToast(const std::string& message, int duration = 1000);
+void setInfoPanelContent(const std::string& htmlContent);
