@@ -291,9 +291,14 @@ void Renderer::renderSpotLabels(entt::registry& registry, const Camera& camera,
 		float textWidth = textSize.x * textScale;
 		float textHeight = textSize.y * textScale;
 		
-		// World-space position for text (below the spot)
 		glm::vec3 textWorldPos = transform.position;
-		textWorldPos.y -= scale.y * 0.5f + textHeight * 0.1f; // Slightly below the spot
+		if (spot.alignment == 1) // top
+			textWorldPos.y += scale.y * 0.5f + textHeight * 1.1f;
+		else if (spot.alignment == 2) // center
+			textWorldPos.y += textHeight * 0.6f;
+		else // default to bottom
+			textWorldPos.y -= scale.y * 0.5f + textHeight * 0.1f;
+		textWorldPos += glm::vec3(spot.offset, 0.0f);
 		
 		// Draw background rectangle first (if background color has alpha > 0)
 		if (backgroundColor.a > 0.0f)

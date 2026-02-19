@@ -213,7 +213,7 @@ void Scene::initialize()
 						 { handleSpotClick(entity, spot); });
 
 	// Add some sample spots on the map with Chinese labels
-	loadSpotsByPattern(0);
+	filterMap(0);
 
 	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Scene initialized (ECS ready, entities: %zu)", m_registry.size());
 }
@@ -904,47 +904,35 @@ void Scene::drawUI()
 
 void Scene::drawContextMenu()
 {
-	if (!m_showContextMenu)
-		return;
-
-	// Open popup on first frame
-	static bool popupOpened = false;
-	if (m_showContextMenu && !popupOpened)
-	{
-		ImGui::OpenPopup("ContextMenuPopup");
-		popupOpened = true;
-	}
-	
-	if (!m_showContextMenu)
-	{
-		popupOpened = false;
-		return;
-	}
-
 	// Get display size
 	ImVec2 displaySize = ImGui::GetIO().DisplaySize;
-
-	// Adjust position to keep menu within window bounds
-	float menuX = m_contextMenuPos.x;
-	float menuY = m_contextMenuPos.y;
-
-	// Estimate menu size
-	float estimatedWidth = SDL_min(displaySize.x * 0.9f, 600.0f);
-	float estimatedHeight = 400.0f; // Will auto-resize
-
-	// Check boundaries
-	if (menuX + estimatedWidth > displaySize.x)
-		menuX = displaySize.x - estimatedWidth - 10.0f;
-	if (menuX < 10.0f)
-		menuX = 10.0f;
-
-	if (menuY + estimatedHeight > displaySize.y)
-		menuY = displaySize.y - estimatedHeight - 10.0f;
-	if (menuY < 10.0f)
-		menuY = 10.0f;
-
-	ImGui::SetNextWindowPos(ImVec2(menuX, menuY), ImGuiCond_Appearing);
 	
+	if (m_showContextMenu)
+	{
+		// Adjust position to keep menu within window bounds
+		float menuX = m_contextMenuPos.x;
+		float menuY = m_contextMenuPos.y;
+
+		// Estimate menu size
+		float estimatedWidth = SDL_min(displaySize.x * 0.9f, 600.0f);
+		float estimatedHeight = 400.0f; // Will auto-resize
+
+		// Check boundaries
+		if (menuX + estimatedWidth > displaySize.x)
+			menuX = displaySize.x - estimatedWidth - 10.0f;
+		if (menuX < 10.0f)
+			menuX = 10.0f;
+
+		if (menuY + estimatedHeight > displaySize.y)
+			menuY = displaySize.y - estimatedHeight - 10.0f;
+		if (menuY < 10.0f)
+			menuY = 10.0f;
+
+		ImGui::SetNextWindowPos(ImVec2(menuX, menuY), ImGuiCond_Appearing);
+		ImGui::OpenPopup("ContextMenuPopup");
+		m_showContextMenu = false;
+	}
+
 	// Use Popup instead of regular window (auto-closes on click outside)
 	if (ImGui::BeginPopup("ContextMenuPopup", ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
 	{
@@ -954,103 +942,86 @@ void Scene::drawContextMenu()
 		ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), CHS("选项"));
 		ImGui::Separator();
 
-	// === Starter Options Section ===
-	if (m_contextMenuData.hasStarters())
-	{
-		ImGui::TextColored(ImVec4(0.3f, 0.7f, 1.0f, 1.0f), CHS("初始点:"));
-		ImGui::Indent();
-
-		int validStarterCount = 0;
-		for (int starterId : m_contextMenuData.starterIds)
+		// === Starter Options Section ===
+		if (m_contextMenuData.hasStarters())
 		{
-			auto starterSpot = gameData.getStarterSpot(starterId);
-			if (!starterSpot)
-				continue;
+			ImGui::TextColored(ImVec4(0.3f, 0.7f, 1.0f, 1.0f), CHS("初始点:"));
+			ImGui::Indent();
 
-			// Calculate how many patterns this would leave
-			auto resultPatterns = gameData.filterByStarter(m_filteredPatterns, starterId);
+			int validStarterCount = 0;
+			for (int starterId : m_contextMenuData.starterIds)
+			{
+				auto starterSpot = gameData.getStarterSpot(starterId);
+				if (!starterSpot)
+					continue;
 
-			// Skip if no patterns match
-			if (resultPatterns.empty())
-				continue;
+				// Calculate how many patterns this would leave
+				auto resultPatterns = gameData.filterByStarter(m_filteredPatterns, starterId);
 
-			validStarterCount++;
-			std::string label = CHS("应用此初始点");
+				// Skip if no patterns match
+				if (resultPatterns.empty())
+					continue;
+
+				validStarterCount++;
+				std::string label = CHS("应用此初始点");
 #ifdef _DEBUG
-			label += std::to_string(starterId);
-			label += " (" + std::to_string(resultPatterns.size()) + " patterns)";
+				label += std::to_string(starterId);
+				label += " (" + std::to_string(resultPatterns.size()) + " patterns)";
 #endif
 
-			if (ImGui::MenuItem(label.c_str()))
-			{
-				// Apply starter filter
-				m_filteredPatterns = resultPatterns;
-
-				// Mark all entities at this location as selected
-				for (auto entity : m_contextMenuData.entities)
+				if (ImGui::MenuItem(label.c_str()))
 				{
-					if (!m_registry.valid(entity))
-						continue;
-					auto *mapSpot = m_registry.try_get<MapSpot>(entity);
-					auto *tag = m_registry.try_get<Tag>(entity);
-					if (mapSpot && tag && tag->name == "starter spot" && mapSpot->metadata == starterId)
+					// Apply starter filter
+					m_filteredPatterns = resultPatterns;
+
+					// Mark all entities at this location as selected
+					for (auto entity : m_contextMenuData.entities)
 					{
-						mapSpot->selected = true;
+						if (!m_registry.valid(entity))
+							continue;
+						auto *mapSpot = m_registry.try_get<MapSpot>(entity);
+						auto *tag = m_registry.try_get<Tag>(entity);
+						if (mapSpot && tag && tag->name == "starter spot" && mapSpot->metadata == starterId)
+						{
+							mapSpot->selected = true;
+						}
 					}
+
+					// Auto-load if only one pattern remains
+					if (m_filteredPatterns.size() == 1)
+					{
+						onFilterPatterns(*m_filteredPatterns.begin());
+					}
+
+					showToast("已应用初始点");
+
+					// Close menu
+					m_contextMenuData.clear();
+					ImGui::CloseCurrentPopup();
 				}
+			}
 
-				// Auto-load if only one pattern remains
-				if (m_filteredPatterns.size() == 1)
-				{
-					onFilterPatterns(*m_filteredPatterns.begin());
-				}
+			// Show message if no valid starters
+			if (validStarterCount == 0)
+			{
+				ImGui::TextDisabled(CHS("不可用初始点"));
+			}
 
-				showToast("已应用初始点");
+			ImGui::Unindent();
 
-				// Close menu
-				m_showContextMenu = false;
-				m_contextMenuData.clear();
-				ImGui::CloseCurrentPopup();
+			// Add separator if we also have filter options
+			if (m_contextMenuData.hasFilters())
+			{
+				ImGui::Spacing();
 			}
 		}
 
-		// Show message if no valid starters
-		if (validStarterCount == 0)
-		{
-			ImGui::TextDisabled(CHS("不可用初始点"));
-		}
-
-		ImGui::Unindent();
-
-		// Add separator if we also have filter options
+		// === Filter/Variation Options Section ===
 		if (m_contextMenuData.hasFilters())
 		{
-			ImGui::Spacing();
-		}
-	}
+			ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), CHS("交互点:"));
 
-	// === Filter/Variation Options Section ===
-	if (m_contextMenuData.hasFilters())
-	{
-		ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), CHS("交互点:"));
-
-		if (m_contextMenuData.variations.empty())
-		{
-			ImGui::Indent();
-			ImGui::TextDisabled(CHS("无可用交互点"));
-			ImGui::Unindent();
-		}
-		else
-		{
-			// Count valid variations (with patterns > 0)
-			std::vector<size_t> validIndices;
-			for (size_t i = 0; i < m_contextMenuData.variations.size(); ++i)
-			{
-				if (!m_contextMenuData.variations[i].patterns.empty())
-					validIndices.push_back(i);
-			}
-
-			if (validIndices.empty())
+			if (m_contextMenuData.variations.empty())
 			{
 				ImGui::Indent();
 				ImGui::TextDisabled(CHS("无可用交互点"));
@@ -1058,140 +1029,152 @@ void Scene::drawContextMenu()
 			}
 			else
 			{
-				// Use Table layout for better space utilization
-				int numColumns = 1;
-				if (validIndices.size() > 6)
-					numColumns = 2;  // 2 columns if many items
-				if (validIndices.size() > 12)
-					numColumns = 3;  // 3 columns if very many items
-
-				// Calculate table size to minimize scrolling
-				float availWidth = SDL_min(displaySize.x * 0.85f, 700.0f);
-				float availHeight = SDL_min(displaySize.y * 0.6f, 500.0f);
-				
-				ImVec2 tableSize(availWidth, 0);  // Auto height
-				
-				// If too many items, set max height
-				if (validIndices.size() > 15)
-					tableSize.y = availHeight;
-
-				if (ImGui::BeginTable("VariationsTable", numColumns, 
-					ImGuiTableFlags_Borders |
-					ImGuiTableFlags_RowBg |
-					ImGuiTableFlags_ScrollY,
-					tableSize))
+				// Count valid variations (with patterns > 0)
+				std::vector<size_t> validIndices;
+				for (size_t i = 0; i < m_contextMenuData.variations.size(); ++i)
 				{
-					// Setup columns with equal width
-					for (int col = 0; col < numColumns; ++col)
+					if (!m_contextMenuData.variations[i].patterns.empty())
+						validIndices.push_back(i);
+				}
+
+				if (validIndices.empty())
+				{
+					ImGui::Indent();
+					ImGui::TextDisabled(CHS("无可用交互点"));
+					ImGui::Unindent();
+				}
+				else
+				{
+					// Use Table layout for better space utilization
+					int numColumns = 1;
+					if (validIndices.size() > 6)
+						numColumns = 2; // 2 columns if many items
+					if (validIndices.size() > 12)
+						numColumns = 3; // 3 columns if very many items
+
+					// Calculate table size to minimize scrolling
+					float availWidth = SDL_min(displaySize.x * 0.85f, 700.0f);
+					float availHeight = SDL_min(displaySize.y * 0.6f, 500.0f);
+
+					ImVec2 tableSize(availWidth, 0); // Auto height
+
+					// If too many items, set max height
+					if (validIndices.size() > 15)
+						tableSize.y = availHeight;
+
+					if (ImGui::BeginTable("VariationsTable", numColumns,
+										  ImGuiTableFlags_Borders |
+											  ImGuiTableFlags_RowBg |
+											  ImGuiTableFlags_ScrollY,
+										  tableSize))
 					{
-						ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch);
-					}
-
-					// Render variations in table cells
-					int cellIndex = 0;
-					for (size_t idx : validIndices)
-					{
-						const auto &var = m_contextMenuData.variations[idx];
-
-						// Start new row every numColumns items
-						if (cellIndex % numColumns == 0)
-							ImGui::TableNextRow();
-						
-						ImGui::TableSetColumnIndex(cellIndex % numColumns);
-
-						// Build label
-						std::string menuLabel;
-						if (!var.info.label.empty() && !var.info.sublabel.empty())
+						// Setup columns with equal width
+						for (int col = 0; col < numColumns; ++col)
 						{
-							menuLabel = var.info.label + " - " + var.info.sublabel;
+							ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch);
 						}
-						else if (!var.info.label.empty())
-						{
-							menuLabel = var.info.label;
-						}
-						else
-						{
-							menuLabel = var.info.getText();
-						}
-						#ifdef _DEBUG
-						menuLabel += "\n(" + std::to_string(var.patterns.size()) + " patterns)";
-						#endif
 
-						// Use Selectable for full cell click area
-#ifdef __EMSCRIPTEN__
-						// Mobile: larger buttons
-						if (ImGui::Selectable(menuLabel.c_str(), false, ImGuiSelectableFlags_None, ImVec2(0, 50)))
-#else
-						// Desktop: normal size
-						if (ImGui::Selectable(menuLabel.c_str(), false))
-#endif
+						// Render variations in table cells
+						int cellIndex = 0;
+						for (size_t idx : validIndices)
 						{
-							// Find which filter spot this variation belongs to
-							int targetSpotId = m_contextMenuData.filterSpotIds[0];
+							const auto &var = m_contextMenuData.variations[idx];
 
-							// Add to filter
-							m_markedSpots[targetSpotId] = var.info.getKey();
-							SDL_Log("Added filter: spot %d -> %s", targetSpotId, var.info.getText().c_str());
+							// Start new row every numColumns items
+							if (cellIndex % numColumns == 0)
+								ImGui::TableNextRow();
 
-							// Update visual for all filter spots at this location
-							for (auto entity : m_contextMenuData.entities)
+							ImGui::TableSetColumnIndex(cellIndex % numColumns);
+
+							// Build label
+							std::string menuLabel;
+							if (!var.info.label.empty() && !var.info.sublabel.empty())
 							{
-								if (!m_registry.valid(entity))
-									continue;
+								menuLabel = var.info.label + " - " + var.info.sublabel;
+							}
+							else if (!var.info.label.empty())
+							{
+								menuLabel = var.info.label;
+							}
+							else
+							{
+								menuLabel = var.info.getText();
+							}
+#ifdef _DEBUG
+							menuLabel += "\n(" + std::to_string(var.patterns.size()) + " patterns)";
+#endif
 
-								auto *mapSpot = m_registry.try_get<MapSpot>(entity);
-								auto *tag = m_registry.try_get<Tag>(entity);
+							// Use Selectable for full cell click area
+#ifdef __EMSCRIPTEN__
+							// Mobile: larger buttons
+							if (ImGui::Selectable(menuLabel.c_str(), false, ImGuiSelectableFlags_None, ImVec2(0, 50)))
+#else
+							// Desktop: normal size
+							if (ImGui::Selectable(menuLabel.c_str(), false))
+#endif
+							{
+								// Find which filter spot this variation belongs to
+								int targetSpotId = m_contextMenuData.filterSpotIds[0];
 
-								if (!mapSpot || !tag)
-									continue;
+								// Add to filter
+								m_markedSpots[targetSpotId] = var.info.getKey();
+								SDL_Log("Added filter: spot %d -> %s", targetSpotId, var.info.getText().c_str());
 
-								if (tag->name == "filter spot" && mapSpot->metadata == targetSpotId)
+								// Update visual for all filter spots at this location
+								for (auto entity : m_contextMenuData.entities)
 								{
-									updateSpot(entity, var.info);
+									if (!m_registry.valid(entity))
+										continue;
+
+									auto *mapSpot = m_registry.try_get<MapSpot>(entity);
+									auto *tag = m_registry.try_get<Tag>(entity);
+
+									if (!mapSpot || !tag)
+										continue;
+
+									if (tag->name == "filter spot" && mapSpot->metadata == targetSpotId)
+									{
+										updateSpot(entity, var.info);
+									}
+
+									mapSpot->selected = false;
 								}
 
-								mapSpot->selected = false;
+								// Apply filter
+								m_filteredPatterns = gameData.filterByVariation(
+									m_filteredPatterns, targetSpotId, var.info.getKey());
+
+								// Auto-load if only one pattern remains
+								if (m_filteredPatterns.size() == 1)
+								{
+									onFilterPatterns(*m_filteredPatterns.begin());
+								}
+
+								// Close menu
+								m_contextMenuData.clear();
+								ImGui::CloseCurrentPopup();
 							}
 
-							// Apply filter
-							m_filteredPatterns = gameData.filterByVariation(
-								m_filteredPatterns, targetSpotId, var.info.getKey());
-
-							// Auto-load if only one pattern remains
-							if (m_filteredPatterns.size() == 1)
-							{
-								onFilterPatterns(*m_filteredPatterns.begin());
-							}
-							
-							// Close menu
-							m_showContextMenu = false;
-							m_contextMenuData.clear();
-							ImGui::CloseCurrentPopup();
+							cellIndex++;
 						}
 
-						cellIndex++;
+						ImGui::EndTable();
 					}
-
-					ImGui::EndTable();
 				}
 			}
 		}
-	}
 
-	// Show message if empty
-	if (m_contextMenuData.isEmpty())
-	{
-		ImGui::TextDisabled(CHS("无可用选项"));
-	}
+		// Show message if empty
+		if (m_contextMenuData.isEmpty())
+		{
+			ImGui::TextDisabled(CHS("无可用选项"));
+		}
 
 		ImGui::EndPopup();
 	}
 	else
 	{
-		// Popup was closed, reset state
-		m_showContextMenu = false;
 		m_contextMenuData.clear();
-		popupOpened = false;
 	}
 }
 
@@ -1504,6 +1487,7 @@ void Scene::updateSpot(entt::entity entity, const VariationInfo &info)
 	if (auto *mapSpot = m_registry.try_get<MapSpot>(entity))
 	{
 		mapSpot->label = info.getText();
+		mapSpot->label += std::to_string(mapSpot->metadata);
 		mapSpot->visible = info.visible;
 	}
 }

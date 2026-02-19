@@ -13,6 +13,8 @@ struct MapSpot
     std::string label;                  // Text label to display below spot
     bool visible = true;                // Is this spot visible
     bool selected = false;              // Is this spot selected
+    int alignment = 0;                  // 0=center, 1=top, 2=bottom
+    glm::vec2 offset{0.0f, 0.0f};       // Pixel offset for rendering
 
     float getScaleMultiplier() const
     {
