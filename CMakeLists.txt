@@ -20,7 +20,8 @@ add_executable(NightreignApp
 	"src/sdlWindow.cpp"
 	"src/glDevice.cpp"
 	"src/CsvReader.cpp"
-	"src/GameData.cpp")
+	"src/GameData.cpp"
+	"src/JSBindings.cpp")
 
 target_include_directories(NightreignApp PRIVATE
 	"src"
@@ -53,6 +54,7 @@ if(EMSCRIPTEN)
 		-lidbfs.js
 		-sEXPORTED_RUNTIME_METHODS=[FS,ccall,cwrap]
 		-sFETCH=1
+		-lembind
 		-O3
 	)
 	target_compile_definitions(NightreignApp PRIVATE 

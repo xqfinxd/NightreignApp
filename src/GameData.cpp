@@ -295,10 +295,15 @@ const PatternInfo* GameData::getPattern(int patternId) const
     return (it != m_patternDB.end()) ? &it->second : nullptr;
 }
 
-const std::vector<int>& GameData::getPatternsByMap(int map) const
+std::set<int> GameData::filterByMap(int map) const
 {
+    std::set<int> result;
     auto it = m_mapDB.find(map);
-    return (it != m_mapDB.end()) ? it->second.patterns : s_emptyIntVector;
+    if (it != m_mapDB.end())
+    {
+        result.insert(it->second.patterns.begin(), it->second.patterns.end());
+    }
+    return result;
 }
 
 const FilterSpot* GameData::getSpot(int spotId) const
@@ -391,8 +396,8 @@ std::vector<const VariationInfo*> GameData::getVariationsAtSpot(int spotId, int 
     if (mapIt != m_mapDB.end())
     {
         patterns.insert(
-            mapIt->second.staticSpots.begin(),
-            mapIt->second.staticSpots.begin());
+            mapIt->second.patterns.begin(),
+            mapIt->second.patterns.end());
     }
     return getVariationsAtSpot(spotId, patterns);
 }
@@ -432,5 +437,20 @@ std::set<int> GameData::filterByStarter(const std::set<int> &patterns, int start
             result.insert(patternId);
     }
 
+    return result;
+}
+
+std::set<int> GameData::filterByNightlord(const std::set<int> &patterns, int nightlordId) const
+{
+    std::set<int> result;
+    
+     for (auto patternId : patterns)
+    {
+        auto patternInfo = getPattern(patternId);
+        if (!patternInfo)
+            continue;
+        if (patternInfo->boss == nightlordId)
+            result.insert(patternId);
+    }
     return result;
 }

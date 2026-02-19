@@ -1,3 +1,20 @@
+/**
+ * Show a toast message that auto-dismisses after 1 second
+ * @param {string} message - The message to display
+ * @param {number} duration - Duration in milliseconds (default: 1000)
+ */
+function showToast(message, duration = 1000) {
+  const toast = document.getElementById('toast');
+  if (!toast) return;
+  
+  toast.textContent = message;
+  toast.classList.add('show');
+  
+  setTimeout(() => {
+    toast.classList.remove('show');
+  }, duration);
+}
+
  /**
      * Initialize a bottom-centered toggle group:
      * - Click to toggle `.is-active`
@@ -89,17 +106,134 @@
       return { select, getValue, onChange, destroy };
     }
 
-    // --- Example usage ---
-    const toggle = initToggleGroup('.js-toggle-group');
+    // Map buttons - simple click handlers without toggle state
+    const mapGroup = document.querySelector('.js-toggle-group-map');
+    if (mapGroup) {
+      // Remove any active states from map buttons (they shouldn't have toggle state)
+      mapGroup.querySelectorAll('.btn').forEach(btn => {
+        btn.classList.remove('is-active');
+        
+        btn.addEventListener('click', function() {
+          const value = this.dataset.value;
+          console.log('Map button clicked:', value, 'button text:', this.textContent.trim());
+          
+          // Call C++ filterMap function
+          if (typeof Module !== 'undefined' && Module.filterMap) {
+            const mapIndex = parseInt(value);
+            console.log('Calling filterMap with index:', mapIndex);
+            Module.filterMap(mapIndex);
+          }
+        });
+      });
+    }
 
-    // Programmatically set to 'week' (by data-value)
-    toggle.select(1, { emit: true, focus: true });
+    // Boss buttons - simple click handlers without toggle state
+    const bossGroup = document.querySelector('.js-toggle-group-boss');
+    if (bossGroup) {
+      // Remove any active states from boss buttons (they shouldn't have toggle state)
+      bossGroup.querySelectorAll('.btn').forEach(btn => {
+        btn.classList.remove('is-active');
+        
+        btn.addEventListener('click', function() {
+          const value = this.dataset.value;
+          console.log('Boss button clicked:', value, 'button text:', this.textContent.trim());
+          
+          // Call C++ filterNightlord function
+          if (typeof Module !== 'undefined' && Module.filterNightlord) {
+            const nightlordIndex = parseInt(value);
+            console.log('Calling filterNightlord with index:', nightlordIndex);
+            Module.filterNightlord(nightlordIndex);
+          }
+        });
+      });
+    }
 
-    // Listen for changes
-    const unsubscribe = toggle.onChange(({ value, button }) => {
-      console.log('Changed to:', value, 'button text:', button.textContent.trim());
+    // ===== Collapsible Master Button Logic =====
+    function initCollapsibleButton(masterId, groupSelector) {
+      const masterBtn = document.getElementById(masterId);
+      const fabGroup = document.querySelector(groupSelector);
+      
+      if (!masterBtn || !fabGroup) {
+        console.warn('Master button or FAB group not found:', masterId, groupSelector);
+        return null;
+      }
+
+      let isExpanded = false;
+
+      masterBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        isExpanded = !isExpanded;
+        
+        // Close other groups first
+        document.querySelectorAll('.fab-group').forEach(group => {
+          if (group !== fabGroup) {
+            group.classList.add('collapsed');
+          }
+        });
+        document.querySelectorAll('.fab-master-btn').forEach(btn => {
+          if (btn !== masterBtn) {
+            btn.classList.remove('expanded');
+            btn.setAttribute('aria-expanded', 'false');
+          }
+        });
+        
+        if (isExpanded) {
+          fabGroup.classList.remove('collapsed');
+          masterBtn.classList.add('expanded');
+          masterBtn.setAttribute('aria-expanded', 'true');
+        } else {
+          fabGroup.classList.add('collapsed');
+          masterBtn.classList.remove('expanded');
+          masterBtn.setAttribute('aria-expanded', 'false');
+        }
+      });
+
+      // Auto-collapse when any button is clicked
+      fabGroup.addEventListener('click', function(e) {
+        if (e.target.classList.contains('btn') && isExpanded) {
+          setTimeout(function() {
+            isExpanded = false;
+            fabGroup.classList.add('collapsed');
+            masterBtn.classList.remove('expanded');
+            masterBtn.setAttribute('aria-expanded', 'false');
+          }, 200);
+        }
+      });
+
+      return {
+        collapse: function() {
+          isExpanded = false;
+          fabGroup.classList.add('collapsed');
+          masterBtn.classList.remove('expanded');
+          masterBtn.setAttribute('aria-expanded', 'false');
+        }
+      };
+    }
+
+    // Initialize both collapsible buttons
+    const mapCollapse = initCollapsibleButton('fab-toggle-map', '.js-toggle-group-map');
+    const bossCollapse = initCollapsibleButton('fab-toggle-boss', '.js-toggle-group-boss');
+
+    // Close on outside click
+    document.addEventListener('click', function(e) {
+      const isClickInside = e.target.closest('.fab-container');
+      if (!isClickInside) {
+        if (mapCollapse) mapCollapse.collapse();
+        if (bossCollapse) bossCollapse.collapse();
+      }
     });
 
+    // B1 Overlay toggle button
+    const b1OverlayBtn = document.getElementById('btn-b1-overlay');
+    if (b1OverlayBtn) {
+      b1OverlayBtn.addEventListener('click', function() {
+        if (typeof Module !== 'undefined' && Module.toggleB1Overlay) {
+          Module.toggleB1Overlay();
+          this.classList.toggle('active');
+        }
+      });
+    }
+
     // Later, if needed:
-    // unsubscribe();
-    // toggle.destroy();
+    // unsubscribeMap();
+    // toggleMap.destroy();

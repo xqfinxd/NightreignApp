@@ -30,6 +30,13 @@ public:
 	void loadMapTiles(int mapIndex, int layer = 0);
 	void onFilterPatterns(int patternId);
 	void resetMapFilters();
+	void filterMap(int map);
+	void filterNightlord(int nightlord);
+	
+	// B1 Overlay control
+	void setEnableB1Overlay(bool enable) { m_enableB1Overlay = enable; updateB1Overlay(); }
+	bool getEnableB1Overlay() const { return m_enableB1Overlay; }
+	void updateB1Overlay();
 
 	// Map spots
 	entt::entity addSpot(const glm::vec2 &gridPos);

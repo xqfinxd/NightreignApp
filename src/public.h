@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -15,3 +16,5 @@
 #else
 #include <glad/glad.h>
 #endif
+
+void showToast(const std::string& message, int duration = 1000);

@@ -56,6 +56,11 @@ var Module = {
     ],
     onRuntimeInitialized: function () {
         console.log('[WASM] Runtime initialized');
+
+        // Expose showToast to Module for C++ access
+        if (typeof Module !== 'undefined') {
+            Module.showToast = showToast;
+        }
         
         // 定期保存缓存到 IndexedDB (每 60 秒)
         setInterval(function() {

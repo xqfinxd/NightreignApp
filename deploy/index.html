@@ -41,15 +41,53 @@
   <!-- 简化的加载状态 -->
   <div id="loading-status">Initializing...</div>
 
+  <!-- B1 Overlay 控制按钮 -->
+  <button id="btn-b1-overlay" class="top-right-btn" type="button" title="切换 B1 Overlay">
+    地下
+  </button>
+
   <!-- 游戏界面 -->
-  <div class="fab-group js-toggle-group" role="toolbar" aria-label="View range">
-    <button class="btn" type="button" data-value="1">普&emsp;通</button>
-    <button class="btn" type="button" data-value="2">雪&emsp;山</button>
-    <button class="btn" type="button" data-value="2">火&emsp;山</button>
-    <button class="btn" type="button" data-value="3">腐&emsp;败</button>
-    <button class="btn" type="button" data-value="4">大空洞</button>
-    <button class="btn" type="button" data-value="5">隐&emsp;城</button>
+  <div class="fab-container">
+    <!-- 地图按钮组 -->
+    <div class="fab-group-wrapper fab-map-group">
+      <div class="fab-group js-toggle-group-map collapsed" role="toolbar" aria-label="地图选择">
+        <button class="btn" type="button" data-value="0">普&emsp;通</button>
+        <button class="btn" type="button" data-value="1">雪&emsp;山</button>
+        <button class="btn" type="button" data-value="2">火&emsp;山</button>
+        <button class="btn" type="button" data-value="3">腐&emsp;败</button>
+        <button class="btn" type="button" data-value="4">大空洞</button>
+        <button class="btn" type="button" data-value="5">隐&emsp;城</button>
+      </div>
+      <button class="fab-master-btn" type="button" id="fab-toggle-map" aria-label="展开地图选择">
+        <span class="fab-master-text">地图</span>
+        <span class="fab-master-icon">▲</span>
+      </button>
+    </div>
+
+    <!-- 夜王按钮组 -->
+    <div class="fab-group-wrapper fab-boss-group">
+      <div class="fab-group js-toggle-group-boss collapsed" role="toolbar" aria-label="夜王选择">
+        <button class="btn" type="button" data-value="0">三狼</button>
+        <button class="btn" type="button" data-value="1">大嘴</button>
+        <button class="btn" type="button" data-value="2">双虫</button>
+        <button class="btn" type="button" data-value="3">水母</button>
+        <button class="btn" type="button" data-value="4">癫羊</button>
+        <button class="btn" type="button" data-value="5">人马</button>
+        <button class="btn" type="button" data-value="6">冰龙</button>
+        <button class="btn" type="button" data-value="7">黑夜王</button>
+        <button class="btn" type="button" data-value="8">七仙女</button>
+        <button class="btn" type="button" data-value="9">垃圾王</button>
+      </div>
+      <button class="fab-master-btn" type="button" id="fab-toggle-boss" aria-label="展开夜王选择">
+        <span class="fab-master-text">夜王</span>
+        <span class="fab-master-icon">▲</span>
+      </button>
+    </div>
   </div>
+
+  <!-- Toast 提示框 -->
+  <div id="toast" class="toast" role="alert"></div>
+
   <canvas class="game" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
 
   <script type="text/javascript" src="/nightreign/js/toggle.js"></script>

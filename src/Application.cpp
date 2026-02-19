@@ -17,6 +17,9 @@
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+
+// Forward declaration from JSBindings.cpp
+extern void setApplicationInstance(Application* app);
 #endif
 
 Application::Application()
@@ -28,6 +31,12 @@ Application::Application()
     m_renderer = new Renderer(m_device, m_resource_mgr);
     m_scene_mgr = new SceneManager();
     m_input_handler = new InputHandler();
+
+#ifdef __EMSCRIPTEN__
+    // Register this instance for JavaScript bindings
+    setApplicationInstance(this);
+#endif
+
     SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Application created successfully");
 }
 

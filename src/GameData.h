@@ -110,7 +110,6 @@ public:
     int getMapCount() const;
 
     // queries
-    const std::vector<int>& getPatternsByMap(int map) const;
     const PatternInfo* getPattern(int patternId) const;
     const FilterSpot* getSpot(int spotId) const;
     const BaseSpot* getAttach(int attachId) const;
@@ -126,8 +125,10 @@ public:
     std::vector<const VariationInfo*> getVariationsAtSpot(int spotId, int map) const;
     
     // Pattern filtering
+    std::set<int> filterByMap(int map) const;
     std::set<int> filterByVariation(const std::set<int>& patterns, int spotId, int varKey) const;
     std::set<int> filterByStarter(const std::set<int>& patterns, int starterId) const;
+    std::set<int> filterByNightlord(const std::set<int>& patterns, int nightlordId) const;
     
 private:
     GameData() = default;

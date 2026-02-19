@@ -1,4 +1,5 @@
 #include "Scene.h"
+#include "public.h"
 #include "GameData.h"
 #include "Renderer.h"
 #include "components/Mesh.h"
@@ -670,6 +671,7 @@ void Scene::render(Renderer *renderer)
 
 void Scene::drawUI()
 {
+	#ifdef _DEBUG
 	// Scene statistics window
 	ImGui::Begin("Scene View");
 	ImGui::Text("ECS Statistics:");
@@ -717,18 +719,7 @@ void Scene::drawUI()
 	ImGui::Begin("Scene Tool");
 	if (ImGui::Checkbox("Enable B1 Overlay", &m_enableB1Overlay))
 	{
-		for (auto entity : m_mapTileEntities)
-		{
-			if (!m_registry.valid(entity))
-				continue;
-			auto tagComp = m_registry.try_get<Tag>(entity);
-			if (!tagComp || tagComp->name != "tile_b1")
-				continue;
-			auto *meshComp = m_registry.try_get<MeshComponent>(entity);
-			if (!meshComp)
-				continue;
-			meshComp->visible = m_enableB1Overlay;
-		}
+		updateB1Overlay();
 	}
 
 	ImGui::Separator();
@@ -750,12 +741,7 @@ void Scene::drawUI()
 		auto mapCount = GameData::getInstance().getMapCount();
 		if (ImGui::Combo("##MapSelect", &m_filterMapSelection, names.data(), mapCount))
 		{
-			// Clear marked spots when changing maps
-			m_markedSpots.clear();
-			loadSpotsByMap(m_filterMapSelection);
-			auto patterns = GameData::getInstance().getPatternsByMap(m_filterMapSelection);
-			m_filteredPatterns.clear();
-			m_filteredPatterns.insert(patterns.begin(), patterns.end());
+			filterMap(m_filterMapSelection);
 		}
 
 		ImGui::Separator();
@@ -911,7 +897,7 @@ void Scene::drawUI()
 	}
 
 	ImGui::End();
-
+	#endif
 	// Context menu (appears at mouse position)
 	drawContextMenu();
 }
@@ -999,8 +985,6 @@ void Scene::drawContextMenu()
 			{
 				// Apply starter filter
 				m_filteredPatterns = resultPatterns;
-				SDL_Log("Applied starter filter: %d, remaining patterns: %zu",
-						starterId, m_filteredPatterns.size());
 
 				// Mark all entities at this location as selected
 				for (auto entity : m_contextMenuData.entities)
@@ -1020,6 +1004,8 @@ void Scene::drawContextMenu()
 				{
 					onFilterPatterns(*m_filteredPatterns.begin());
 				}
+
+				showToast("已应用初始点");
 
 				// Close menu
 				m_showContextMenu = false;
@@ -1334,6 +1320,36 @@ void Scene::resetMapFilters()
 	m_selectedVariationIndex = -1;
 }
 
+void Scene::filterMap(int map)
+{
+	m_filterMapSelection = map;
+	m_filterMode = true;
+	m_markedSpots.clear();
+	loadSpotsByMap(m_filterMapSelection);
+	m_filteredPatterns = GameData::getInstance().filterByMap(m_filterMapSelection);
+
+	// Show toast notification
+	const char* mapNames[] = {"普通", "雪山", "火山", "腐败", "大空洞", "隐城"};
+	if (map >= 0 && map < 6) {
+		showToast(std::string("已切换至: ") + mapNames[map]);
+	}
+}
+
+void Scene::filterNightlord(int nightlord)
+{
+	auto& gameData = GameData::getInstance();
+	auto testPatterns = gameData.filterByNightlord(m_filteredPatterns, nightlord);
+	if (!testPatterns.empty())
+	{
+		m_filteredPatterns = testPatterns;
+		showToast("已应用夜王");
+	}
+	else
+	{
+		showToast("无符合条件的夜王，未应用");
+	}
+}
+
 void Scene::clearMapTiles()
 {
 	// Destroy all tile entities
@@ -1363,6 +1379,22 @@ VariationInfo Scene::getFilterStarter() const
 	temp.label = CHS("启始点");
 	temp.visible = true;
 	return temp;
+}
+
+void Scene::updateB1Overlay()
+{
+	for (auto entity : m_mapTileEntities)
+	{
+		if (!m_registry.valid(entity))
+			continue;
+		auto tagComp = m_registry.try_get<Tag>(entity);
+		if (!tagComp || tagComp->name != "tile_b1")
+			continue;
+		auto *meshComp = m_registry.try_get<MeshComponent>(entity);
+		if (!meshComp)
+			continue;
+		meshComp->visible = m_enableB1Overlay;
+	}
 }
 
 entt::entity Scene::addSpot(const glm::vec2 &gridPos)
