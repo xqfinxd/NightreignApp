@@ -79,7 +79,7 @@ void jsToggleB1Overlay() {
     bool newState = !scene->getEnableB1Overlay();
     scene->setEnableB1Overlay(newState);
     
-    showToast(newState ? "B1 Overlay: ON" : "B1 Overlay: OFF");
+    showToast(newState ? "地下显示: 开" : "地下显示: 关");
 }
 
 EMSCRIPTEN_BINDINGS(nightreign_bindings) {

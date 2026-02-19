@@ -43,7 +43,7 @@ public:
 	entt::entity addBaseSpot(const glm::vec2 &gridPos, int attachId, const VariationInfo& info);
 	entt::entity addFilterSpot(const glm::vec2 &gridPos, int spotId, const VariationInfo& info);
 	entt::entity addStarterSpot(const glm::vec2 &gridPos, int starterId, const VariationInfo& info);
-	void updateSpot(entt::entity entity, const VariationInfo& info);
+	void updateSpot(entt::entity entity, const VariationInfo& info, bool noIcon = false);
 	void clearSpots();
 	void loadSpotsByPattern(int patternId);
 	void loadSpotsByMap(int map);

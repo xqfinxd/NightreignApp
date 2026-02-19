@@ -173,14 +173,11 @@ void Renderer::renderEntity(entt::registry& registry, const Camera& camera, entt
 		applyBlendFunc(opt->mode);
 	}
 
-	// Bind texture if specified
-	if (!meshComp.textureName.empty()) {
-		Texture* texture = m_resource_mgr->getTexture(meshComp.textureName);
-		if (texture && texture->isValid()) {
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, texture->getId());
-			shader->setInt("mapTexture", 0);
-		}
+	Texture* texture = m_resource_mgr->getTexture(meshComp.textureName);
+	if (texture && texture->isValid()) {
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, texture->getId());
+		shader->setInt("mapTexture", 0);
 	}
 
 	// Bind vertex buffer
@@ -279,6 +276,9 @@ void Renderer::renderSpotLabels(entt::registry& registry, const Camera& camera,
 		auto& spot = spotView.get<MapSpot>(entity);
 		auto& transform = spotView.get<Transform>(entity);
 		auto scale = transform.scale * spot.getScaleMultiplier();
+		auto* meshComp = registry.try_get<MeshComponent>(entity);
+		if (meshComp && !meshComp->visible)
+			continue;
 		
 		// Skip invisible spots
 		if (!spot.visible || spot.label.empty())
@@ -292,12 +292,8 @@ void Renderer::renderSpotLabels(entt::registry& registry, const Camera& camera,
 		float textHeight = textSize.y * textScale;
 		
 		glm::vec3 textWorldPos = transform.position;
-		if (spot.alignment == 1) // top
-			textWorldPos.y += scale.y * 0.5f + textHeight * 1.1f;
-		else if (spot.alignment == 2) // center
-			textWorldPos.y += textHeight * 0.6f;
-		else // default to bottom
-			textWorldPos.y -= scale.y * 0.5f + textHeight * 0.1f;
+		if (spot.alignment == 0) // bottom
+			textWorldPos.y -= scale.y * 0.5f + textHeight * 0.1f;			
 		textWorldPos += glm::vec3(spot.offset, 0.0f);
 		
 		// Draw background rectangle first (if background color has alpha > 0)

@@ -79,6 +79,12 @@ bool GameData::loadFromCSV(const std::string& dataPath)
     if (!loadStarterDist(dataPath + "/autogen_starter_distribution.csv"))
         return false;
     
+    if (!loadFilterSpots(dataPath + "/manual_filterspots.csv"))
+        return false;
+
+    if (!loadAttachPoints(dataPath + "/manual_attachpoints.csv"))
+        return false;
+
     return true;
 }
 
@@ -289,6 +295,48 @@ bool GameData::loadStarterDist(const std::string &filePath)
     return true;
 }
 
+bool GameData::loadFilterSpots(const std::string &filePath)
+{
+    CsvReader csv;
+    if (!csv.load(filePath))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "GameData: Failed to load %s", filePath.c_str());
+        return false;
+    }
+
+    for (size_t i = 0; i < csv.getRowCount(); ++i)
+    {
+        int id = getInt(csv, i, "id");
+        auto& option = m_filterSpotOptions[id];
+        option.spotId = id;
+        option.enabled = getInt(csv, i, "enable", 0) > 0;
+    }
+    return true;
+}
+
+bool GameData::loadAttachPoints(const std::string &filePath)
+{
+    CsvReader csv;
+    if (!csv.load(filePath))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "GameData: Failed to load %s", filePath.c_str());
+        return false;
+    }
+
+    for (size_t i = 0; i < csv.getRowCount(); ++i)
+    {
+        int id = getInt(csv, i, "id");
+        auto& option = m_attachPointOptions[id];
+        option.attachId = id;
+        option.alignment = getInt(csv, i, "align", 0);
+        option.offset.x = getFloat(csv, i, "offsetX", 0);
+        option.offset.y = getFloat(csv, i, "offsetY", 0);
+        option.b1Overlay = getInt(csv, i, "b1", 0) != 0;
+        option.showIcon = getInt(csv, i, "showicon", 0) != 0;
+    }
+    return true;
+}
+
 const PatternInfo* GameData::getPattern(int patternId) const
 {
     auto it = m_patternDB.find(patternId);
@@ -361,6 +409,12 @@ const StarterSpot *GameData::getStarterSpot(int starterId) const
 {
     auto it = m_starterSpotDB.find(starterId);
     return it != m_starterSpotDB.end() ? &it->second : nullptr;
+}
+
+const AttachPointOption *GameData::getAttachOption(int attachId) const
+{
+    auto it = m_attachPointOptions.find(attachId);
+    return it != m_attachPointOptions.end() ? &it->second : nullptr;
 }
 
 std::vector<const VariationInfo*> GameData::getVariationsAtSpot(int spotId, const std::set<int>& patterns) const
@@ -453,4 +507,14 @@ std::set<int> GameData::filterByNightlord(const std::set<int> &patterns, int nig
             result.insert(patternId);
     }
     return result;
+}
+
+bool GameData::isSpotEnabled(int spotId) const
+{
+    auto it = m_filterSpotOptions.find(spotId);
+    if (it != m_filterSpotOptions.end())
+    {
+        return it->second.enabled;
+    }
+    return true;
 }

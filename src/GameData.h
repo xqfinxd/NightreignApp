@@ -66,6 +66,19 @@ struct FilterSpot : public BaseSpot {
 	}
 };
 
+struct FilterSpotOption {
+    int spotId = -1;
+    bool enabled = true;
+};
+
+struct AttachPointOption {
+    int attachId = -1;
+    int alignment = 0;
+    glm::vec2 offset{0.0f, 0.0f};
+    bool b1Overlay = false;
+    bool showIcon = false;
+};
+
 struct StarterSpot : public BaseSpot {};
 
 // Variation info
@@ -123,6 +136,7 @@ public:
     const VariationInfo* getVariation(int patternId, int attachId) const;
     std::vector<const VariationDist*> getDists(int patternId) const;
     const StarterSpot* getStarterSpot(int starterId) const;
+    const AttachPointOption* getAttachOption(int attachId) const;
     
     // Variation queries
     std::vector<const VariationInfo*> getVariationsAtSpot(int spotId, const std::set<int>& patterns) const;
@@ -133,6 +147,8 @@ public:
     std::set<int> filterByVariation(const std::set<int>& patterns, int spotId, int varKey) const;
     std::set<int> filterByStarter(const std::set<int>& patterns, int starterId) const;
     std::set<int> filterByNightlord(const std::set<int>& patterns, int nightlordId) const;
+
+    bool isSpotEnabled(int spotId) const;
     
 private:
     GameData() = default;
@@ -149,6 +165,8 @@ private:
     bool loadVariationLabels(const std::string& filePath);
     bool loadStarterList(const std::string& filePath);
     bool loadStarterDist(const std::string& filePath);
+    bool loadFilterSpots(const std::string& filePath);
+    bool loadAttachPoints(const std::string& filePath);
 
 	std::map<int, MapInfo> m_mapDB;
 	std::map<int, PatternInfo> m_patternDB;
@@ -156,6 +174,8 @@ private:
 	std::map<int, FilterSpot> m_filterSpotDB;
 	std::map<int, VariationInfo> m_variationDB;
     std::map<int, StarterSpot> m_starterSpotDB;
+    std::map<int, FilterSpotOption> m_filterSpotOptions;
+    std::map<int, AttachPointOption> m_attachPointOptions;
     std::vector<VariationDist> m_variationDist;
     
     static const std::vector<int> s_emptyIntVector;

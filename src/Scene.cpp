@@ -906,7 +906,7 @@ void Scene::drawContextMenu()
 {
 	// Get display size
 	ImVec2 displaySize = ImGui::GetIO().DisplaySize;
-	
+
 	if (m_showContextMenu)
 	{
 		// Adjust position to keep menu within window bounds
@@ -1268,7 +1268,7 @@ void Scene::loadMapTiles(int mapIndex, int layer)
 			{
 				// Create overlay entity
 				auto overlayEntity = m_registry.create();
-				m_registry.emplace<Tag>(overlayEntity, "tile_b1");
+				m_registry.emplace<Tag>(overlayEntity, "tile @b1");
 				m_registry.emplace<MeshComponent>(overlayEntity, "quad", "texture", b1TextureName, false);
 				m_registry.emplace<RenderOptions>(overlayEntity).order = 1;
 
@@ -1379,12 +1379,16 @@ VariationInfo Scene::getPlayArea(int day) const
 
 void Scene::updateB1Overlay()
 {
-	for (auto entity : m_mapTileEntities)
+	std::vector<entt::entity> entities = m_mapTileEntities;
+	entities.insert(entities.end(), m_mapSpotEntities.begin(), m_mapSpotEntities.end());
+	for (auto entity : entities)
 	{
 		if (!m_registry.valid(entity))
 			continue;
 		auto tagComp = m_registry.try_get<Tag>(entity);
-		if (!tagComp || tagComp->name != "tile_b1")
+		if (!tagComp)
+			continue;
+		if (tagComp->name.find("@b1") == std::string::npos)
 			continue;
 		auto *meshComp = m_registry.try_get<MeshComponent>(entity);
 		if (!meshComp)
@@ -1423,8 +1427,18 @@ entt::entity Scene::addBaseSpot(const glm::vec2 &gridPos, int attachId, const Va
 	auto entity = addSpot(gridPos);
 	auto &mapSpot = m_registry.get<MapSpot>(entity);
 	mapSpot.metadata = attachId;
-	m_registry.emplace<Tag>(entity, "base spot");
-	updateSpot(entity, info);
+	bool noIcon = false;
+	std::string tag = "base spot";
+	if (auto option = GameData::getInstance().getAttachOption(attachId))
+	{
+		mapSpot.alignment = option->alignment;
+		mapSpot.offset = option->offset;
+		if (option->b1Overlay)
+			tag += " @b1";
+		noIcon = !option->showIcon;
+	}
+	m_registry.emplace<Tag>(entity, tag);
+	updateSpot(entity, info, noIcon);
 	return entity;
 }
 
@@ -1452,7 +1466,7 @@ entt::entity Scene::addStarterSpot(const glm::vec2 &gridPos, int starterId, cons
 	return entity;
 }
 
-void Scene::updateSpot(entt::entity entity, const VariationInfo &info)
+void Scene::updateSpot(entt::entity entity, const VariationInfo &info, bool noIcon)
 {
 	ResourceManager *resMgr = ResourceManager::getInstance();
 	Texture *texture = nullptr;
@@ -1460,7 +1474,10 @@ void Scene::updateSpot(entt::entity entity, const VariationInfo &info)
 	{
 		// Use alias format: "spot_" + icon name
 		std::string textureAlias = "spot_" + info.icon;
-		texture = resMgr->loadTexture(textureAlias);
+		if (noIcon)
+			textureAlias.clear();
+		else
+			texture = resMgr->loadTexture(textureAlias);
 		if (auto *meshComp = m_registry.try_get<MeshComponent>(entity))
 		{
 			meshComp->textureName = textureAlias;
@@ -1537,6 +1554,8 @@ void Scene::loadSpotsByPattern(int patternId)
 
 	m_currentPatternId = patternId;
 
+	updateB1Overlay();
+
 	if (patternInfo)
 	{
 		// Update info panel with map details
@@ -1562,7 +1581,8 @@ void Scene::loadSpotsByMap(int map)
 	for (auto spotId : staticSpots)
 	{
 		auto spot = gameData.getSpot(spotId);
-		if (!spot)
+		bool enabled = gameData.isSpotEnabled(spotId);
+		if (!spot || !enabled)
 			continue;
 		auto pos = spot->normalize();
 		auto tmp = getFilterSpot();

@@ -7,6 +7,8 @@ nightreign/assets/datas/autogen_starter_list.csv,1,306
 nightreign/assets/datas/autogen_static_spotlist.csv,1,685
 nightreign/assets/datas/manual_maps.csv,1,73
 nightreign/assets/datas/manual_variations.csv,1,10706
+nightreign/assets/datas/manual_filterspots.csv,1,disable
+nightreign/assets/datas/manual_attachpoints.csv,1,defines
 nightreign/assets/fonts/simhei.ttf,1,9753388
 nightreign/assets/shaders/font.frag,1,485
 nightreign/assets/shaders/font.vert,1,305
