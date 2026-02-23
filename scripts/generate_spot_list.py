@@ -22,7 +22,7 @@ def unpack_hash(hashvalue: str):
 def set2str(s: set) -> str:
     return '_'.join(str(x) for x in s)
 
-def load_spot_list(pattern_mapbase: dict, attachbase_path:str, pointbase_path:str, altpointbase_path:str) -> list:
+def load_spot_list(pattern_mapbase: dict, attachbase_path:str, pointbase_path:str) -> list:
     """
     从pattern_mapbase中提取attachPoint列表
     """
@@ -32,9 +32,6 @@ def load_spot_list(pattern_mapbase: dict, attachbase_path:str, pointbase_path:st
     
     print(f"Loading pointbase from: {pointbase_path}")
     pointbase = csvutil.load_csv(pointbase_path, key_column='ID')
-    
-    print(f"Loading altpointbase from: {altpointbase_path}")
-    altpointbase = csvutil.load_csv(altpointbase_path, key_column='ID')
 
     legacy_map_patterns = {}
     dlc_map_patterns = {}
@@ -64,8 +61,6 @@ def load_spot_list(pattern_mapbase: dict, attachbase_path:str, pointbase_path:st
         if mapindex < 0:
             continue
         point = csvutil.find_point(pointbase, attachid)
-        if len(point) == 0:
-            point = csvutil.find_point(altpointbase, attachid)
         if len(point) == 0:
             continue
         variation_list.append({
@@ -132,7 +127,6 @@ createbase_path = meta_dir / "PlayAreaCreateParam.csv"
 areabase_path = meta_dir / "LotResultPlayAreaParam.csv"
 attachbase_path = meta_dir / "LotResultSmallBaseAndSpot.csv"
 pointbase_path = meta_dir / "WorldMapPointParam.csv"
-altpointbase_path = meta_dir / "SmallBaseAndSpotAttachPoint.csv"
 
 pattern_mapbase = load_pattern_list(
     str(flagbase_path),
@@ -143,7 +137,6 @@ spot_list, variation_list = load_spot_list(
     pattern_mapbase,
     str(attachbase_path),
     str(pointbase_path),
-    str(altpointbase_path)
 )
 
 spot_csv_file = assets_dir / "datas" / "autogen_spot_list.csv"
