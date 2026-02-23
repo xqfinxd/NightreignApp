@@ -29,13 +29,7 @@ void ResourceManager::initialize()
 {
     SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Initialized");
     
-    // 加载纹理图集元数据（不预创建占位纹理，按需创建）
-    if (m_texture_registry->LoadAtlas("/nightreign/assets/textures/atlas.csv")) {
-        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Loaded texture atlas with %zu entries", 
-                    m_texture_registry->GetTextureCount());
-    } else {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Failed to load texture atlas");
-    }
+    m_texture_registry->LoadAtlas("nightreign/atlas.csv");
 }
 
 void ResourceManager::cleanup()
@@ -54,19 +48,18 @@ Shader* ResourceManager::loadShader(const std::string& name, const std::string& 
     // Check if shader already exists
     auto it = m_shaders.find(name);
     if (it != m_shaders.end()) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Shader '%s' already loaded, returning existing shader", name.c_str());
         return it->second;
     }
 
     // Create shader through device
     Shader* shader = m_device->createShader(vertPath, fragPath);
     if (!shader || !shader->isValid()) {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Failed to load shader '%s'", name.c_str());
         return nullptr;
     }
 
     m_shaders[name] = shader;
-    SDL_Log("ResourceManager: Shader '%s' loaded successfully (Program ID: %u)", name.c_str(), shader->getProgram());
+    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Shader '%s' loaded successfully (Program ID: %u)",
+        name.c_str(), shader->getProgram());
     return shader;
 }
 
@@ -105,37 +98,35 @@ Texture* ResourceManager::loadTexture(const std::string& name, const std::string
         return it->second;
     }
 
-    // 检查atlas中是否有该纹理的元数据（使用name作为别名）
     const TextureMetadata* metadata = m_texture_registry->GetMetadata(name);
     
-    if (metadata) {
-        // atlas中有此纹理，先创建占位纹理
-        GLuint placeholderId = m_texture_registry->CreatePlaceholderForAlias(name);
-        
-        if (placeholderId != 0) {
-            // 创建Texture对象包装占位纹理
-            Texture* placeholderTexture = new Texture(placeholderId, metadata->width, metadata->height, metadata->format);
-            m_textures[name] = placeholderTexture;
-            
-            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Created placeholder for '%s' (ID: %u, Size: %dx%d)",
-                name.c_str(), placeholderId, metadata->width, metadata->height);
-            
-            // 启动异步加载真实纹理（使用alias查找，使用path下载）
-            m_async_loader->loadTextureDataAsync(name, m_texture_registry, 
-                [name](bool success) {
-                    if (success) {
-                        SDL_Log("ResourceManager: Async texture loaded: %s", name.c_str());
-                    } else {
-                        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Failed to load async texture: %s", name.c_str());
-                    }
-                });
-            
-            return placeholderTexture;
-        }
+    if (!metadata) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Texture '%s' not found in atlas registry", name.c_str());
+        return nullptr;
     }
-    
-    // 不在atlas中或占位创建失败，走原有同步加载流程（使用path参数）
-    std::string loadPath = path.empty() ? name : path;
+
+    #ifdef __EMSCRIPTEN__
+    GLuint placeholderId = m_texture_registry->CreatePlaceholderForAlias(name);
+    if (placeholderId != 0) {
+        Texture* placeholderTexture = new Texture(placeholderId, metadata->width, metadata->height, metadata->format);
+        m_textures[name] = placeholderTexture;
+        
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Created placeholder for '%s' (ID: %u, Size: %dx%d)",
+            name.c_str(), placeholderId, metadata->width, metadata->height);
+        
+        m_async_loader->loadTextureDataAsync(name, m_texture_registry, 
+            [name](bool success) {
+                if (success) {
+                    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Async texture loaded: %s", name.c_str());
+                } else {
+                    SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Failed to load async texture: %s", name.c_str());
+                }
+            });
+        
+        return placeholderTexture;
+    }
+    #else
+    std::string loadPath = metadata->path;
     Texture* texture = m_device->createTexture(loadPath);
     if (!texture || !texture->isValid()) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Failed to load texture '%s' from '%s'", name.c_str(), loadPath.c_str());
@@ -146,6 +137,7 @@ Texture* ResourceManager::loadTexture(const std::string& name, const std::string
     SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Texture '%s' loaded successfully (ID: %u, Size: %dx%d)", 
         name.c_str(), texture->getId(), texture->getWidth(), texture->getHeight());
     return texture;
+    #endif
 }
 
 Texture* ResourceManager::getTexture(const std::string& name)
@@ -216,4 +208,9 @@ void ResourceManager::unloadAll()
     }
     m_meshes.clear();
     SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: All meshes unloaded");
+}
+
+bool ResourceManager::queryTexture(const std::string &name)
+{
+    return m_texture_registry->GetMetadata(name) != nullptr;
 }

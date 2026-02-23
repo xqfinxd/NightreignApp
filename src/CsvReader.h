@@ -4,6 +4,7 @@
 #include <map>
 #include <fstream>
 #include <sstream>
+#include <SDL_log.h>
 
 // Utility class for reading CSV files
 class CsvReader
@@ -62,3 +63,40 @@ private:
     std::vector<std::vector<std::string>> m_rows;
     std::map<std::string, size_t> m_columnMap; // Map column names to indices
 };
+
+template<typename T>
+std::vector<T> readCSVFile(const std::string& filename, bool skipHeader = true, char delimiter = ',') {
+    std::vector<T> rows;
+    std::ifstream file(filename);
+    std::string line;
+
+    if (!file.is_open()) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "CsvReader: Cannot open file %s", filename.c_str());
+        return rows;
+    }
+
+    char bom[3] = { 0 };
+    file.read(bom, 3);
+    bool isBOM = (bom[0] == char(0xEF) && bom[1] == char(0xBB) && bom[2] == char(0xBF));
+    if (!isBOM) file.seekg(0); // No BOM, rewind
+
+    int lineNum = 0;
+    while (std::getline(file, line)) {
+        lineNum++;
+
+        if (line.empty()) continue;
+
+        if (skipHeader && lineNum == 1) continue;
+
+        T row;
+        if (row.parseFromCSV(line, delimiter)) {
+            rows.push_back(row);
+        }
+        else {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "CsvReader: Failed to parse line %s:%d", filename.c_str(), lineNum);
+        }
+    }
+
+    file.close();
+    return rows;
+}

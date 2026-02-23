@@ -10,7 +10,7 @@
 #include "components/Mesh.h"
 #include "components/Transform.h"
 #include "components/RenderOptions.h"
-#include "components/MapSpot.h"
+#include "components/Map.h"
 #include <SDL.h>
 #include <SDL_log.h>
 #include <imgui.h>
@@ -79,42 +79,27 @@ void Renderer::drawScene(Scene* scene)
 	}
 }
 
-void Renderer::renderEntities(entt::registry& registry)
+void Renderer::renderEntities(const Camera& camera, const std::vector<Entity*>& gameObjects)
 {
-	if (!m_resource_mgr) {
-		return;
-	}
-
-	auto cameraEntities = registry.view<Camera>();
-	if (cameraEntities.empty()) {
-		SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Renderer: No camera found for rendering");
-		return;
-	}
-	// Use the first camera found
-	auto& camera = registry.get<Camera>(*cameraEntities.begin());
-
-	// Get all entities with MeshComponent and Transform
-	auto viewEntities = registry.view<MeshComponent, Transform>();
-
 	// Collect entities and sort by render order
-	std::vector<entt::entity> sortedEntities;
-	for (auto entity : viewEntities) {
-		auto& meshComp = registry.get<MeshComponent>(entity);
-		if (meshComp.visible) {
-			sortedEntities.push_back(entity);
+	std::vector<Entity*> sortedObjects;
+	for (auto o : gameObjects) {
+		auto* meshComp = o->getComponent<MeshComponent>();
+		if (o->getEnabled() && meshComp && meshComp->visible) {
+			sortedObjects.push_back(o);
 		}
 	}
 
 	// Sort by RenderOptions.order (default 0 if not present)
-	std::sort(sortedEntities.begin(), sortedEntities.end(), 
-		[&registry](entt::entity a, entt::entity b) {
+	std::sort(sortedObjects.begin(), sortedObjects.end(),
+		[](Entity* a, Entity* b) {
 			float orderA = 0.0f;
 			float orderB = 0.0f;
 			
-			if (auto optA = registry.try_get<RenderOptions>(a)) {
+			if (auto optA = a->getComponent<RenderOptions>()) {
 				orderA = optA->order;
 			}
-			if (auto optB = registry.try_get<RenderOptions>(b)) {
+			if (auto optB = b->getComponent<RenderOptions>()) {
 				orderB = optB->order;
 			}
 			
@@ -122,15 +107,15 @@ void Renderer::renderEntities(entt::registry& registry)
 		});
 
 	// Render entities in sorted order
-	for (auto entity : sortedEntities) {
-		renderEntity(registry, camera, entity);
+	for (auto o : sortedObjects) {
+		renderEntity(camera, *o);
 	}
 }
 
-void Renderer::renderEntity(entt::registry& registry, const Camera& camera, entt::entity entity)
+void Renderer::renderEntity(const Camera& camera, Entity& gameObject)
 {
-	auto& meshComp = registry.get<MeshComponent>(entity);
-	auto& transform = registry.get<Transform>(entity);
+	auto& meshComp = *gameObject.getComponent<MeshComponent>();
+	auto& transform = *gameObject.getComponent<Transform>();
 
 	if (meshComp.meshName.empty()
 	|| meshComp.shaderName.empty()
@@ -162,14 +147,14 @@ void Renderer::renderEntity(entt::registry& registry, const Camera& camera, entt
 	glm::mat4 mvp(1.0f);
 	mvp = camera.getProjectionMatrix() * camera.getViewMatrix();
 
-	auto* spotComp = registry.try_get<MapSpot>(entity);
-	if (spotComp && spotComp->selected)
-		shader->setMat4("mvp", mvp * transform.getModelMatrix(spotComp->getScaleMultiplier()));
+	auto* interactable = gameObject.getComponent<Interactable>();
+	if (interactable && interactable->selected)
+		shader->setMat4("mvp", mvp * transform.getModelMatrix(interactable->scaleMultipler()));
 	else
 		shader->setMat4("mvp", mvp * transform.getModelMatrix());
 
 	// Set blend mode based on RenderOptions component
-	if (auto* opt = registry.try_get<RenderOptions>(entity)) {
+	if (auto* opt = gameObject.getComponent<RenderOptions>()) {
 		applyBlendFunc(opt->mode);
 	}
 
@@ -232,8 +217,7 @@ void Renderer::applyBlendFunc(BlendType type)
 	}
 }
 
-void Renderer::renderSpotLabels(entt::registry& registry, const Camera& camera,
-	glm::vec4 bgColor, glm::vec4 fgColor)
+void Renderer::renderText(const Camera& camera, const std::vector<Entity*>& gameObjects, glm::vec4 bgColor, glm::vec4 fgColor)
 {
 	// Get ImGui font atlas
 	ImGuiIO& io = ImGui::GetIO();
@@ -269,32 +253,28 @@ void Renderer::renderSpotLabels(entt::registry& registry, const Camera& camera,
 	// Get view-projection matrix
 	glm::mat4 viewProj = camera.getProjectionMatrix() * camera.getViewMatrix();
 
-	// Render labels for all spots
-	auto spotView = registry.view<MapSpot, Transform>();
-	for (auto entity : spotView)
+	// Render labels
+	for (auto o : gameObjects)
 	{
-		auto& spot = spotView.get<MapSpot>(entity);
-		auto& transform = spotView.get<Transform>(entity);
-		auto scale = transform.scale * spot.getScaleMultiplier();
-		auto* meshComp = registry.try_get<MeshComponent>(entity);
-		if (meshComp && !meshComp->visible)
+		auto* textComp = o->getComponent<TextComponent>();
+		auto* transform = o->getComponent<Transform>();
+		if (!o->getEnabled() || !textComp || !textComp->visible || textComp->text.empty())
 			continue;
-		
-		// Skip invisible spots
-		if (!spot.visible || spot.label.empty())
-			continue;
-		
+		glm::vec3 scale = transform->scale;
+		if (auto* interactable = o->getComponent<Interactable>())
+			scale *= interactable->scaleMultipler();
+
 		// Calculate text size
-		ImVec2 textSize = font->CalcTextSizeA(font->FontSize, FLT_MAX, 0.0f, spot.label.c_str());
+		ImVec2 textSize = font->CalcTextSizeA(font->FontSize, FLT_MAX, 0.0f, textComp->text.c_str());
 
 		// Calculate centered offset
 		float textWidth = textSize.x * textScale;
 		float textHeight = textSize.y * textScale;
 		
-		glm::vec3 textWorldPos = transform.position;
-		if (spot.alignment == 0) // bottom
+		glm::vec3 textWorldPos = transform->position;
+		if (textComp->direction == 0) // bottom
 			textWorldPos.y -= scale.y * 0.5f + textHeight * 0.1f;			
-		textWorldPos += glm::vec3(spot.offset, 0.0f);
+		textWorldPos += glm::vec3(textComp->offset, 0.0f);
 		
 		// Draw background rectangle first (if background color has alpha > 0)
 		if (backgroundColor.a > 0.0f)
@@ -347,14 +327,10 @@ void Renderer::renderSpotLabels(entt::registry& registry, const Camera& camera,
 		// Reset shader colors for text rendering
 		shader->setVec4("foregroundColor", foregroundColor);
 		shader->setVec4("backgroundColor", glm::vec4(0.0f, 0.0f, 0.0f, 0.0f));
-		
-		std::string showLabel = spot.label;
-		if(showLabel.empty())
-			showLabel = "UNKNOWN";
 
 		// Properly decode UTF-8 characters
-		const char* text_begin = showLabel.c_str();
-		const char* text_end = text_begin + showLabel.length();
+		const char* text_begin = textComp->text.c_str();
+		const char* text_end = text_begin + textComp->text.length();
 		
 		for (const char* s = text_begin; s < text_end; )
 		{

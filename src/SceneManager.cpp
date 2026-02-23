@@ -31,7 +31,7 @@ void SceneManager::cleanup()
 	m_active_scene = nullptr;
 	m_active_scene_name.clear();
 	
-	SDL_Log("SceneManager cleanup");
+	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "SceneManager cleanup");
 }
 
 void SceneManager::update(float deltaTime)
@@ -76,7 +76,7 @@ void SceneManager::removeScene(const std::string& name)
 		delete it->second;
 		m_scenes.erase(it);
 		
-		SDL_Log("Scene removed: %s", name.c_str());
+		SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Scene removed: %s", name.c_str());
 	}
 }
 

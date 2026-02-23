@@ -1,36 +1,5 @@
-alias,path,width,height,format
+alias:std::string,path:std::string,width:int,height:int,format:std::string
 bg,nightreign/assets/textures/bg.png,1269,713,RGBA
-spot_boss,nightreign/assets/textures/spots/boss.png,112,112,RGBA
-spot_buried_treasure,nightreign/assets/textures/spots/buried treasure.png,154,160,RGBA
-spot_cabin,nightreign/assets/textures/spots/cabin.png,160,100,RGBA
-spot_cart,nightreign/assets/textures/spots/cart.png,172,148,RGBA
-spot_castle,nightreign/assets/textures/spots/castle.png,240,244,RGBA
-spot_cave,nightreign/assets/textures/spots/cave.png,200,200,RGBA
-spot_church,nightreign/assets/textures/spots/church.png,140,188,RGBA
-spot_city1,nightreign/assets/textures/spots/city1.png,200,200,RGBA
-spot_city2,nightreign/assets/textures/spots/city2.png,200,200,RGBA
-spot_danger_boss,nightreign/assets/textures/spots/danger boss.png,130,126,RGBA
-spot_encampment,nightreign/assets/textures/spots/encampment.png,224,128,RGBA
-spot_evergaol,nightreign/assets/textures/spots/evergaol.png,164,162,RGBA
-spot_fort,nightreign/assets/textures/spots/fort.png,266,202,RGBA
-spot_grace,nightreign/assets/textures/spots/grace.png,156,156,RGBA
-spot_great_crystal,nightreign/assets/textures/spots/great crystal.png,200,200,RGBA
-spot_launch,nightreign/assets/textures/spots/launch.png,96,96,RGBA
-spot_play_area,nightreign/assets/textures/spots/play area.png,146,148,RGBA
-spot_portal,nightreign/assets/textures/spots/portal.png,162,162,RGBA
-spot_rare_sorcerer_s_rise,nightreign/assets/textures/spots/rare sorcerer's rise.png,108,208,RGBA
-spot_ruins,nightreign/assets/textures/spots/ruins.png,234,128,RGBA
-spot_scale_bearing_merchant,nightreign/assets/textures/spots/scale-bearing merchant.png,100,100,RGBA
-spot_smallcamp,nightreign/assets/textures/spots/smallcamp.png,260,122,RGBA
-spot_sorcerer_s_rise,nightreign/assets/textures/spots/sorcerer's rise.png,140,236,RGBA
-spot_star_merchant,nightreign/assets/textures/spots/star merchant.png,100,100,RGBA
-spot_target,nightreign/assets/textures/spots/target.png,156,156,RGBA
-spot_task,nightreign/assets/textures/spots/task.png,78,78,RGBA
-spot_temple,nightreign/assets/textures/spots/temple.png,248,210,RGBA
-spot_tower,nightreign/assets/textures/spots/tower.png,200,200,RGBA
-spot_township,nightreign/assets/textures/spots/township.png,228,92,RGBA
-spot_undefined,nightreign/assets/textures/spots/undefined.png,150,150,RGBA
-spot_village,nightreign/assets/textures/spots/village.png,200,200,RGBA
 tile_0_L0_00_00,nightreign/assets/textures/0/MENU_MapTile_L0_00_00.png,256,256,RGBA
 tile_0_L0_00_01,nightreign/assets/textures/0/MENU_MapTile_L0_00_01.png,256,256,RGBA
 tile_0_L0_00_02,nightreign/assets/textures/0/MENU_MapTile_L0_00_02.png,256,256,RGBA
@@ -375,3 +344,34 @@ tile_5_L1_01_02_B1,nightreign/assets/textures/5/MENU_MapTile_L1_01_02_B1.png,256
 tile_5_L1_02_00,nightreign/assets/textures/5/MENU_MapTile_L1_02_00.png,256,256,RGBA
 tile_5_L1_02_01,nightreign/assets/textures/5/MENU_MapTile_L1_02_01.png,256,256,RGBA
 tile_5_L1_02_02,nightreign/assets/textures/5/MENU_MapTile_L1_02_02.png,256,256,RGBA
+spot_boss,nightreign/assets/textures/spots/boss.png,112,112,RGBA
+spot_buried_treasure,nightreign/assets/textures/spots/buried treasure.png,154,160,RGBA
+spot_cabin,nightreign/assets/textures/spots/cabin.png,160,100,RGBA
+spot_cart,nightreign/assets/textures/spots/cart.png,172,148,RGBA
+spot_castle,nightreign/assets/textures/spots/castle.png,240,244,RGBA
+spot_cave,nightreign/assets/textures/spots/cave.png,200,200,RGBA
+spot_church,nightreign/assets/textures/spots/church.png,140,188,RGBA
+spot_city1,nightreign/assets/textures/spots/city1.png,200,200,RGBA
+spot_city2,nightreign/assets/textures/spots/city2.png,200,200,RGBA
+spot_danger_boss,nightreign/assets/textures/spots/danger boss.png,130,126,RGBA
+spot_encampment,nightreign/assets/textures/spots/encampment.png,224,128,RGBA
+spot_evergaol,nightreign/assets/textures/spots/evergaol.png,164,162,RGBA
+spot_fort,nightreign/assets/textures/spots/fort.png,266,202,RGBA
+spot_grace,nightreign/assets/textures/spots/grace.png,156,156,RGBA
+spot_great_crystal,nightreign/assets/textures/spots/great crystal.png,200,200,RGBA
+spot_launch,nightreign/assets/textures/spots/launch.png,96,96,RGBA
+spot_play_area,nightreign/assets/textures/spots/play area.png,146,148,RGBA
+spot_portal,nightreign/assets/textures/spots/portal.png,162,162,RGBA
+spot_rare_sorcerer_s_rise,nightreign/assets/textures/spots/rare sorcerer's rise.png,108,208,RGBA
+spot_ruins,nightreign/assets/textures/spots/ruins.png,234,128,RGBA
+spot_scale_bearing_merchant,nightreign/assets/textures/spots/scale-bearing merchant.png,100,100,RGBA
+spot_smallcamp,nightreign/assets/textures/spots/smallcamp.png,260,122,RGBA
+spot_sorcerer_s_rise,nightreign/assets/textures/spots/sorcerer's rise.png,140,236,RGBA
+spot_star_merchant,nightreign/assets/textures/spots/star merchant.png,100,100,RGBA
+spot_target,nightreign/assets/textures/spots/target.png,156,156,RGBA
+spot_task,nightreign/assets/textures/spots/task.png,78,78,RGBA
+spot_temple,nightreign/assets/textures/spots/temple.png,248,210,RGBA
+spot_tower,nightreign/assets/textures/spots/tower.png,200,200,RGBA
+spot_township,nightreign/assets/textures/spots/township.png,228,92,RGBA
+spot_undefined,nightreign/assets/textures/spots/undefined.png,150,150,RGBA
+spot_village,nightreign/assets/textures/spots/village.png,200,200,RGBA

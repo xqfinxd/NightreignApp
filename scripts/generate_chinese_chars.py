@@ -18,14 +18,13 @@ def extract_chinese_from_text(text):
         return set()
     return {char for char in text if is_chinese_char(char)}
 
-def extract_from_csv_files(base_path):
+def extract_from_csv_files(asset_dir):
     """Extract Chinese characters from manual*.csv files"""
     chinese_chars = set()
     
-    # Search for manual*.csv in metadata and datas directories
+    # Search for manual*.csv in datas directory
     search_dirs = [
-        Path(base_path) / 'assets' / 'metadata',
-        Path(base_path) / 'assets' / 'datas'
+        asset_dir / 'assets' / 'datas'
     ]
     
     for search_dir in search_dirs:
@@ -46,11 +45,10 @@ def extract_from_csv_files(base_path):
     
     return chinese_chars
 
-def extract_from_source_code(base_path):
+def extract_from_source_code(src_dir):
     """Extract Chinese characters from CHS() macros in source code"""
     chinese_chars = set()
     
-    src_dir = Path(base_path) / 'src'
     if not src_dir.exists():
         print(f"Source directory not found: {src_dir}")
         return chinese_chars
@@ -94,20 +92,19 @@ def extract_from_source_code(base_path):
 
 def main():
     # Get project root directory (parent of scripts)
-    script_dir = Path(__file__).parent
-    project_root = script_dir.parent
+    base_dir = Path(__file__).resolve().parent.parent
     
-    print(f"Project root: {project_root}")
+    print(f"Project root: {base_dir}")
     print("=" * 60)
     
     # Extract from CSV files
     print("\n--- Extracting from CSV files ---")
-    csv_chars = extract_from_csv_files(project_root)
+    csv_chars = extract_from_csv_files(base_dir / 'nightreign')
     print(f"\nTotal Chinese characters from CSV: {len(csv_chars)}")
     
     # Extract from source code
     print("\n--- Extracting from source code ---")
-    code_chars = extract_from_source_code(project_root)
+    code_chars = extract_from_source_code(base_dir / 'src')
     print(f"\nTotal Chinese characters from code: {len(code_chars)}")
     
     # Combine all characters
@@ -119,7 +116,7 @@ def main():
     sorted_chars = sorted(all_chars)
     
     # Write to chs.txt
-    output_file = project_root / 'assets' / 'datas' / 'chs.txt'
+    output_file = base_dir / 'nightreign' / 'assets' / 'datas' / 'chs.txt'
     output_file.parent.mkdir(parents=True, exist_ok=True)
     
     with open(output_file, 'w', encoding='utf-8') as f:

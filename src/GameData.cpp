@@ -3,9 +3,23 @@
 #include <sstream>
 #include <algorithm>
 #include <SDL_log.h>
+#include <SDL_assert.h>
+
+#include "generated/ManualMapRow.h"
+#include "generated/ManualNightlordRow.h"
+#include "generated/ManualSpotLabelRow.h"
+#include "generated/ManualSpotRow.h"
+#include "generated/ManualValidationRow.h"
+#include "generated/PatternRow.h"
+#include "generated/SpotRow.h"
+#include "generated/StarterDistributionRow.h"
+#include "generated/StarterRow.h"
+#include "generated/VariationRow.h"
+#include "generated/ManualGridRow.h"
 
 const std::vector<int> GameData::s_emptyIntVector;
 const std::string GameData::s_emptyString = "Unknown";
+GameData* GameData::s_instance = nullptr;
 
 // Helper functions for CSV parsing
 namespace {
@@ -45,12 +59,24 @@ namespace {
         }
         return result;
 	}
+
+    void sortAndUnique(std::vector<int>& vec) {
+        std::sort(vec.begin(), vec.end());
+        auto last = std::unique(vec.begin(), vec.end());
+        vec.erase(last, vec.end());
+    }
 }
 
-GameData& GameData::getInstance()
+GameData::GameData()
 {
-    static GameData instance;
-    return instance;
+    SDL_assert(s_instance == nullptr);
+    s_instance = this;
+}
+
+GameData::~GameData()
+{
+    SDL_assert(s_instance != nullptr);
+    s_instance = nullptr;
 }
 
 bool GameData::loadFromCSV(const std::string& dataPath)
@@ -61,28 +87,31 @@ bool GameData::loadFromCSV(const std::string& dataPath)
     if (!loadPatterns(dataPath + "/autogen_pattern_list.csv"))
         return false;
     
-    if (!loadStaticSpots(dataPath + "/autogen_static_spotlist.csv"))
+    if (!loadSpots(dataPath + "/autogen_spot_list.csv"))
         return false;
     
-    if (!loadSpotDistribution(dataPath + "/autogen_spot_distribution.csv"))
-        return false;
-    
-    if (!loadVariations(dataPath + "/autogen_pattern_variationlist.csv"))
-        return false;
-    
-    if (!loadVariationLabels(dataPath + "/manual_variations.csv"))
-        return false;
-
-    if (!loadStarterList(dataPath + "/autogen_starter_list.csv"))
+    if (!loadStarters(dataPath + "/autogen_starter_list.csv"))
         return false;
 
     if (!loadStarterDist(dataPath + "/autogen_starter_distribution.csv"))
         return false;
+
+    if (!loadVariations(dataPath + "/autogen_variation_list.csv"))
+        return false;
     
-    if (!loadFilterSpots(dataPath + "/manual_filterspots.csv"))
+    if (!loadNightlords(dataPath + "/manual_nightlords.csv"))
+        return false;
+    
+    if (!loadVariationsEx(dataPath + "/manual_variations.csv"))
         return false;
 
-    if (!loadAttachPoints(dataPath + "/manual_attachpoints.csv"))
+    if (!loadSpotsEx(dataPath + "/manual_spots.csv"))
+        return false;
+
+    if (!loadSpotsLabelEx(dataPath + "/manual_attachpoints.csv"))
+        return false;
+
+    if (!loadGridEx(dataPath + "/manual_grids.csv"))
         return false;
 
     return true;
@@ -97,25 +126,28 @@ std::vector<const char *> GameData::getMapNames() const
     return names;
 }
 
-int GameData::getMapCount() const
+bool GameData::loadNightlords(const std::string &filePath)
 {
-    return static_cast<int>(m_mapDB.size());
+    auto nightlordRowdata = readCSVFile<ManualNightlordRow>(filePath);
+    for (size_t i = 0; i < nightlordRowdata.size(); ++i)
+    {
+        NightlordInfo info;
+        info.id = nightlordRowdata[i].id;
+        info.name = nightlordRowdata[i].name;
+        m_nightlordDB[info.id] = info;
+    }
+    return true;
 }
 
 bool GameData::loadMaps(const std::string &filePath)
 {
-    CsvReader csv;
-    if (!csv.load(filePath))
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "GameData: Failed to load %s", filePath.c_str());
-        return false;
-    }
+    auto mapRowdata = readCSVFile<ManualMapRow>(filePath);
     
-    for (size_t i = 0; i < csv.getRowCount(); ++i)
+    for (size_t i = 0; i < mapRowdata.size(); ++i)
     {
         MapInfo map;
-        map.id = getInt(csv, i, "id");
-        map.name = getString(csv, i, "name");
+        map.id = mapRowdata[i].id;
+        map.name = mapRowdata[i].name;
         m_mapDB[map.id] = map;
     }
     
@@ -124,81 +156,81 @@ bool GameData::loadMaps(const std::string &filePath)
 
 bool GameData::loadPatterns(const std::string &filePath)
 {
-    CsvReader csv;
-    if (!csv.load(filePath))
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "GameData: Failed to load %s", filePath.c_str());
-        return false;
-    }
+    auto patternRowdata = readCSVFile<PatternRow>(filePath);
     
-    for (size_t i = 0; i < csv.getRowCount(); ++i)
+    for (size_t i = 0; i < patternRowdata.size(); ++i)
     {
         PatternInfo pattern;
-        pattern.id = getInt(csv, i, "id");
-        pattern.map = getInt(csv, i, "map");
-        pattern.boss = getInt(csv, i, "boss");
-        pattern.bossId1 = getInt(csv, i, "bossId1");
-        pattern.bossId2 = getInt(csv, i, "bossId2");
-        pattern.extraBossId1 = getInt(csv, i, "extraBossId1");
-        pattern.extraBossId2 = getInt(csv, i, "extraBossId2");
-        pattern.isdlc = (getString(csv, i, "isdlc") == "true");
-        pattern.starter = getInt(csv, i, "starter");
+        pattern.id              = patternRowdata[i].id;
+        pattern.map             = patternRowdata[i].map;
+        pattern.boss            = patternRowdata[i].boss;
+        pattern.bossId1         = patternRowdata[i].bossId1;
+        pattern.bossId2         = patternRowdata[i].bossId2;
+        pattern.extraBossId1    = patternRowdata[i].extraBossId1;
+        pattern.extraBossId2    = patternRowdata[i].extraBossId2;
+        pattern.isdlc           = patternRowdata[i].isdlc;
+        pattern.starter         = patternRowdata[i].starter;
         
-        pattern.playArea1 = getMapPoint(csv, i, "playArea1_");
-        pattern.playArea2 = getMapPoint(csv, i, "playArea2_");
+        pattern.playArea1.gridXNo   = patternRowdata[i].playArea1_gridXNo;
+        pattern.playArea1.gridZNo   = patternRowdata[i].playArea1_gridZNo;
+        pattern.playArea1.posX      = patternRowdata[i].playArea1_posX;
+        pattern.playArea1.posZ      = patternRowdata[i].playArea1_posZ;
+        pattern.playArea1.height    = patternRowdata[i].playArea1_height;
+
+        pattern.playArea2.gridXNo   = patternRowdata[i].playArea2_gridXNo;
+        pattern.playArea2.gridZNo   = patternRowdata[i].playArea2_gridZNo;
+        pattern.playArea2.posX      = patternRowdata[i].playArea2_posX;
+        pattern.playArea2.posZ      = patternRowdata[i].playArea2_posZ;
+        pattern.playArea2.height    = patternRowdata[i].playArea2_height;
         
         m_patternDB[pattern.id] = pattern;
-        m_mapDB[pattern.map].patterns.push_back(pattern.id);
+        if (pattern.isdlc)
+            m_mapDB[pattern.map].dlcPatterns.push_back(pattern.id);
+        else
+            m_mapDB[pattern.map].legacyPatterns.push_back(pattern.id);
+    }
+
+    for (auto& mappair : m_mapDB)
+    {
+        sortAndUnique(mappair.second.legacyPatterns);
+        sortAndUnique(mappair.second.dlcPatterns);
     }
     
     return true;
 }
 
-bool GameData::loadSpotDistribution(const std::string& filePath)
+bool GameData::loadSpots(const std::string& filePath)
 {
-    CsvReader csv;
-    if (!csv.load(filePath))
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "GameData: Failed to load %s", filePath.c_str());
-        return false;
-    }
+    auto spotRowdata = readCSVFile<SpotRow>(filePath);
     
-    for (size_t i = 0; i < csv.getRowCount(); ++i)
+    for (size_t i = 0; i < spotRowdata.size(); ++i)
     {
-        int id = getInt(csv, i, "id");
-		auto point = getMapPoint(csv, i);
-		auto attachIds = getIntList(csv, i, "attachIds", '_');
-        FilterSpot filterSpot;
-        filterSpot.id = id;
-        filterSpot.point = point;
-        filterSpot.attachIds = attachIds;
-        m_filterSpotDB[filterSpot.id] = filterSpot;
-
-        for (auto attachId : attachIds)
+        auto& right = spotRowdata[i];
+        if (!m_spotDB.count(right.attachId))
         {
-            BaseSpot baseSpot;
-            baseSpot.id = attachId;
-            baseSpot.point = point;
-            m_baseSpotDB[baseSpot.id] = baseSpot;
+            SpotInfo spotInfo;
+            spotInfo.attachId       = right.attachId;
+            spotInfo.point.gridXNo  = right.gridXNo;
+            spotInfo.point.gridZNo  = right.gridZNo;
+            spotInfo.point.posX     = right.posX;
+            spotInfo.point.posZ     = right.posZ;
+            spotInfo.point.height   = right.height;
+            m_spotDB[spotInfo.attachId] = spotInfo;
+        }
+        
+        if (right.map >= 0 && right.rate >= 0.8f)
+        {
+            if (spotRowdata[i].dlc)
+                m_mapDB[right.map].dlcFilterPoints.push_back(right.attachId);
+            else
+                m_mapDB[right.map].legacyFilterPoints.push_back(right.attachId);
         }
     }
-    
-    return true;
-}
 
-bool GameData::loadStaticSpots(const std::string& filePath)
-{
-    CsvReader csv;
-    if (!csv.load(filePath))
+    for (auto& mappair : m_mapDB)
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "GameData: Failed to load %s", filePath.c_str());
-        return false;
-    }
-    
-    for (size_t i = 0; i < csv.getRowCount(); ++i)
-    {
-        int map = getInt(csv, i, "map");
-		m_mapDB[map].staticSpots = getIntList(csv, i, "spots", '_');
+        sortAndUnique(mappair.second.legacyFilterPoints);
+        sortAndUnique(mappair.second.dlcFilterPoints);
     }
     
     return true;
@@ -206,24 +238,19 @@ bool GameData::loadStaticSpots(const std::string& filePath)
 
 bool GameData::loadVariations(const std::string& filePath)
 {
-    CsvReader csv;
-    if (!csv.load(filePath))
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "GameData: Failed to load %s", filePath.c_str());
-        return false;
-    }
+    auto variationRowdata = readCSVFile<VariationRow>(filePath);
     
-    for (size_t i = 0; i < csv.getRowCount(); ++i)
+    for (size_t i = 0; i < variationRowdata.size(); ++i)
     {
         VariationInfo var;
-        var.variationId = getInt(csv, i, "variationId");
-        var.variationType = getInt(csv, i, "variationType");
+        var.variationId = variationRowdata[i].variationId;
+        var.variationType = variationRowdata[i].variationType;
         
         m_variationDB[var.getKey()] = var;
 
         VariationDist dist;
-        dist.attachId = getInt(csv, i, "attachId");
-        dist.patternId = getInt(csv, i, "patternId");
+        dist.attachId = variationRowdata[i].attachId;
+        dist.patternId = variationRowdata[i].patternId;
         dist.variationKey = var.getKey();
         m_variationDist.push_back(dist);
     }
@@ -231,46 +258,41 @@ bool GameData::loadVariations(const std::string& filePath)
     return true;
 }
 
-bool GameData::loadVariationLabels(const std::string& filePath)
+bool GameData::loadVariationsEx(const std::string& filePath)
 {
-    CsvReader csv;
-    if (!csv.load(filePath))
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "GameData: Failed to load %s", filePath.c_str());
-        return false;
-    }
+    auto variationLabelRowdata = readCSVFile<ManualValidationRow>(filePath);
     
-    for (size_t i = 0; i < csv.getRowCount(); ++i)
+    for (size_t i = 0; i < variationLabelRowdata.size(); ++i)
     {
-        int id = getInt(csv, i, "id");
-        auto it = m_variationDB.find(id);
+        int varkey = variationLabelRowdata[i].id;
+        auto it = m_variationDB.find(varkey);
         if (it == m_variationDB.end()) continue;
 
-        it->second.label = getString(csv, i, "label");
-        it->second.sublabel = getString(csv, i, "sublabel");
-        it->second.icon = getString(csv, i, "icon", "");
-        it->second.visible = getInt(csv, i, "visible", 1) != 0;
-        it->second.iconScale = getFloat(csv, i, "iconScale", 1.0f);
+        it->second.label = variationLabelRowdata[i].label;
+        it->second.sublabel = variationLabelRowdata[i].sublabel;
+        it->second.icon = variationLabelRowdata[i].icon;
+        it->second.visible = variationLabelRowdata[i].visible != 0;
+        it->second.iconScale = variationLabelRowdata[i].iconScale;
     }
     
     return true;
 }
 
-bool GameData::loadStarterList(const std::string &filePath)
+bool GameData::loadStarters(const std::string &filePath)
 {
-    CsvReader csv;
-    if (!csv.load(filePath))
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "GameData: Failed to load %s", filePath.c_str());
-        return false;
-    }
+    auto starterRowdata = readCSVFile<StarterRow>(filePath);
 
-    for (size_t i = 0; i < csv.getRowCount(); ++i)
+    for (size_t i = 0; i < starterRowdata.size(); ++i)
     {
-        int id = getInt(csv, i, "id");
-        auto& starter = m_starterSpotDB[id];
-        starter.id = id;
-        starter.point = getMapPoint(csv, i);
+        auto& right = starterRowdata[i];
+        StarterInfo starterInfo;
+        starterInfo.starterId = right.id;
+        starterInfo.point.gridXNo = right.gridXNo;
+        starterInfo.point.gridZNo = right.gridZNo;
+        starterInfo.point.posX = right.posX;
+        starterInfo.point.posZ = right.posZ;
+        starterInfo.point.height = right.height;
+        m_starterDB[starterInfo.starterId] = starterInfo;
     }
     
     return true;
@@ -278,61 +300,65 @@ bool GameData::loadStarterList(const std::string &filePath)
 
 bool GameData::loadStarterDist(const std::string &filePath)
 {
-    CsvReader csv;
-    if (!csv.load(filePath))
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "GameData: Failed to load %s", filePath.c_str());
-        return false;
-    }
+    auto starterRowdata = readCSVFile<StarterDistributionRow>(filePath);
 
-    for (size_t i = 0; i < csv.getRowCount(); ++i)
+    for (size_t i = 0; i < starterRowdata.size(); ++i)
     {
-        int map = getInt(csv, i, "id");
-        auto& mapInfo = m_mapDB[map];
-        mapInfo.starterSpots = getIntList(csv, i, "starters", '_');
+        auto& right = starterRowdata[i];
+        m_mapDB[right.id].starters.push_back(right.starter);
     }
     
+    for (auto& mappair : m_mapDB)
+    {
+        sortAndUnique(mappair.second.starters);
+    }
+
     return true;
 }
 
-bool GameData::loadFilterSpots(const std::string &filePath)
+bool GameData::loadSpotsEx(const std::string &filePath)
 {
-    CsvReader csv;
-    if (!csv.load(filePath))
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "GameData: Failed to load %s", filePath.c_str());
-        return false;
-    }
+    auto spotExRowdata = readCSVFile<ManualSpotRow>(filePath);
 
-    for (size_t i = 0; i < csv.getRowCount(); ++i)
+    for (size_t i = 0; i < spotExRowdata.size(); ++i)
     {
-        int id = getInt(csv, i, "id");
-        auto& option = m_filterSpotOptions[id];
-        option.spotId = id;
-        option.enabled = getInt(csv, i, "enable", 0) > 0;
+        SpotOption option;
+        option.attachId = spotExRowdata[i].id;
+        option.disable_filter = spotExRowdata[i].disable_filter > 0;
+        option.disable_view = spotExRowdata[i].disable_view > 0;
+        m_spotOptions[option.attachId] = option;
     }
     return true;
 }
 
-bool GameData::loadAttachPoints(const std::string &filePath)
+bool GameData::loadSpotsLabelEx(const std::string &filePath)
 {
-    CsvReader csv;
-    if (!csv.load(filePath))
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "GameData: Failed to load %s", filePath.c_str());
-        return false;
-    }
+    auto spotLabelRowdata = readCSVFile<ManualSpotLabelRow>(filePath);
 
-    for (size_t i = 0; i < csv.getRowCount(); ++i)
+    for (size_t i = 0; i < spotLabelRowdata.size(); ++i)
     {
-        int id = getInt(csv, i, "id");
-        auto& option = m_attachPointOptions[id];
-        option.attachId = id;
-        option.alignment = getInt(csv, i, "align", 0);
-        option.offset.x = getFloat(csv, i, "offsetX", 0);
-        option.offset.y = getFloat(csv, i, "offsetY", 0);
-        option.b1Overlay = getInt(csv, i, "b1", 0) != 0;
-        option.showIcon = getInt(csv, i, "showicon", 0) != 0;
+        SpotLabelOption option;
+        option.attachId = spotLabelRowdata[i].id;
+        option.direction = spotLabelRowdata[i].direction;
+        option.offset.x = spotLabelRowdata[i].offsetx;
+        option.offset.y = spotLabelRowdata[i].offsety;
+        option.showIcon = spotLabelRowdata[i].showicon != 0;
+        m_spotLabelOptions[option.attachId] = option;
+    }
+    return true;
+}
+
+bool GameData::loadGridEx(const std::string& filePath)
+{
+    auto gridRowdata = readCSVFile<ManualGridRow>(filePath);
+    for (size_t i = 0; i < gridRowdata.size(); ++i)
+    {
+        GridOption option;
+        option.x = gridRowdata[i].x;
+        option.y = gridRowdata[i].y;
+        option.height = gridRowdata[i].height;
+        option.map = gridRowdata[i].map;
+        m_gridOptions.push_back(option);
     }
     return true;
 }
@@ -349,33 +375,40 @@ std::set<int> GameData::filterByMap(int map) const
     auto it = m_mapDB.find(map);
     if (it != m_mapDB.end())
     {
-        result.insert(it->second.patterns.begin(), it->second.patterns.end());
+        result.insert(it->second.legacyPatterns.begin(), it->second.legacyPatterns.end());
+        result.insert(it->second.dlcPatterns.begin(), it->second.dlcPatterns.end());
     }
     return result;
 }
 
-const FilterSpot* GameData::getSpot(int spotId) const
+const SpotInfo* GameData::getSpot(int spotId) const
 {
-    auto it = m_filterSpotDB.find(spotId);
-    return (it != m_filterSpotDB.end()) ? &it->second : nullptr;
+    auto it = m_spotDB.find(spotId);
+    return (it != m_spotDB.end()) ? &it->second : nullptr;
 }
 
-const BaseSpot* GameData::getAttach(int attachId) const
-{
-    auto it = m_baseSpotDB.find(attachId);
-    return (it != m_baseSpotDB.end()) ? &it->second : nullptr;
-}
-
-const std::vector<int>& GameData::getStaticSpotsByMap(int map) const
+std::vector<int> GameData::getSpotsByMap(int map, bool legacy, bool dlc) const
 {
     auto it = m_mapDB.find(map);
-    return (it != m_mapDB.end()) ? it->second.staticSpots : s_emptyIntVector;
+    std::vector<int> result;
+    if (it != m_mapDB.end())    {
+        if (legacy)
+            result.insert(result.end(), it->second.legacyFilterPoints.begin(), it->second.legacyFilterPoints.end());
+        if (dlc)
+            result.insert(result.end(), it->second.dlcFilterPoints.begin(), it->second.dlcFilterPoints.end());
+    }
+    return result;
 }
 
-const std::vector<int>& GameData::getStarterSpotsByMap(int map) const
+std::vector<int> GameData::getStarterByMap(int map) const
 {
     auto it = m_mapDB.find(map);
-    return (it != m_mapDB.end()) ? it->second.starterSpots : s_emptyIntVector;
+    std::vector<int> result;
+    if (it != m_mapDB.end())
+    {
+        result.insert(result.end(), it->second.starters.begin(), it->second.starters.end());
+    }
+    return result;
 }
 
 const VariationInfo *GameData::getVariation(int varKey) const
@@ -394,7 +427,7 @@ const VariationInfo *GameData::getVariation(int patternId, int attachId) const
     return nullptr;
 }
 
-std::vector<const VariationDist*> GameData::getDists(int patternId) const
+std::vector<const VariationDist*> GameData::listDistribution(int patternId) const
 {
     std::vector<const VariationDist*> result;
     for (auto& dist : m_variationDist)
@@ -405,34 +438,33 @@ std::vector<const VariationDist*> GameData::getDists(int patternId) const
     return result;
 }
 
-const StarterSpot *GameData::getStarterSpot(int starterId) const
+const StarterInfo *GameData::getStarter(int starterId) const
 {
-    auto it = m_starterSpotDB.find(starterId);
-    return it != m_starterSpotDB.end() ? &it->second : nullptr;
+    auto it = m_starterDB.find(starterId);
+    return it != m_starterDB.end() ? &it->second : nullptr;
 }
 
-const AttachPointOption *GameData::getAttachOption(int attachId) const
+const SpotLabelOption *GameData::getAttachOption(int attachId) const
 {
-    auto it = m_attachPointOptions.find(attachId);
-    return it != m_attachPointOptions.end() ? &it->second : nullptr;
+    auto it = m_spotLabelOptions.find(attachId);
+    return it != m_spotLabelOptions.end() ? &it->second : nullptr;
 }
 
-std::vector<const VariationInfo*> GameData::getVariationsAtSpot(int spotId, const std::set<int>& patterns) const
+const GridOption* GameData::getGridOption(int map, int x, int y) const
+{
+    auto it = std::find_if(m_gridOptions.begin(), m_gridOptions.end(), [map, x, y](const GridOption& opt) {
+        return opt.x == x && opt.y == y && opt.map == map;
+        });
+    return it != m_gridOptions.end() ? &(*it) : nullptr;
+}
+
+std::vector<const VariationInfo*> GameData::listVariations(int attachId, const std::set<int>& patterns) const
 {
     std::vector<const VariationInfo*> result;
     
-    std::set<int> attachIds;
-    auto fspotIt = m_filterSpotDB.find(spotId);
-    if (fspotIt != m_filterSpotDB.end())
-    {
-        attachIds.insert(
-            fspotIt->second.attachIds.begin(),
-            fspotIt->second.attachIds.end());
-    }
-
     for(const auto& varDist : m_variationDist)
     {
-        if (!attachIds.count(varDist.attachId) || !patterns.count(varDist.patternId))
+        if (varDist.attachId != attachId || !patterns.count(varDist.patternId))
             continue;
         auto varIt = m_variationDB.find(varDist.variationKey);
         if (varIt == m_variationDB.end())
@@ -443,34 +475,19 @@ std::vector<const VariationInfo*> GameData::getVariationsAtSpot(int spotId, cons
     return result;
 }
 
-std::vector<const VariationInfo*> GameData::getVariationsAtSpot(int spotId, int map) const
+std::vector<const VariationInfo*> GameData::listVariations(int attachId, int map) const
 {
-    std::set<int> patterns;
-    auto mapIt = m_mapDB.find(map);
-    if (mapIt != m_mapDB.end())
-    {
-        patterns.insert(
-            mapIt->second.patterns.begin(),
-            mapIt->second.patterns.end());
-    }
-    return getVariationsAtSpot(spotId, patterns);
+    std::set<int> patterns = filterByMap(map);
+    return listVariations(attachId, patterns);
 }
 
-std::set<int> GameData::filterByVariation(const std::set<int> &patterns, int spotId, int varKey) const
+std::set<int> GameData::filterByVariation(const std::set<int> &patterns, int attachId, int varKey) const
 {
     std::set<int> result;
-    std::set<int> attachIds;
-    auto spotIt = m_filterSpotDB.find(spotId);
-    if (spotIt != m_filterSpotDB.end())
-    {
-        attachIds.insert(
-            spotIt->second.attachIds.begin(),
-            spotIt->second.attachIds.end());
-    }
     for(const auto& dist : m_variationDist)
     {
         if (dist.variationKey == varKey
-            && attachIds.count(dist.attachId)
+            && dist.attachId == attachId
             && patterns.count(dist.patternId))
             result.insert(dist.patternId);
     }
@@ -509,12 +526,12 @@ std::set<int> GameData::filterByNightlord(const std::set<int> &patterns, int nig
     return result;
 }
 
-bool GameData::isSpotEnabled(int spotId) const
+const SpotOption* GameData::getSpotOption(int attachId) const
 {
-    auto it = m_filterSpotOptions.find(spotId);
-    if (it != m_filterSpotOptions.end())
+    auto it = m_spotOptions.find(attachId);
+    if (it != m_spotOptions.end())
     {
-        return it->second.enabled;
+        return &it->second;
     }
-    return true;
+    return nullptr;
 }

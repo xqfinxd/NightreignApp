@@ -24,7 +24,6 @@ extern void setApplicationInstance(Application* app);
 
 Application::Application()
 {
-    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Creating application...");
     m_window = new sdlWindow();
     m_device = new glDevice(m_window);
     m_resource_mgr = new ResourceManager(m_device);
@@ -36,20 +35,16 @@ Application::Application()
     // Register this instance for JavaScript bindings
     setApplicationInstance(this);
 #endif
-
-    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Application created successfully");
 }
 
 Application::~Application()
 {
-    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Destroying application...");
     delete m_input_handler;
     delete m_scene_mgr;
     delete m_resource_mgr;
     delete m_renderer;
     delete m_device;
     delete m_window;
-    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Application destroyed");
 }
 
 void Application::start()
@@ -60,29 +55,24 @@ void Application::start()
         return;
     }
 
-    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Starting application...");
     initialize();
 
     m_running = true;
     m_last_frame_time = SDL_GetTicks();
-    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Entering main loop (FPS: %d)", m_fps);
 
 #ifdef __EMSCRIPTEN__
-    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Emscripten setup mainloop...");
     emscripten_set_main_loop_arg(runFrameWrapper, this, 0, 1);
 #else
     while (m_running)
     {
         runFrame();
     }
-    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Exited main loop");
     cleanup();
 #endif
 }
 
 void Application::quit()
 {
-    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Quit requested");
     m_running = false;
 }
 
@@ -91,7 +81,6 @@ void Application::runFrame()
     if (!m_running)
     {
 #ifdef __EMSCRIPTEN__
-        SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Emscripten terminate mainloop...");
         emscripten_cancel_main_loop();
         cleanup();
 #endif
@@ -127,7 +116,6 @@ void Application::runFrameWrapper(void *userData)
 
 void Application::initialize()
 {
-    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Initializing subsystems...");
     m_window->initialize(1200, 900);
     m_device->initialize();
     m_renderer->initialize();
@@ -140,7 +128,6 @@ void Application::initialize()
     // Set initial viewport
     auto size = m_window->getCanvasSize();
     m_renderer->setViewport(0, 0, size.x, size.y);
-    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Initialization complete (Viewport: %dx%d)", size.x, size.y);
 }
 
 void Application::processInput()
@@ -161,7 +148,6 @@ void Application::processInput()
                 m_device->onResize();
                 auto size = m_window->getCanvasSize();
                 m_renderer->setViewport(0, 0, size.x, size.y);
-                SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Window resized to %dx%d", size.x, size.y);
             }
         }
 
@@ -224,11 +210,9 @@ void Application::render()
 
 void Application::cleanup()
 {
-    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Cleaning up subsystems...");
-
 #ifdef __EMSCRIPTEN__
     // Synchronize from memory to IndexedDB before cleanup
-    SDL_Log("Application: Syncing file system to IndexedDB...");
+    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Syncing file system to IndexedDB...");
     EM_ASM(
         FS.syncfs(false, function(err) {
             if (err) {
@@ -243,5 +227,4 @@ void Application::cleanup()
     m_renderer->cleanup();
     m_device->cleanup();
     m_window->cleanup();
-    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Application: Cleanup complete");
 }

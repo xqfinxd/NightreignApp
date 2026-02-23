@@ -19,6 +19,8 @@ class ResourceManager
 public:
     ResourceManager(Device* device);
     ~ResourceManager();
+    // Singleton access (optional)
+    static ResourceManager* getInstance() { return s_instance; }
 
     void initialize();
     void cleanup();
@@ -49,14 +51,13 @@ public:
     size_t getTextureCount() const { return m_textures.size(); }
     size_t getMeshCount() const { return m_meshes.size(); }
 
-    // Singleton access (optional)
-    static ResourceManager* getInstance() { return s_instance; }
-    
     // Async resource loading (for Emscripten)
     AsyncResourceLoader* getAsyncLoader() { return m_async_loader; }
     
     // Texture registry for async texture loading
     TextureRegistry* getTextureRegistry() { return m_texture_registry; }
+
+    bool queryTexture(const std::string& name);
 
 private:
     std::unordered_map<std::string, Shader*> m_shaders;

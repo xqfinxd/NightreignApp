@@ -4,9 +4,8 @@
 #include "Renderer.h"
 #include "components/Mesh.h"
 #include "components/Transform.h"
-#include "components/MapSpot.h"
+#include "components/Map.h"
 #include "components/RenderOptions.h"
-#include "components/Tag.h"
 #include "Device.h"
 #include "ResourceManager.h"
 #include "Texture.h"
@@ -159,18 +158,22 @@ struct Ray
 	}
 };
 
-Scene::Scene()
+Scene::Scene() : m_gameData(new GameData)
 {
-	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Scene: ECS registry created");
 }
 
 Scene::~Scene()
 {
-	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Scene: ECS registry destroyed (entities: %zu)", m_registry.size());
 }
 
 void Scene::initialize()
 {
+	// Load game data from CSV files
+	if (!m_gameData->loadFromCSV("nightreign/assets/datas"))
+	{
+		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Application: Failed to load game data");
+	}
+
 	ResourceManager *resMgr = ResourceManager::getInstance();
 	// Load shaders
 	resMgr->loadShader("texture", "nightreign/assets/shaders/texture.vert", "nightreign/assets/shaders/texture.frag");
@@ -189,188 +192,92 @@ void Scene::initialize()
 
 	resMgr->createMesh("quad", quadVertices, quadIndices);
 
-	// Load spot texture
-	resMgr->loadTexture("spot_launch");
-
-	// Load game data from CSV files
-	if (!GameData::getInstance().loadFromCSV("nightreign/assets/datas"))
-	{
-		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Application: Failed to load game data");
-	}
-
 	// Create default camera
 	{
-		auto entity = m_registry.create();
-		auto &camera = m_registry.emplace<Camera>(entity);
-
+		auto& o = addObject("main camera");
+		o.setTag("main camera");
+		auto& camera = o.addComponent<Camera>();
 		camera.position = glm::vec3(0.0f, 0.0f, 5.0f);
 		camera.target = glm::vec3(0.0f, 0.0f, 0.0f);
 		camera.updateMatrices();
 	}
 
-	// Set up spot click callback
-	setSpotClickCallback([this](entt::entity entity, const MapSpot &spot)
-						 { handleSpotClick(entity, spot); });
-
 	// Add some sample spots on the map with Chinese labels
 	filterMap(0);
-
-	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Scene initialized (ECS ready, entities: %zu)", m_registry.size());
 }
 
 void Scene::cleanup()
 {
-	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Scene cleanup (clearing %zu entities)", m_registry.size());
-	m_selectedSpotEntity = entt::null;
-	m_registry.clear();
 }
 
 void Scene::update(float deltaTime)
 {
+	updateObjects();
 }
 
-void Scene::onMouseClick(int screenX, int screenY, int windowWidth, int windowHeight)
+std::vector<Entity*> Scene::Raycast(Camera& camera, int screenX, int screenY, int width, int height)
 {
-	auto camera = getCamera();
-	if (!camera)
-		return;
-
-	Ray ray(*camera, screenX, screenY, windowWidth, windowHeight);
-
-	// Collect all spots at this click location
-	std::vector<entt::entity> hitsAtLocation;
-	int selectedIndex = -1;
-	for (auto it = m_mapSpotEntities.rbegin(); it != m_mapSpotEntities.rend(); ++it)
+	std::vector<Entity*> hitsAtLocation;
+	Ray ray(camera, screenX, screenY, width, height);
+	auto interactables = findObjectsByComponent<Interactable>();
+	for (auto* gameObject : interactables)
 	{
-		auto entity = *it;
-		if (!m_registry.valid(entity))
-			continue;
+		if (!gameObject) continue;
 
-		auto *transform = m_registry.try_get<Transform>(entity);
-		auto *mapSpot = m_registry.try_get<MapSpot>(entity);
-		if (!transform || !mapSpot)
-			continue;
-
-		// Check if click is within spot bounds
+		Transform* transform = gameObject->getComponent<Transform>();
 		float halfSize = (transform->scale.x * m_tileSize) * 0.5f;
-		auto result = ray.intersectSphere(transform->position, halfSize);
+		HitResult hitResult = ray.intersectSphere(transform->position, halfSize);
 
-		if (result.hit)
+		if (hitResult.hit)
 		{
-			hitsAtLocation.push_back(entity);
-			if (entity == m_selectedSpotEntity)
-			{
-				selectedIndex = static_cast<int>(hitsAtLocation.size()) - 1;
-			}
+			hitsAtLocation.push_back(gameObject);
 		}
 	}
-
-	if (m_spotClickCallback && !hitsAtLocation.empty())
-	{
-		entt::entity nextSelectedEntity;
-		if (selectedIndex < 0 || static_cast<size_t>(selectedIndex) >= hitsAtLocation.size() - 1)
-		{
-			nextSelectedEntity = hitsAtLocation[0];
-		}
-		else
-		{
-			nextSelectedEntity = hitsAtLocation[selectedIndex + 1];
-		}
-
-		auto *mapSpot = m_registry.try_get<MapSpot>(nextSelectedEntity);
-		auto *tag = m_registry.try_get<Tag>(nextSelectedEntity);
-		bool interactable = tag && (tag->name == "starter spot" || tag->name == "filter spot") && mapSpot && mapSpot->metadata > 0;
-		if (interactable)
-		{
-			m_spotClickCallback(nextSelectedEntity, *mapSpot);
-		}
-	}
+	return hitsAtLocation;
 }
 
-void Scene::onMouseRightClick(int screenX, int screenY, int windowWidth, int windowHeight)
+void Scene::onSelectSpots(int screenX, int screenY, int width, int height)
 {
-	// Only handle right click in filter mode
+#ifndef _DEBUG
 	if (!m_filterMode)
 		return;
+#endif
 
 	auto camera = getCamera();
-	if (!camera)
-		return;
+	if (!camera) return;
 
-	Ray ray(*camera, screenX, screenY, windowWidth, windowHeight);
+	Ray ray(*camera, screenX, screenY, width, height);
 
 	// Clear previous context menu data
-	m_contextMenuData.clear();
+	m_selectionData.clear();
 
 	// Collect all spots at this click location
-	std::vector<std::pair<entt::entity, float>> hitsAtLocation;
+	auto hitsAtLocation = Raycast(*camera, screenX, screenY, width, height);
+	if (hitsAtLocation.empty()) return;
 
-	for (auto it = m_mapSpotEntities.rbegin(); it != m_mapSpotEntities.rend(); ++it)
-	{
-		auto entity = *it;
-		if (!m_registry.valid(entity))
-			continue;
-
-		auto *transform = m_registry.try_get<Transform>(entity);
-		auto *mapSpot = m_registry.try_get<MapSpot>(entity);
-		auto *tag = m_registry.try_get<Tag>(entity);
-		if (!transform || !mapSpot || !tag)
-			continue;
-
-		// Check if this is an interactable spot
-		if (mapSpot->metadata <= 0)
-			continue;
-
-		// Only consider starter and filter spots
-		if (tag->name != "filter spot" && tag->name != "starter spot")
-			continue;
-
-		// Check if click is within spot bounds
-		float halfSize = (transform->scale.x * m_tileSize) * 0.5f;
-		auto result = ray.intersectSphere(transform->position, halfSize);
-
-		if (result.hit)
-		{
-			hitsAtLocation.push_back({entity, result.distance});
-		}
-	}
-
-	// If no hits, return early
-	if (hitsAtLocation.empty())
-		return;
-
-	// Sort by distance (closest first)
-	std::sort(hitsAtLocation.begin(), hitsAtLocation.end(),
-			  [](const auto &a, const auto &b)
-			  { return a.second < b.second; });
-
-	// Collect all spot types and IDs at this location
-	auto &gameData = GameData::getInstance();
+	auto &gameData = GameData::getRef();
 	std::map<int, size_t> uniqueVars; // For deduplicating variations
 
-	for (const auto &[entity, distance] : hitsAtLocation)
+	for (auto *o : hitsAtLocation)
 	{
-		auto *mapSpot = m_registry.try_get<MapSpot>(entity);
-		auto *tag = m_registry.try_get<Tag>(entity);
-		auto *transform = m_registry.try_get<Transform>(entity);
+		const auto* mapSpot = o->getComponent<MapSpot>();
+		const auto* transform = o->getComponent<Transform>();
+		
+		if (!mapSpot) continue;
 
-		if (!mapSpot || !tag || !transform)
-			continue;
+		m_selectionData.entities.push_back(o->getEntity());
 
-		m_contextMenuData.entities.push_back(entity);
-
-		if (tag->name == "starter spot")
+		if (o->hasTag("starter spot"))
 		{
-			// Add starter ID
-			m_contextMenuData.starterIds.push_back(mapSpot->metadata);
+			m_selectionData.starterIds.push_back(mapSpot->metadata);
 		}
-		else if (tag->name == "filter spot")
+		else if (o->hasTag("filter spot"))
 		{
 			// Add filter spot ID
-			m_contextMenuData.filterSpotIds.push_back(mapSpot->metadata);
+			m_selectionData.attachIds.push_back(mapSpot->metadata);
 
 			// Collect variations for this spot
-			auto results = gameData.getVariationsAtSpot(mapSpot->metadata, m_filteredPatterns);
+			auto results = gameData.listVariations(mapSpot->metadata, m_filteredPatterns);
 			for (const auto &res : results)
 			{
 				auto outPatterns = gameData.filterByVariation(
@@ -378,10 +285,10 @@ void Scene::onMouseRightClick(int screenX, int screenY, int windowWidth, int win
 
 				// Deduplicate variations by key
 				auto it = uniqueVars.find(res->getKey());
-				if (it != uniqueVars.end() && it->second < m_contextMenuData.variations.size())
+				if (it != uniqueVars.end() && it->second < m_selectionData.variations.size())
 				{
 					// Merge patterns into existing variation
-					m_contextMenuData.variations[it->second].patterns.insert(
+					m_selectionData.variations[it->second].patterns.insert(
 						outPatterns.begin(), outPatterns.end());
 					continue;
 				}
@@ -390,81 +297,31 @@ void Scene::onMouseRightClick(int screenX, int screenY, int windowWidth, int win
 				VariationOption var;
 				var.info = *res;
 				var.patterns.insert(outPatterns.begin(), outPatterns.end());
-				m_contextMenuData.variations.push_back(var);
-				uniqueVars[res->getKey()] = m_contextMenuData.variations.size() - 1;
+				m_selectionData.variations.push_back(var);
+				uniqueVars[res->getKey()] = m_selectionData.variations.size() - 1;
 			}
+		}
+		else if (o->hasTag("base spot"))
+		{
+			m_selectionData.attachIds.push_back(mapSpot->metadata);
 		}
 
 		// Store world position from the first hit
-		if (m_contextMenuData.worldPosition == glm::vec2(0.0f))
+		if (m_selectionData.worldPosition == glm::vec2(0.0f))
 		{
-			m_contextMenuData.worldPosition = glm::vec2(transform->position.x, transform->position.y);
+			m_selectionData.worldPosition = glm::vec2(transform->position.x, transform->position.y);
 		}
 	}
 
 	// Show context menu if we have any data
-	if (!m_contextMenuData.isEmpty())
+	if (!m_selectionData.isEmpty())
 	{
 		m_contextMenuPos = glm::vec2(screenX, screenY);
 		m_showContextMenu = true;
 	}
 }
 
-void Scene::handleSpotClick(entt::entity entity, const MapSpot &spot)
-{
-	// Handle filter mode
-	if (m_filterMode && spot.metadata > 0)
-	{
-		m_currentSpotId = spot.metadata;
-		m_availableVariations.clear();
-		m_selectedVariationIndex = -1;
-
-		auto &gameData = GameData::getInstance();
-		auto results = gameData.getVariationsAtSpot(spot.metadata, m_filteredPatterns);
-		std::map<int, size_t> uniqueVars;
-		for (const auto &res : results)
-		{
-			auto outPatterns = gameData.filterByVariation(
-				m_filteredPatterns, spot.metadata, res->getKey());
-			auto it = uniqueVars.find(res->getKey());
-			if (it != uniqueVars.end() && it->second < m_availableVariations.size())
-			{
-				m_availableVariations[it->second].patterns.insert(
-					outPatterns.begin(), outPatterns.end());
-				continue;
-			}
-			VariationOption var;
-			var.info = *res;
-			var.patterns.insert(outPatterns.begin(), outPatterns.end());
-			m_availableVariations.push_back(var);
-			uniqueVars[res->getKey()] = m_availableVariations.size() - 1;
-		}
-	}
-
-	// Normal mode - just visual selection
-	if (m_selectedSpotEntity != entt::null)
-	{
-		auto &prevSpot = m_registry.get<MapSpot>(m_selectedSpotEntity);
-		prevSpot.selected = false;
-	}
-
-	if (m_selectedSpotEntity == entity)
-	{
-		m_selectedSpotEntity = entt::null;
-	}
-	else
-	{
-		m_selectedSpotEntity = entity;
-	}
-
-	if (m_selectedSpotEntity != entt::null)
-	{
-		auto &newSpot = m_registry.get<MapSpot>(m_selectedSpotEntity);
-		newSpot.selected = true;
-	}
-}
-
-void Scene::handleInput(const InputState &result, int windowWidth, int windowHeight)
+void Scene::handleInput(const InputState &result, int width, int height)
 {
 	auto camera = getCamera();
 	if (!camera)
@@ -475,7 +332,7 @@ void Scene::handleInput(const InputState &result, int windowWidth, int windowHei
 	case InputState::eSingleTap:
 	{
 		// Single tap - trigger click
-		onMouseRightClick(static_cast<int>(result.pos.x), static_cast<int>(result.pos.y), windowWidth, windowHeight);
+		onSelectSpots(static_cast<int>(result.pos.x), static_cast<int>(result.pos.y), width, height);
 		break;
 	}
 
@@ -485,7 +342,7 @@ void Scene::handleInput(const InputState &result, int windowWidth, int windowHei
 		if (camera->isOrthographic)
 		{
 			// Calculate world position at tap location before zoom
-			Ray ray(*camera, static_cast<int>(result.pos.x), static_cast<int>(result.pos.y), windowWidth, windowHeight);
+			Ray ray(*camera, static_cast<int>(result.pos.x), static_cast<int>(result.pos.y), width, height);
 			auto hitResult = ray.intersectPlane(glm::vec3(0.f), glm::vec3(0.f, 0.f, 1.f));
 			
 			if (hitResult.hit)
@@ -499,7 +356,7 @@ void Scene::handleInput(const InputState &result, int windowWidth, int windowHei
 				
 				// Recalculate world position at same screen location after zoom
 				camera->updateMatrices();
-				Ray rayAfter(*camera, static_cast<int>(result.pos.x), static_cast<int>(result.pos.y), windowWidth, windowHeight);
+				Ray rayAfter(*camera, static_cast<int>(result.pos.x), static_cast<int>(result.pos.y), width, height);
 				auto hitResultAfter = rayAfter.intersectPlane(glm::vec3(0.f), glm::vec3(0.f, 0.f, 1.f));
 				
 				if (hitResultAfter.hit)
@@ -522,7 +379,7 @@ void Scene::handleInput(const InputState &result, int windowWidth, int windowHei
 		if (camera->isOrthographic)
 		{
 			// Convert screen delta to world delta
-			float worldDeltaScale = camera->orthoSize / static_cast<float>(windowHeight);
+			float worldDeltaScale = camera->orthoSize / static_cast<float>(height);
 			
 			// Calculate world space movement (inverted for natural drag feel)
 			glm::vec3 right = glm::normalize(glm::cross(camera->target - camera->position, camera->up));
@@ -561,7 +418,7 @@ void Scene::handleInput(const InputState &result, int windowWidth, int windowHei
 		if (camera->isOrthographic)
 		{
 			// Calculate world position at zoom center before zoom
-			Ray ray(*camera, static_cast<int>(result.pos.x), static_cast<int>(result.pos.y), windowWidth, windowHeight);
+			Ray ray(*camera, static_cast<int>(result.pos.x), static_cast<int>(result.pos.y), width, height);
 			auto hitResult = ray.intersectPlane(glm::vec3(0.f), glm::vec3(0.f, 0.f, 1.f));
 			
 			if (hitResult.hit)
@@ -574,7 +431,7 @@ void Scene::handleInput(const InputState &result, int windowWidth, int windowHei
 				camera->orthoSize = glm::clamp(camera->orthoSize, m_minZoom, m_maxZoom);
 				
 				// Apply panning from multi-touch gesture
-				float worldDeltaScale = camera->orthoSize / static_cast<float>(windowHeight);
+				float worldDeltaScale = camera->orthoSize / static_cast<float>(height);
 				glm::vec3 right = glm::normalize(glm::cross(camera->target - camera->position, camera->up));
 				glm::vec3 worldUp = camera->up;
 				glm::vec3 panMovement = -right * result.delta.x * worldDeltaScale + 
@@ -585,7 +442,7 @@ void Scene::handleInput(const InputState &result, int windowWidth, int windowHei
 				
 				// Recalculate world position at same screen location after zoom
 				camera->updateMatrices();
-				Ray rayAfter(*camera, static_cast<int>(result.pos.x), static_cast<int>(result.pos.y), windowWidth, windowHeight);
+				Ray rayAfter(*camera, static_cast<int>(result.pos.x), static_cast<int>(result.pos.y), width, height);
 				auto hitResultAfter = rayAfter.intersectPlane(glm::vec3(0.f), glm::vec3(0.f, 0.f, 1.f));
 				
 				if (hitResultAfter.hit)
@@ -639,7 +496,7 @@ void Scene::handleInput(const InputState &result, int windowWidth, int windowHei
 	case InputState::eLongTouch:
 	{
 		// Long touch - trigger right click (context menu)
-		onMouseRightClick(static_cast<int>(result.pos.x), static_cast<int>(result.pos.y), windowWidth, windowHeight);
+		onSelectSpots(static_cast<int>(result.pos.x), static_cast<int>(result.pos.y), width, height);
 		break;
 	}
 
@@ -655,18 +512,17 @@ void Scene::render(Renderer *renderer)
 {
 	// Get camera
 	auto camera = getCamera();
-	if (!camera)
-	{
-		return;
-	}
-
+	if (!camera) return;
+	
 	// Render all entities with MeshComponent
-	renderer->renderEntities(m_registry);
+	auto meshes = findObjectsByComponent<MeshComponent>();
+	renderer->renderEntities(*camera, meshes);
 
 	// Render spot labels with ImGui's font texture
 	glm::vec4 black = glm::vec4(0.0f, 0.0f, 0.0f, 0.5f);
 	glm::vec4 white = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
-	renderer->renderSpotLabels(m_registry, *camera, black, white);
+	auto texts = findObjectsByComponent<TextComponent>();
+	renderer->renderText(*camera, texts, black, white);
 }
 
 void Scene::drawUI()
@@ -675,15 +531,13 @@ void Scene::drawUI()
 	// Scene statistics window
 	ImGui::Begin("Scene View");
 	ImGui::Text("ECS Statistics:");
-	ImGui::Text("  Entities: %zu", m_registry.size());
-	ImGui::Text("  Alive: %zu", m_registry.alive());
+	ImGui::Text("  Entities: %zu", getRegistry().size());
+	ImGui::Text("  Alive: %zu", getRegistry().alive());
 
 	ImGui::Separator();
 	ImGui::Text("Map Info:");
 	ImGui::Text("  Current Index: %d", m_currentMapIndex);
 	ImGui::Text("  Current Layer: %d", m_currentLayer);
-	ImGui::Text("  Tiles: %zu", m_mapTileEntities.size());
-	ImGui::Text("  Spots: %zu", m_mapSpotEntities.size());
 	ImGui::Text("  Pattern ID: %d", m_currentPatternId);
 
 	ImGui::Separator();
@@ -700,14 +554,6 @@ void Scene::drawUI()
 		{
 			ImGui::Text("  FOV: %.2f", camera->fov);
 		}
-		glm::vec2 gridpos{m_mouseWorldPos.x / m_tileSize + (m_gridWidth / 2.0f),
-						  m_mouseWorldPos.y / m_tileSize + (m_gridHeight / 2.0f)};
-		glm::vec2 gridNo{0, 0};
-		glm::vec2 pos = glm::modf(gridpos, gridNo);
-		gridNo += glm::vec2(41, 35);
-		pos = pos * (float)m_textureTileSize - (m_textureTileSize / 2.0f);
-		ImGui::Text("  Grid No: (%.2f, %.2f)", gridNo.x, gridNo.y);
-		ImGui::Text("  Local Pos: (%.2f, %.2f)", pos.x, pos.y);
 	}
 	else
 	{
@@ -724,158 +570,29 @@ void Scene::drawUI()
 
 	ImGui::Separator();
 	ImGui::Text("Pattern ID:");
-	ImGui::InputInt("##PatternID", &m_patternInput);
+	static int patternInput = m_currentPatternId;
+	ImGui::InputInt("##PatternID", &patternInput);
 	if (ImGui::Button("Load Spots by Pattern"))
 	{
-		loadSpotsByPattern(m_patternInput);
+		loadSpotsByPattern(patternInput);
 	}
 
-	ImGui::Separator();
-	ImGui::Text("=== Pattern Filter Mode ===");
+	ImGui::SeparatorText("Pattern Filter Mode");
 	ImGui::Checkbox("Enable Filter Mode", &m_filterMode);
 
 	if (m_filterMode)
 	{
 		ImGui::Text("1. Select Map:");
-		auto names = GameData::getInstance().getMapNames();
-		auto mapCount = GameData::getInstance().getMapCount();
-		if (ImGui::Combo("##MapSelect", &m_filterMapSelection, names.data(), mapCount))
+		auto names = GameData::getRef().getMapNames();
+		static int filterMapSelection = m_currentMapIndex;
+		if (ImGui::Combo("##MapSelect", &filterMapSelection, names.data(), static_cast<int>(names.size())))
 		{
-			filterMap(m_filterMapSelection);
+			filterMap(filterMapSelection);
 		}
 
 		ImGui::Separator();
 		ImGui::Text("2. Click spots to select:");
-		if (!m_markedSpots.empty())
-		{
-			ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f),
-							   "Filter active: %zu spots marked", m_markedSpots.size());
-		}
-
-		// Show available variations for clicked spot
-		if (m_currentSpotId > 0 && !m_availableVariations.empty())
-		{
-			ImGui::Text("Spot: %d", m_currentSpotId);
-			ImGui::Text("Available Variations:");
-
-			ImGui::BeginChild("VariationList", ImVec2(0, 200), true);
-			for (size_t i = 0; i < m_availableVariations.size(); ++i)
-			{
-				const auto &var = m_availableVariations[i];
-				bool isSelected = (m_selectedVariationIndex == static_cast<int>(i));
-
-				// Build display label with label and sublabel
-				std::string displayLabel;
-				if (!var.info.label.empty() && !var.info.sublabel.empty())
-				{
-					displayLabel = var.info.label + " - " + var.info.sublabel;
-				}
-				else if (!var.info.label.empty())
-				{
-					displayLabel = var.info.label;
-				}
-				else
-				{
-					displayLabel = var.info.getText();
-				}
-
-				if (ImGui::Selectable(displayLabel.c_str(), isSelected))
-				{
-					m_selectedVariationIndex = static_cast<int>(i);
-				}
-
-				if (isSelected)
-				{
-					ImGui::Text("  ID: %d, Type: %d", var.info.variationId, var.info.variationType);
-					ImGui::Text("  In %zu patterns", var.patterns.size());
-				}
-			}
-			ImGui::EndChild();
-
-			if (m_selectedVariationIndex >= 0 && ImGui::Button("Add to Filter"))
-			{
-				const auto &selectedVar = m_availableVariations[m_selectedVariationIndex];
-				m_markedSpots[m_currentSpotId] = selectedVar.info.getKey();
-				SDL_Log("Added filter: spot %d -> %s", m_currentSpotId, selectedVar.info.getText().c_str());
-
-				// Reset all spot scales
-				for (auto entity : m_mapSpotEntities)
-				{
-					if (!m_registry.valid(entity))
-						continue;
-					auto *mapSpot = m_registry.try_get<MapSpot>(entity);
-					if (!mapSpot)
-						continue;
-					if (mapSpot->metadata == m_currentSpotId)
-					{
-						updateSpot(entity, selectedVar.info);
-					}
-					mapSpot->selected = false;
-				}
-
-				if (selectedVar.patterns.size() > 0)
-				{
-					std::vector<int> inPatterns{m_filteredPatterns.begin(), m_filteredPatterns.end()};
-					m_filteredPatterns = GameData::getInstance().filterByVariation(
-						m_filteredPatterns, m_currentSpotId, selectedVar.info.getKey());
-				}
-
-				// Clear selection for next spot
-				m_currentSpotId = -1;
-				m_availableVariations.clear();
-				m_selectedVariationIndex = -1;
-			}
-		}
-		else if (m_currentSpotId <= 0)
-		{
-			ImGui::Text("No variations available at this spot");
-		}
-
-		// Display marked spots
-		if (!m_markedSpots.empty())
-		{
-			ImGui::Separator();
-			ImGui::Text("Marked Filters:");
-			ImGui::BeginChild("MarkedSpots", ImVec2(0, 150), true);
-
-			std::vector<int> toRemove;
-			for (const auto &[spotId, varKey] : m_markedSpots)
-			{
-				auto varInfo = GameData::getInstance().getVariation(varKey);
-				ImGui::PushID(std::to_string(spotId).c_str());
-				ImGui::Text("%d -> %s", spotId, varInfo->sublabel.c_str());
-				ImGui::SameLine();
-				if (ImGui::SmallButton("Remove"))
-				{
-					toRemove.push_back(spotId);
-				}
-				ImGui::PopID();
-			}
-
-			// Remove spots marked for deletion
-			for (const auto &key : toRemove)
-			{
-				m_markedSpots.erase(key);
-
-				// Reset spot scale
-				for (auto entity : m_mapSpotEntities)
-				{
-					if (m_registry.valid(entity))
-					{
-						auto *mapSpot = m_registry.try_get<MapSpot>(entity);
-						if (mapSpot && mapSpot->metadata > 0 && mapSpot->metadata == key)
-						{
-							auto &transform = m_registry.get<Transform>(entity);
-							transform.scale = glm::vec3(0.1f, 0.1f, 1.0f);
-							break;
-						}
-					}
-				}
-			}
-
-			ImGui::EndChild();
-		}
-
+		
 		// Display filtered patterns
 		if (!m_filteredPatterns.empty())
 		{
@@ -896,6 +613,51 @@ void Scene::drawUI()
 		}
 	}
 
+	static SelectionData cachedSelectionData;
+	if (!m_selectionData.attachIds.empty())
+		cachedSelectionData = m_selectionData;
+	if (!cachedSelectionData.attachIds.empty())
+	{
+		ImGui::SeparatorText("Spot Viewer");
+		std::vector<int> toCopy;
+		ImGui::BeginChild("SelectedSpots", ImVec2(0, 150), true);
+
+		for (auto id : cachedSelectionData.attachIds)
+		{
+			auto spot = GameData::getRef().getSpot(id);
+			ImGui::PushID(std::to_string(id).c_str());
+			if (!spot)
+				ImGui::Text("AttachId: %d (No point info)", id);
+			else
+				ImGui::Text("AttachId: %d (%d,%d:%.2f,%.2f(%.2f))", id,
+					spot->point.getX(),
+					spot->point.getZ(),
+					spot->point.posX,
+					spot->point.posZ,
+					spot->point.height);
+			ImGui::SameLine();
+			if (ImGui::SmallButton("Copy"))
+			{
+				toCopy.push_back(id);
+			}
+			ImGui::PopID();
+		}
+
+		ImGui::EndChild();
+		if (ImGui::Button("Copy All"))
+			toCopy = cachedSelectionData.attachIds;
+
+		std::string content;
+		for (auto key : toCopy)
+		{
+			if (!content.empty()) {
+				content.append("\n");
+			}
+			content.append(std::to_string(key));
+		}
+		if (!content.empty())
+			SDL_SetClipboardText(content.c_str());
+	}
 	ImGui::End();
 	#endif
 	// Context menu (appears at mouse position)
@@ -936,55 +698,55 @@ void Scene::drawContextMenu()
 	// Use Popup instead of regular window (auto-closes on click outside)
 	if (ImGui::BeginPopup("ContextMenuPopup", ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
 	{
-		auto &gameData = GameData::getInstance();
+		auto &gameData = GameData::getRef();
 
 		// Display header
 		ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), CHS("选项"));
 		ImGui::Separator();
 
 		// === Starter Options Section ===
-		if (m_contextMenuData.hasStarters())
+		if (m_selectionData.hasStarters())
 		{
 			ImGui::TextColored(ImVec4(0.3f, 0.7f, 1.0f, 1.0f), CHS("初始点:"));
 			ImGui::Indent();
 
 			int validStarterCount = 0;
-			for (int starterId : m_contextMenuData.starterIds)
+			for (int starterId : m_selectionData.starterIds)
 			{
-				auto starterSpot = gameData.getStarterSpot(starterId);
-				if (!starterSpot)
-					continue;
+				auto starterSpot = gameData.getStarter(starterId);
+				if (!starterSpot) continue;
 
 				// Calculate how many patterns this would leave
-				auto resultPatterns = gameData.filterByStarter(m_filteredPatterns, starterId);
+				auto availPatterns = gameData.filterByStarter(m_filteredPatterns, starterId);
 
 				// Skip if no patterns match
-				if (resultPatterns.empty())
-					continue;
+				if (availPatterns.empty()) continue;
 
 				validStarterCount++;
 				std::string label = CHS("应用此初始点");
 #ifdef _DEBUG
 				label += std::to_string(starterId);
-				label += " (" + std::to_string(resultPatterns.size()) + " patterns)";
+				label += " (" + std::to_string(availPatterns.size()) + " patterns)";
 #endif
 
 				if (ImGui::MenuItem(label.c_str()))
 				{
 					// Apply starter filter
-					m_filteredPatterns = resultPatterns;
+					m_filteredPatterns = availPatterns;
 
 					// Mark all entities at this location as selected
-					for (auto entity : m_contextMenuData.entities)
+					for (auto entity : m_selectionData.entities)
 					{
-						if (!m_registry.valid(entity))
+						auto *o = findObject(entity);
+						if (!o) continue;
+						
+						if (!o->hasTag("starter spot")) continue;
+
+						auto *mapSpot = o->getComponent<MapSpot>();
+						if (!mapSpot || mapSpot->metadata != starterId)
 							continue;
-						auto *mapSpot = m_registry.try_get<MapSpot>(entity);
-						auto *tag = m_registry.try_get<Tag>(entity);
-						if (mapSpot && tag && tag->name == "starter spot" && mapSpot->metadata == starterId)
-						{
-							mapSpot->selected = true;
-						}
+						
+						o->destroy();
 					}
 
 					// Auto-load if only one pattern remains
@@ -996,7 +758,7 @@ void Scene::drawContextMenu()
 					showToast("已应用初始点");
 
 					// Close menu
-					m_contextMenuData.clear();
+					m_selectionData.clear();
 					ImGui::CloseCurrentPopup();
 				}
 			}
@@ -1010,18 +772,18 @@ void Scene::drawContextMenu()
 			ImGui::Unindent();
 
 			// Add separator if we also have filter options
-			if (m_contextMenuData.hasFilters())
+			if (m_selectionData.hasFilters())
 			{
 				ImGui::Spacing();
 			}
 		}
 
 		// === Filter/Variation Options Section ===
-		if (m_contextMenuData.hasFilters())
+		if (m_selectionData.hasFilters())
 		{
 			ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), CHS("交互点:"));
 
-			if (m_contextMenuData.variations.empty())
+			if (m_selectionData.variations.empty())
 			{
 				ImGui::Indent();
 				ImGui::TextDisabled(CHS("无可用交互点"));
@@ -1031,9 +793,9 @@ void Scene::drawContextMenu()
 			{
 				// Count valid variations (with patterns > 0)
 				std::vector<size_t> validIndices;
-				for (size_t i = 0; i < m_contextMenuData.variations.size(); ++i)
+				for (size_t i = 0; i < m_selectionData.variations.size(); ++i)
 				{
-					if (!m_contextMenuData.variations[i].patterns.empty())
+					if (!m_selectionData.variations[i].patterns.empty())
 						validIndices.push_back(i);
 				}
 
@@ -1078,7 +840,7 @@ void Scene::drawContextMenu()
 						int cellIndex = 0;
 						for (size_t idx : validIndices)
 						{
-							const auto &var = m_contextMenuData.variations[idx];
+							const auto &var = m_selectionData.variations[idx];
 
 							// Start new row every numColumns items
 							if (cellIndex % numColumns == 0)
@@ -1105,44 +867,31 @@ void Scene::drawContextMenu()
 #endif
 
 							// Use Selectable for full cell click area
-#ifdef __EMSCRIPTEN__
-							// Mobile: larger buttons
-							if (ImGui::Selectable(menuLabel.c_str(), false, ImGuiSelectableFlags_None, ImVec2(0, 50)))
-#else
-							// Desktop: normal size
-							if (ImGui::Selectable(menuLabel.c_str(), false))
-#endif
+							ImVec2 cellSize{ 0,50 };
+							if (ImGui::Selectable(menuLabel.c_str(), false, ImGuiSelectableFlags_None, cellSize))
 							{
-								// Find which filter spot this variation belongs to
-								int targetSpotId = m_contextMenuData.filterSpotIds[0];
-
-								// Add to filter
-								m_markedSpots[targetSpotId] = var.info.getKey();
-								SDL_Log("Added filter: spot %d -> %s", targetSpotId, var.info.getText().c_str());
-
-								// Update visual for all filter spots at this location
-								for (auto entity : m_contextMenuData.entities)
+								std::set<int> outPatterns;
+								for (auto entity : m_selectionData.entities)
 								{
-									if (!m_registry.valid(entity))
-										continue;
+									auto o = findObject(entity);
+									if (!o) continue;
 
-									auto *mapSpot = m_registry.try_get<MapSpot>(entity);
-									auto *tag = m_registry.try_get<Tag>(entity);
+									auto* mapSpot = o->getComponent<MapSpot>();
+									if (!mapSpot) continue;
 
-									if (!mapSpot || !tag)
-										continue;
+									if (!o->hasTag("filter spot")) continue;
+									auto attachId = mapSpot->metadata;
 
-									if (tag->name == "filter spot" && mapSpot->metadata == targetSpotId)
-									{
-										updateSpot(entity, var.info);
-									}
+									auto availPatterns = gameData.filterByVariation(m_filteredPatterns, attachId, var.info.getKey());
+									if (availPatterns.empty()) continue;
 
-									mapSpot->selected = false;
+									outPatterns.insert(availPatterns.begin(), availPatterns.end());
+									updateSpotText(*o, var.info.label);
+									updateSpotIcon(*o, var.info.icon, var.info.iconScale);
 								}
 
 								// Apply filter
-								m_filteredPatterns = gameData.filterByVariation(
-									m_filteredPatterns, targetSpotId, var.info.getKey());
+								m_filteredPatterns = outPatterns;
 
 								// Auto-load if only one pattern remains
 								if (m_filteredPatterns.size() == 1)
@@ -1151,8 +900,9 @@ void Scene::drawContextMenu()
 								}
 
 								// Close menu
-								m_contextMenuData.clear();
+								m_selectionData.clear();
 								ImGui::CloseCurrentPopup();
+								break;
 							}
 
 							cellIndex++;
@@ -1165,7 +915,7 @@ void Scene::drawContextMenu()
 		}
 
 		// Show message if empty
-		if (m_contextMenuData.isEmpty())
+		if (m_selectionData.isEmpty())
 		{
 			ImGui::TextDisabled(CHS("无可用选项"));
 		}
@@ -1174,18 +924,13 @@ void Scene::drawContextMenu()
 	}
 	else
 	{
-		m_contextMenuData.clear();
+		m_selectionData.clear();
 	}
 }
 
 Camera *Scene::getCamera()
 {
-	auto view = m_registry.view<Camera>();
-	for (auto entity : view)
-	{
-		return &m_registry.get<Camera>(entity); // Return first camera found
-	}
-	return nullptr;
+	return findComponent<Camera>();
 }
 
 const Camera *Scene::getCamera() const
@@ -1217,10 +962,6 @@ void Scene::loadMapTiles(int mapIndex, int layer)
 		return;
 	}
 
-	m_gridWidth = 6;
-	m_gridHeight = 6;
-	m_tileSize = 1.0f;
-
 	// Calculate centering offset
 	float gridTotalWidth = m_gridWidth * m_tileSize;
 	float gridTotalHeight = m_gridHeight * m_tileSize;
@@ -1233,51 +974,42 @@ void Scene::loadMapTiles(int mapIndex, int layer)
 		for (int x = 0; x < m_gridWidth; x++)
 		{
 			// Generate texture alias
-			std::stringstream nameStream;
-			nameStream << "tile_" << mapIndex << "_L" << layer << "_"
-					   << std::setw(2) << std::setfill('0') << x << "_"
-					   << std::setw(2) << std::setfill('0') << y;
-			std::string textureName = nameStream.str();
+			std::string textureName = MapTile::getAlias(mapIndex, x, y, layer, false);
+			if (resMgr->queryTexture(textureName)) {
+				// Load texture using alias
+				resMgr->loadTexture(textureName);
 
-			// Load texture using alias
-			resMgr->loadTexture(textureName);
+				// Create tile entity
+				auto& tileObject = retrieveObject(textureName);
+				tileObject.setTag("tile");
+				tileObject.addComponent<MeshComponent>("quad", "texture", textureName);
+				tileObject.addComponent<RenderOptions>(BlendType::Standard, 0.f);
+				tileObject.addComponent<MapTile>(mapIndex, x, y, layer, false);
 
-			// Create tile entity
-			auto entity = m_registry.create();
-			m_registry.emplace<Tag>(entity, "tile");
-			m_registry.emplace<MeshComponent>(entity, "quad", "texture", textureName);
+				auto& transform = tileObject.addComponent<Transform>();
+				transform.position = glm::vec3(offsetX + x * m_tileSize, offsetY + y * m_tileSize, 0.0f);
+				transform.scale = glm::vec3(m_tileSize, m_tileSize, 1.0f);
+			}
 
-			auto &transform = m_registry.emplace<Transform>(entity);
-			transform.position = glm::vec3(offsetX + x * m_tileSize, offsetY + y * m_tileSize, 0.0f);
-			transform.scale = glm::vec3(m_tileSize, m_tileSize, 1.0f);
-
-			// Store entity for later cleanup
-			m_mapTileEntities.push_back(entity);
-
-			// Load B1 overlay if enabled
 			// Generate B1 texture alias
-			std::stringstream b1NameStream;
-			b1NameStream << "tile_" << mapIndex << "_L" << layer << "_"
-						 << std::setw(2) << std::setfill('0') << x << "_"
-						 << std::setw(2) << std::setfill('0') << y << "_B1";
-			std::string b1TextureName = b1NameStream.str();
+			std::string b1TextureName = MapTile::getAlias(mapIndex, x, y, layer, true);
+			if (resMgr->queryTexture(b1TextureName)) {
+				// Try to load B1 texture using alias (may not exist for all tiles)
+				Texture *b1Texture = resMgr->loadTexture(b1TextureName);
 
-			// Try to load B1 texture using alias (may not exist for all tiles)
-			Texture *b1Texture = resMgr->loadTexture(b1TextureName);
-			if (b1Texture && b1Texture->isValid())
-			{
 				// Create overlay entity
-				auto overlayEntity = m_registry.create();
-				m_registry.emplace<Tag>(overlayEntity, "tile @b1");
-				m_registry.emplace<MeshComponent>(overlayEntity, "quad", "texture", b1TextureName, false);
-				m_registry.emplace<RenderOptions>(overlayEntity).order = 1;
+				auto& overlayObject = retrieveObject(b1TextureName);
+				overlayObject.setEnabled(m_enableB1Overlay);
+				overlayObject.setTag("tile @b1");
+				overlayObject.addComponent<MeshComponent>("quad", "texture", b1TextureName, true);
+				overlayObject.addComponent<RenderOptions>(BlendType::Standard, 1.f);
+				overlayObject.addComponent<MapTile>(mapIndex, x, y, layer, true);
 
-				auto &overlayTransform = m_registry.emplace<Transform>(overlayEntity);
+				auto& overlayTransform = overlayObject.addComponent<Transform>();
 				overlayTransform.position = glm::vec3(offsetX + x * m_tileSize, offsetY + y * m_tileSize, 0.01f); // Slightly above base tile
 				overlayTransform.scale = glm::vec3(m_tileSize, m_tileSize, 1.0f);
 
-				// Store overlay entity for cleanup
-				m_mapTileEntities.push_back(overlayEntity);
+                m_overlayGrids.push_back(glm::ivec2(x, y));
 			}
 		}
 	}
@@ -1296,31 +1028,25 @@ void Scene::onFilterPatterns(int patternId)
 
 void Scene::resetMapFilters()
 {
-	m_markedSpots.clear();
 	m_filteredPatterns.clear();
-	m_currentSpotId = -1;
-	m_availableVariations.clear();
-	m_selectedVariationIndex = -1;
 }
 
 void Scene::filterMap(int map)
 {
-	m_filterMapSelection = map;
 	m_filterMode = true;
-	m_markedSpots.clear();
-	loadSpotsByMap(m_filterMapSelection);
-	auto& gameData = GameData::getInstance();
-	m_filteredPatterns = gameData.filterByMap(m_filterMapSelection);
+	loadSpotsByMap(map);
+	auto& gameData = GameData::getRef();
+	m_filteredPatterns = gameData.filterByMap(map);
 
 	auto mapNames = gameData.getMapNames();
-	if (map >= 0 && map < mapNames.size()) {
+	if (map >= 0 && static_cast<size_t>(map) < mapNames.size()) {
 		showToast(std::string("已切换至: ") + mapNames[map]);
 	}
 }
 
 void Scene::filterNightlord(int nightlord)
 {
-	auto& gameData = GameData::getInstance();
+	auto& gameData = GameData::getRef();
 	auto testPatterns = gameData.filterByNightlord(m_filteredPatterns, nightlord);
 	if (!testPatterns.empty())
 	{
@@ -1335,15 +1061,25 @@ void Scene::filterNightlord(int nightlord)
 
 void Scene::clearMapTiles()
 {
-	// Destroy all tile entities
-	for (auto entity : m_mapTileEntities)
-	{
-		if (m_registry.valid(entity))
-		{
-			m_registry.destroy(entity);
-		}
+	auto gameObjects = findObjectsByComponent<MapTile>();
+	for (auto o : gameObjects) {
+		o->destroy();
 	}
-	m_mapTileEntities.clear();
+}
+
+bool Scene::isOverlayPoint(const MapPoint& point) const
+{
+	auto it = std::find_if(m_overlayGrids.begin(), m_overlayGrids.end(),
+		[&point](const glm::ivec2& grid) {
+			return grid.x == point.getX() && grid.y == point.getZ();
+        });
+    // no fall in overlay grids
+	if (it == m_overlayGrids.end())
+        return false;
+    auto option = GameData::getRef().getGridOption(m_currentMapIndex, point.getX(), point.getZ());
+	if (!option)
+		return false;
+    return point.height < option->height;
 }
 
 VariationInfo Scene::getFilterSpot() const
@@ -1379,25 +1115,21 @@ VariationInfo Scene::getPlayArea(int day) const
 
 void Scene::updateB1Overlay()
 {
-	std::vector<entt::entity> entities = m_mapTileEntities;
-	entities.insert(entities.end(), m_mapSpotEntities.begin(), m_mapSpotEntities.end());
-	for (auto entity : entities)
+	auto gameObjects = findObjectsByComponent<MapSpot>();
 	{
-		if (!m_registry.valid(entity))
-			continue;
-		auto tagComp = m_registry.try_get<Tag>(entity);
-		if (!tagComp)
-			continue;
-		if (tagComp->name.find("@b1") == std::string::npos)
-			continue;
-		auto *meshComp = m_registry.try_get<MeshComponent>(entity);
-		if (!meshComp)
-			continue;
-		meshComp->visible = m_enableB1Overlay;
+		auto tiles = findObjectsByComponent<MapTile>();
+		gameObjects.insert(gameObjects.end(), tiles.begin(), tiles.end());
+	}
+	
+	for (auto o : gameObjects)
+	{
+		if (!o) continue;
+		if (!o->hasTag("@b1")) continue;
+		o->setEnabled(m_enableB1Overlay);
 	}
 }
 
-entt::entity Scene::addSpot(const glm::vec2 &gridPos)
+Entity& Scene::addSpot(const std::string& name, const MapPoint &gridPos)
 {
 	float gridTotalWidth = m_gridWidth * m_tileSize;
 	float gridTotalHeight = m_gridHeight * m_tileSize;
@@ -1405,151 +1137,172 @@ entt::entity Scene::addSpot(const glm::vec2 &gridPos)
 	float offsetY = -gridTotalHeight / 2.0f + m_tileSize / 2.0f;
 
 	// Convert grid position to world position
-	float worldX = offsetX + gridPos.x * m_tileSize;
-	float worldY = offsetY + gridPos.y * m_tileSize;
+	auto normalizedPos = gridPos.normalize(m_textureTileSize);
+	float worldX = offsetX + normalizedPos.x * m_tileSize;
+	float worldY = offsetY + normalizedPos.y * m_tileSize;
 
 	// Create spot entity
-	auto entity = m_registry.create();
-	auto &mapSpot = m_registry.emplace<MapSpot>(entity);
-	m_registry.emplace<MeshComponent>(entity);
-	m_registry.emplace<RenderOptions>(entity, BlendType::Standard, 2.f);
-	auto &transform = m_registry.emplace<Transform>(entity);
+	auto& gameObject = addObject(name);
+	gameObject.addComponent<MapSpot>().point = gridPos;
+
+	auto& meshComp = gameObject.addComponent<MeshComponent>();
+	meshComp.meshName = "quad";
+	meshComp.shaderName = "texture";
+
+	gameObject.addComponent<TextComponent>();
+
+	gameObject.addComponent<RenderOptions>(BlendType::Standard, 2.f);
+
+	auto &transform = gameObject.addComponent<Transform>();
 	transform.position = glm::vec3(worldX, worldY, 0.1f); // Slightly above tiles
 
-	// Store entity for later cleanup
-	m_mapSpotEntities.push_back(entity);
-
-	return entity;
+	return gameObject;
 }
 
-entt::entity Scene::addBaseSpot(const glm::vec2 &gridPos, int attachId, const VariationInfo &info)
+Entity& Scene::addBaseSpot(const MapPoint &gridPos, int attachId, const VariationInfo &info)
 {
-	auto entity = addSpot(gridPos);
-	auto &mapSpot = m_registry.get<MapSpot>(entity);
-	mapSpot.metadata = attachId;
-	bool noIcon = false;
+	std::string name = "base:";
+	name += std::to_string(info.getKey()) + "-" + std::to_string(attachId);
+	auto& gameObject = addSpot(name, gridPos);
+	auto* mapSpot = gameObject.getComponent<MapSpot>();
+	mapSpot->metadata = attachId;
 	std::string tag = "base spot";
-	if (auto option = GameData::getInstance().getAttachOption(attachId))
+	
+	auto* meshComp = gameObject.getComponent<MeshComponent>();
+
+	auto* textComp = gameObject.getComponent<TextComponent>();
+	textComp->visible = info.visible;
+	meshComp->visible = info.visible;
+
+	if (auto option = GameData::getRef().getAttachOption(attachId))
 	{
-		mapSpot.alignment = option->alignment;
-		mapSpot.offset = option->offset;
-		if (option->b1Overlay)
-			tag += " @b1";
-		noIcon = !option->showIcon;
+		// TODO: use height
+		textComp->offset = option->offset;
+		textComp->direction = option->direction;
+
+		meshComp->visible = option->showIcon && info.visible;
 	}
-	m_registry.emplace<Tag>(entity, tag);
-	updateSpot(entity, info, noIcon);
-	return entity;
+	if (isOverlayPoint(gridPos))
+	{
+        tag += " @b1";
+    }
+
+	gameObject.setTag(tag);
+#ifdef _DEBUG
+	gameObject.addComponent<Interactable>();
+#endif
+	updateSpotIcon(gameObject, info.icon, info.iconScale);
+	updateSpotText(gameObject, info.getText());
+	return gameObject;
 }
 
-entt::entity Scene::addFilterSpot(const glm::vec2 &gridPos, int spotId, const VariationInfo &info)
+Entity& Scene::addFilterSpot(const MapPoint &gridPos, int spotId, const VariationInfo &info)
 {
-	auto entity = addSpot(gridPos);
-	auto &mapSpot = m_registry.get<MapSpot>(entity);
-	mapSpot.metadata = spotId;
-	auto &option = m_registry.get<RenderOptions>(entity);
-	option.order = 3.f;
-	m_registry.emplace<Tag>(entity, "filter spot");
-	updateSpot(entity, info);
-	return entity;
+	std::string name = "filter:";
+	name += std::to_string(info.getKey()) + "-" + std::to_string(spotId);
+	auto& gameObject = addSpot(name, gridPos);
+	auto* mapSpot = gameObject.getComponent<MapSpot>();
+
+	mapSpot->metadata = spotId;
+	gameObject.getComponent<RenderOptions>()->order = 3.f;
+	gameObject.setTag("filter spot");
+	gameObject.addComponent<Interactable>();
+	updateSpotIcon(gameObject, info.icon, info.iconScale);
+	updateSpotText(gameObject, info.getText());
+	return gameObject;
 }
 
-entt::entity Scene::addStarterSpot(const glm::vec2 &gridPos, int starterId, const VariationInfo &info)
+Entity& Scene::addStarterSpot(const MapPoint &gridPos, int starterId, const VariationInfo &info)
 {
-	auto entity = addSpot(gridPos);
-	auto &mapSpot = m_registry.get<MapSpot>(entity);
-	mapSpot.metadata = starterId;
-	auto &option = m_registry.get<RenderOptions>(entity);
-	option.order = 4.f;
-	m_registry.emplace<Tag>(entity, "starter spot");
-	updateSpot(entity, info);
-	return entity;
+	std::string name = "starter:";
+	name += std::to_string(info.getKey()) + "-" + std::to_string(starterId);
+	auto& gameObject = addSpot(name, gridPos);
+	auto* mapSpot = gameObject.getComponent<MapSpot>();
+
+	mapSpot->metadata = starterId;
+	gameObject.getComponent<RenderOptions>()->order = 4.f;;
+	gameObject.setTag("starter spot");
+	gameObject.addComponent<Interactable>();
+	updateSpotIcon(gameObject, info.icon, info.iconScale);
+	updateSpotText(gameObject, info.getText());
+	return gameObject;
 }
 
-void Scene::updateSpot(entt::entity entity, const VariationInfo &info, bool noIcon)
+void Scene::updateSpotIcon(Entity& gameObject, const std::string& iconName, float iconScale)
 {
 	ResourceManager *resMgr = ResourceManager::getInstance();
 	Texture *texture = nullptr;
-	if (!info.icon.empty() && resMgr)
+	// Use alias format: "spot_" + icon name
+	std::string alias = "spot_" + iconName;
+	if (resMgr->queryTexture(alias))
 	{
-		// Use alias format: "spot_" + icon name
-		std::string textureAlias = "spot_" + info.icon;
-		if (noIcon)
-			textureAlias.clear();
-		else
-			texture = resMgr->loadTexture(textureAlias);
-		if (auto *meshComp = m_registry.try_get<MeshComponent>(entity))
-		{
-			meshComp->textureName = textureAlias;
-			meshComp->meshName = "quad";
-			meshComp->shaderName = "texture";
-		}
-	}
-
-	auto &transform = m_registry.get<Transform>(entity);
-	if (texture && texture->isValid())
-	{
-		float scale = MapSpot::iconSize * info.iconScale;
-		float aspectRatio = static_cast<float>(texture->getWidth()) / static_cast<float>(texture->getHeight());
-		if (aspectRatio < 1.0f && aspectRatio > 0.0f)
-			transform.scale = glm::vec3(scale, scale / aspectRatio, 1.0f);
-		else
-			transform.scale = glm::vec3(scale * aspectRatio, scale, 1.0f);
+		texture = resMgr->loadTexture(alias);
+		auto* meshComp = gameObject.getComponent<MeshComponent>();
+		meshComp->textureName = alias;
 	}
 	else
 	{
-		transform.scale = glm::vec3(0, 0, 1.0f);
+		SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Scene: '%s' using invalid texture '%s'",
+			gameObject.getName().c_str(), alias.c_str());
 	}
 
-	if (auto *mapSpot = m_registry.try_get<MapSpot>(entity))
+	auto* transform = gameObject.getComponent<Transform>();
+	if (texture && texture->isValid())
 	{
-		mapSpot->label = info.getText();
-		mapSpot->label += std::to_string(mapSpot->metadata);
-		mapSpot->visible = info.visible;
+		float scale = MapSpot::iconSize * iconScale;
+		float aspectRatio = static_cast<float>(texture->getWidth()) / static_cast<float>(texture->getHeight());
+		if (aspectRatio < 1.0f && aspectRatio > 0.0f)
+			transform->scale = glm::vec3(scale, scale / aspectRatio, 1.0f);
+		else
+			transform->scale = glm::vec3(scale * aspectRatio, scale, 1.0f);
 	}
+	else
+	{
+		transform->scale = glm::vec3(0, 0, 1.0f);
+	}
+}
+
+void Scene::updateSpotText(Entity& gameObject, const std::string& text)
+{
+	auto* textComp = gameObject.getComponent<TextComponent>();
+	textComp->text = text;
 }
 
 void Scene::clearSpots()
 {
-	// Destroy all spot entities
-	for (auto entity : m_mapSpotEntities)
-	{
-		if (m_registry.valid(entity))
-		{
-			m_registry.destroy(entity);
-		}
+	auto gameObjects = findObjectsByComponent<MapSpot>();
+	for (auto o : gameObjects) {
+		o->destroy();
 	}
-	m_selectedSpotEntity = entt::null;
-	m_mapSpotEntities.clear();
 }
 
 void Scene::loadSpotsByPattern(int patternId)
 {
+	if (patternId < 0) return;
 	// Clear existing spots
 	clearSpots();
-	auto &gameData = GameData::getInstance();
+	auto &gameData = GameData::getRef();
 	auto *patternInfo = gameData.getPattern(patternId);
-	auto distList = gameData.getDists(patternId);
+	auto distList = gameData.listDistribution(patternId);
 
 	for (const auto dist : distList)
 	{
-		auto spot = gameData.getAttach(dist->attachId);
+		auto spot = gameData.getSpot(dist->attachId);
+		auto option = gameData.getSpotOption(dist->attachId);
 		auto varInfo = gameData.getVariation(dist->patternId, dist->attachId);
-		if (!spot || !varInfo)
+		if (!spot || !varInfo || (option && option->disable_view) || !varInfo->visible)
 			continue;
-		auto pos = spot->normalize();
 
-		addBaseSpot(pos, dist->attachId, *varInfo);
+		addBaseSpot(spot->point, dist->attachId, *varInfo);
 	}
 	if (patternInfo)
 	{
 		auto day1Spot = getPlayArea(1);
-		addBaseSpot(patternInfo->playArea1.normalize(), 1, day1Spot);
+		addBaseSpot(patternInfo->playArea1, 1, day1Spot);
 		auto day2Spot = getPlayArea(2);
-		addBaseSpot(patternInfo->playArea2.normalize(), 2, day2Spot);
+		addBaseSpot(patternInfo->playArea2, 2, day2Spot);
 	}
 	
-
 	loadMapTiles(gameData.getPattern(patternId)->map, 0);
 
 	m_currentPatternId = patternId;
@@ -1574,30 +1327,30 @@ void Scene::loadSpotsByPattern(int patternId)
 
 void Scene::loadSpotsByMap(int map)
 {
+	if (map < 0) return;
 	// Clear existing spots
 	clearSpots();
-	auto &gameData = GameData::getInstance();
-	auto staticSpots = gameData.getStaticSpotsByMap(map);
+	auto &gameData = GameData::getRef();
+	auto staticSpots = gameData.getSpotsByMap(map);
 	for (auto spotId : staticSpots)
 	{
 		auto spot = gameData.getSpot(spotId);
-		bool enabled = gameData.isSpotEnabled(spotId);
-		if (!spot || !enabled)
+		auto* option = gameData.getSpotOption(spotId);
+		if (!spot || (option && option->disable_filter))
 			continue;
-		auto pos = spot->normalize();
 		auto tmp = getFilterSpot();
-		addFilterSpot(pos, spotId, tmp);
+		addFilterSpot(spot->point, spotId, tmp);
 	}
 
-	auto starterSpots = gameData.getStarterSpotsByMap(map);
+	auto starterSpots = gameData.getStarterByMap(map);
 	for (auto starterId : starterSpots)
 	{
-		auto starter = gameData.getStarterSpot(starterId);
+		auto starter = gameData.getStarter(starterId);
 		if (!starter)
 			continue;
-		auto pos = starter->normalize();
+
 		auto tmp = getFilterStarter();
-		addStarterSpot(pos, starterId, tmp);
+		addStarterSpot(starter->point, starterId, tmp);
 	}
 
 	loadMapTiles(map, 0);
@@ -1611,4 +1364,96 @@ void Scene::loadSpotsByMap(int map)
 	htmlContent += "<p style=\"text-indent: 2em;\">点击下方夜王按钮指定夜王</p>";
 	htmlContent += "<p style=\"text-indent: 2em;\">建议优先选择初始点</p>";
 	setInfoPanelContent(htmlContent);
+}
+
+EntityManager::EntityManager() : m_registry(new entt::registry) {
+}
+
+EntityManager::~EntityManager() {
+	clearObjects();
+	m_registry->clear();
+}
+
+Entity& EntityManager::addObject(const std::string& name)
+{
+	std::string newName = name;
+	auto it = m_name2Entities.find(name);
+	int tryTimes = 0;
+	while (it != m_name2Entities.end())
+	{
+		newName = name + " clone " + std::to_string(tryTimes + 1);
+		it = m_name2Entities.find(newName);
+		tryTimes++;
+	}
+	auto newObject = m_entities.emplace_back(new Entity(m_registry, newName));
+	m_name2Entities[newObject->getName()] = newObject;
+	m_entt2Entities[newObject->getEntity()] = newObject;
+	return *newObject;
+}
+
+Entity& EntityManager::retrieveObject(const std::string& name)
+{
+	auto it = m_name2Entities.find(name);
+	if (it == m_name2Entities.end()) {
+		return addObject(name);
+	}
+	else
+	{
+		it->second->reuse();
+		return *it->second;
+	}
+}
+
+bool EntityManager::removeObject(Entity*& object) {
+	if (object && object->deleted()) {
+		m_name2Entities.erase(object->getName());
+		m_entt2Entities.erase(object->getEntity());
+		delete object;
+		object = nullptr;
+		return true;
+	}
+	return false;
+}
+
+// cleanup
+void EntityManager::clearObjects() {
+	std::for_each(m_entities.begin(), m_entities.end(), [this](Entity* o) { o->destroy(); });
+	updateObjects();
+}
+
+// update
+void EntityManager::updateObjects() {
+	auto newEnd = std::partition(m_entities.begin(), m_entities.end(),
+		[this](Entity*& o) { return !removeObject(o); });
+
+	m_entities.erase(newEnd, m_entities.end());
+}
+
+Entity* EntityManager::findObject(const std::string& name) {
+	auto it = m_name2Entities.find(name);
+	if (it != m_name2Entities.end())
+		return it->second;
+	return nullptr;
+}
+
+Entity* EntityManager::findObject(entt::entity entity) {
+	auto it = m_entt2Entities.find(entity);
+	if (it != m_entt2Entities.end())
+		return it->second;
+	return nullptr;
+}
+
+Entity::Entity(std::shared_ptr<entt::registry> registry, const std::string& name)
+	: m_name(name) {
+	if (registry) {
+		m_entity = registry->create();
+		m_registry = registry;
+	}
+}
+
+Entity::~Entity() {
+	if (valid()) {
+		m_registry->destroy(m_entity);
+		m_entity = entt::null;
+	}
 }

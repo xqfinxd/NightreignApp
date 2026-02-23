@@ -23,9 +23,6 @@ public:
     AsyncResourceLoader(ResourceManager* resourceMgr);
     ~AsyncResourceLoader();
     
-    // 异步加载纹理，如果已缓存则直接返回
-    void loadTextureAsync(const std::string& name, const std::string& path, LoadCallback callback = nullptr);
-    
     // 异步加载纹理数据并更新已存在的占位纹理
     // @param alias 纹理别名，用于查找元数据和更新
     // @param registry 纹理注册表
@@ -61,8 +58,6 @@ private:
     int m_pending_count = 0;
     
 #ifdef __EMSCRIPTEN__
-    static void onFileDownloadSuccess(emscripten_fetch_t* fetch);
-    static void onFileDownloadError(emscripten_fetch_t* fetch);
     static void onTextureDataDownloadSuccess(emscripten_fetch_t* fetch);
     static void onTextureDataDownloadError(emscripten_fetch_t* fetch);
 #endif

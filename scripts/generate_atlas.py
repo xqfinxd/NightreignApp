@@ -7,6 +7,7 @@
 import os
 import sys
 import re
+import csvutil
 from pathlib import Path
 
 try:
@@ -48,15 +49,12 @@ def generate_alias(rel_path):
         return name_without_ext
 
 
-def scan_textures(base_path):
+def scan_textures(textures_path):
     """扫描textures目录下所有PNG文件"""
     textures = []
-    
-    # 获取当前脚本所在目录
-    script_dir = Path(__file__).parent
-    
+        
     # 遍历所有PNG文件
-    for png_file in script_dir.rglob("*.png"):
+    for png_file in textures_path.rglob("*.png"):
         try:
             # 打开图片获取尺寸
             with Image.open(png_file) as img:
@@ -64,7 +62,7 @@ def scan_textures(base_path):
                 mode = img.mode  # RGB, RGBA, L, etc.
             
             # 生成相对路径（相对于assets/textures/）
-            rel_path = png_file.relative_to(script_dir)
+            rel_path = png_file.relative_to(textures_path)
             
             # 转换为POSIX路径（使用正斜杠）
             path_str = "nightreign/assets/textures/" + rel_path.as_posix()
@@ -109,18 +107,28 @@ def write_atlas_csv(textures, output_file):
 
 
 def main():
-    script_dir = Path(__file__).parent
-    output_file = script_dir / "atlas.csv"
+    base_dir = Path(__file__).resolve().parent.parent
+    textures_dir = base_dir / "nightreign" / "assets" / "textures"
     
-    print(f"扫描目录: {script_dir}")
-    textures = scan_textures(script_dir)
+    csv_file = base_dir / "nightreign" / "atlas.csv"
+    cpp_header_file = base_dir / "src" / "generated" / "AtlasRow.h"
+    
+    print(f"扫描目录: {textures_dir}")
+    textures = scan_textures(textures_dir)
+    header = {
+        'alias': 'std::string',
+        'path': 'std::string',
+        'width': 'int',
+        'height': 'int',
+        'format': 'std::string'
+    }
     
     if not textures:
         print("警告: 未找到任何PNG文件")
         return 1
     
-    write_atlas_csv(textures, output_file)
-    
+    csvutil.generate_csv(header, textures, csv_file)
+    csvutil.generate_cpp_header(header, cpp_header_file, "AtlasRow")
     # 统计信息
     total_size = sum(t['width'] * t['height'] * 4 for t in textures)  # 假设RGBA
     print(f"  预估内存占用: {total_size / (1024*1024):.2f} MB")

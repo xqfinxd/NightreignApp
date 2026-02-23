@@ -7,6 +7,7 @@ class Device;
 class ResourceManager;
 struct MeshComponent;
 class Camera;
+class Entity;
 
 class Renderer
 {
@@ -26,11 +27,11 @@ public:
 	void drawScene(class Scene* scene);
 	
 	// Rendering methods (moved from RenderSystem)
-	void renderEntities(entt::registry& registry);
-	void renderSpotLabels(entt::registry& registry, const Camera& camera, glm::vec4 bgColor, glm::vec4 fgColor);
+	void renderEntities(const Camera& camera, const std::vector<Entity*>& gameObjects);
+	void renderText(const Camera& camera, const std::vector<Entity*>& gameObjects, glm::vec4 bgColor, glm::vec4 fgColor);
 
 private:
-	void renderEntity(entt::registry& registry, const Camera& camera, entt::entity entity);
+	void renderEntity(const Camera& camera, Entity& gameObject);
 	void setupVertexAttributes();
 	void applyBlendFunc(BlendType type);
 

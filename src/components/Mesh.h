@@ -1,6 +1,7 @@
 #pragma once
 #include "public.h"
 #include <string>
+#include <glm/glm.hpp>
 
 // Component for rendering mesh data
 // Components only store resource names, not pointers
@@ -21,6 +22,14 @@ struct MeshComponent
     MeshComponent(const std::string& mesh, const std::string& shader, const std::string& texture, bool visible)
         : meshName(mesh), shaderName(shader), textureName(texture), visible(visible)
     {}
+};
+
+struct TextComponent
+{
+    std::string text;
+    int direction = 0;
+    glm::vec2 offset{ 0,0 };
+    bool visible = true;
 };
 
 struct Vertex

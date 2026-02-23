@@ -54,8 +54,8 @@
             Module.addRunDependency('idbfs-mount');
 
             try {
-                FS.mkdir('/nightreign');
-                FS.mount(IDBFS, {}, '/nightreign');
+                FS.mkdir('nightreign');
+                FS.mount(IDBFS, {}, 'nightreign');
 
                 // 从 IndexedDB 同步到内存
                 FS.syncfs(true, (err) => {

@@ -57,7 +57,7 @@ void glDevice::initialize() {
 		                        std::istreambuf_iterator<char>());
 		chsFile.close();
 	} else {
-		SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "ImGui: Failed to open nightreign/assets/datas/chs.txt, using default Chinese font");
+		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "ImGui: Failed to open nightreign/assets/datas/chs.txt");
 	}
 	chsContent.push_back('\0');
 	ImFontGlyphRangesBuilder myGlyph;
@@ -69,9 +69,7 @@ void glDevice::initialize() {
 	io.Fonts->Build();
 	
 	ImGui_ImplSDL2_InitForOpenGL(handle, m_context);
-	ImGui_ImplOpenGL3_Init();
-	
-	SDL_Log("ImGui initialized with Chinese font support");
+	ImGui_ImplOpenGL3_Init();	
 }
 
 void glDevice::cleanup() {
@@ -206,7 +204,7 @@ Shader* glDevice::createShader(const std::string& vertPath, const std::string& f
 
 	Shader* shader = new Shader(program, vertPath, fragPath);
 	m_shaders.push_back(shader);
-	SDL_Log("Device: Created shader (%s, %s, Program ID: %u)",
+	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Device: Created shader (%s, %s, Program ID: %u)",
 		vertPath.c_str(), fragPath.c_str(), program);
 
 	return shader;
@@ -264,7 +262,7 @@ Texture* glDevice::createTexture(const std::string& path) {
 
 	Texture* texture = new Texture(textureId, width, height, texFormat);
 	m_textures.push_back(texture);
-	SDL_Log("Device: Created texture %s (%dx%d, %d channels, ID: %u)",
+	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Device: Created texture %s (%dx%d, %d channels, ID: %u)",
 		path.c_str(), width, height, channels, textureId);
 
 	return texture;
@@ -296,7 +294,7 @@ Buffer* glDevice::createBuffer(BufferType type, BufferUsage usage, size_t size, 
 
 	Buffer* buffer = new Buffer(bufferId, type, usage, size);
 	m_buffers.push_back(buffer);
-	SDL_Log("Device: Created buffer (ID: %u, Type: %d, Usage: %d, Size: %zu bytes)",
+	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Device: Created buffer (ID: %u, Type: %d, Usage: %d, Size: %zu bytes)",
 		bufferId, static_cast<int>(type), static_cast<int>(usage), size);
 
 	return buffer;
@@ -315,7 +313,7 @@ void glDevice::updateBuffer(Buffer* buffer, size_t offset, size_t size, const vo
 	glBufferSubData(target, offset, size, data);
 	glBindBuffer(target, 0);
 
-	SDL_Log("Device: Updated buffer (ID: %u, Offset: %zu, Size: %zu bytes)",
+	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Device: Updated buffer (ID: %u, Offset: %zu, Size: %zu bytes)",
 		buffer->getID(), offset, size);
 }
 
@@ -335,7 +333,7 @@ void glDevice::deleteBuffer(Buffer* buffer) {
 void glDevice::createVertexArray(uint32_t* vao, uint32_t* vbo) {
 	glGenVertexArrays(1, vao);
 	glGenBuffers(1, vbo);
-	SDL_Log("Device: Created VAO: %u, VBO: %u", *vao, *vbo);
+	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Device: Created VAO: %u, VBO: %u", *vao, *vbo);
 }
 
 void glDevice::deleteVertexArray(uint32_t vao, uint32_t vbo)

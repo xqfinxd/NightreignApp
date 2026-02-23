@@ -6,16 +6,10 @@
 #include <set>
 #include <glm/glm.hpp>
 
-struct MapPoint
-{
-	int gridXNo = 0, gridZNo = 0;
-	float posX = 0.0f, posZ = 0.0f;
-
-    glm::vec2 normalize(int tileSize = 256) const {
-        float gridX = posX / tileSize + gridXNo - 41;
-        float gridZ = posZ / tileSize + gridZNo - 35;
-        return glm::vec2(gridX, gridZ);
-	}
+// Nightlord information
+struct NightlordInfo {
+    int id;
+    std::string name;
 };
 
 // Map information
@@ -23,9 +17,11 @@ struct MapInfo {
     int id = -1;
     std::string name;
 
-    std::vector<int> patterns;
-    std::vector<int> staticSpots;
-    std::vector<int> starterSpots;
+    std::vector<int> legacyPatterns;
+    std::vector<int> dlcPatterns;
+    std::vector<int> legacyFilterPoints;
+    std::vector<int> dlcFilterPoints;
+    std::vector<int> starters;
 };
 
 // Pattern information
@@ -45,46 +41,48 @@ struct PatternInfo {
     int starter = -1;
 };
 
-// Spot
-struct BaseSpot {
-    int id;
+// Spot information
+struct SpotInfo {
+    int attachId;
 	MapPoint point;
     glm::vec2 normalize() const {
         return point.normalize();
 	}
 };
 
-struct FilterSpot : public BaseSpot {
-    std::vector<int> attachIds;
-	int variationKey = -1;
-	int attachIndex = -1;
-	int attachId() const {
-        if (attachIndex >= 0 && attachIndex < static_cast<int>(attachIds.size())) {
-            return attachIds[attachIndex];
-        }
-        return -1;
-	}
+// Starter information
+struct StarterInfo {
+    int starterId;
+    MapPoint point;
+    glm::vec2 normalize() const {
+        return point.normalize();
+    }
 };
 
-struct FilterSpotOption {
-    int spotId = -1;
-    bool enabled = true;
-};
-
-struct AttachPointOption {
+struct SpotOption {
     int attachId = -1;
-    int alignment = 0;
+    bool disable_filter = false;
+    bool disable_view = false;
+};
+
+struct SpotLabelOption {
+    int attachId = -1;
+    int direction = 0;
     glm::vec2 offset{0.0f, 0.0f};
-    bool b1Overlay = false;
     bool showIcon = false;
 };
 
-struct StarterSpot : public BaseSpot {};
+struct GridOption {
+    int x = 0;
+    int y = 0;
+    float height = 0.0f;
+    int map = -1;
+};
 
 // Variation info
 struct VariationInfo {
-    int variationId;     // smallBaseMapId
-    int variationType;   // variationType
+    int variationId = 0;       // smallBaseMapId
+    int variationType = 0;      // variationType
     int getKey() const { return variationId * 10 + variationType; }
 
     std::string label;
@@ -102,82 +100,81 @@ struct VariationInfo {
 };
 
 struct VariationDist {
-    int variationKey;
-    int attachId;
-    int patternId;
-};
-
-enum class SpotType
-{
-    eNone,
-    eBase,
-    eFilter,
-    eStarter,
+    int variationKey = -1;
+    int attachId = -1;
+    int patternId = -1;
 };
 
 // Game data manager - loads and manages all CSV data
 class GameData {
 public:
-    static GameData& getInstance();
+    GameData();
+    ~GameData();
+    // Singleton access (optional)
+    static GameData* getInstance(){ return s_instance; }
+    static GameData& getRef() { return *getInstance(); }
     
     bool loadFromCSV(const std::string& dataPath);
     
     // Map data for IMGUI
     std::vector<const char*> getMapNames() const;
-    int getMapCount() const;
 
     // queries
     const PatternInfo* getPattern(int patternId) const;
-    const FilterSpot* getSpot(int spotId) const;
-    const BaseSpot* getAttach(int attachId) const;
-    const std::vector<int>& getStaticSpotsByMap(int map) const;
-    const std::vector<int>& getStarterSpotsByMap(int map) const;
+    const SpotInfo* getSpot(int spotId) const;
+    const StarterInfo* getStarter(int starterId) const;
     const VariationInfo* getVariation(int varKey) const;
     const VariationInfo* getVariation(int patternId, int attachId) const;
-    std::vector<const VariationDist*> getDists(int patternId) const;
-    const StarterSpot* getStarterSpot(int starterId) const;
-    const AttachPointOption* getAttachOption(int attachId) const;
+    const SpotOption* getSpotOption(int attachId) const;
+    const SpotLabelOption* getAttachOption(int attachId) const;
+    const GridOption* getGridOption(int map, int x, int y) const;
+
+    std::vector<int> getSpotsByMap(int map, bool legacy = true, bool dlc = true) const;
+    std::vector<int> getStarterByMap(int map) const;
     
     // Variation queries
-    std::vector<const VariationInfo*> getVariationsAtSpot(int spotId, const std::set<int>& patterns) const;
-    std::vector<const VariationInfo*> getVariationsAtSpot(int spotId, int map) const;
+    std::vector<const VariationInfo*> listVariations(int attachId, const std::set<int>& patterns) const;
+    std::vector<const VariationInfo*> listVariations(int attachId, int map) const;
+    std::vector<const VariationDist*> listDistribution(int patternId) const;
     
     // Pattern filtering
     std::set<int> filterByMap(int map) const;
-    std::set<int> filterByVariation(const std::set<int>& patterns, int spotId, int varKey) const;
+    std::set<int> filterByVariation(const std::set<int>& patterns, int attachId, int varKey) const;
     std::set<int> filterByStarter(const std::set<int>& patterns, int starterId) const;
     std::set<int> filterByNightlord(const std::set<int>& patterns, int nightlordId) const;
 
-    bool isSpotEnabled(int spotId) const;
-    
 private:
-    GameData() = default;
-    ~GameData() = default;
     GameData(const GameData&) = delete;
     GameData& operator=(const GameData&) = delete;
     
+    bool loadNightlords(const std::string& filePath);
     bool loadMaps(const std::string& filePath);
     bool loadPatterns(const std::string& filePath);
-    bool loadSpotDistribution(const std::string& filePath);
 
-    bool loadStaticSpots(const std::string& filePath);
-    bool loadVariations(const std::string& filePath);
-    bool loadVariationLabels(const std::string& filePath);
-    bool loadStarterList(const std::string& filePath);
+    bool loadSpots(const std::string& filePath);
+    bool loadStarters(const std::string& filePath);
     bool loadStarterDist(const std::string& filePath);
-    bool loadFilterSpots(const std::string& filePath);
-    bool loadAttachPoints(const std::string& filePath);
 
+    bool loadVariations(const std::string& filePath);
+    bool loadVariationsEx(const std::string& filePath);
+    
+    bool loadSpotsEx(const std::string& filePath);
+    bool loadSpotsLabelEx(const std::string& filePath);
+    bool loadGridEx(const std::string& filePath);
+
+    std::map<int, NightlordInfo> m_nightlordDB;
 	std::map<int, MapInfo> m_mapDB;
 	std::map<int, PatternInfo> m_patternDB;
-	std::map<int, BaseSpot> m_baseSpotDB;
-	std::map<int, FilterSpot> m_filterSpotDB;
+	std::map<int, SpotInfo> m_spotDB;
+	std::map<int, StarterInfo> m_starterDB;
 	std::map<int, VariationInfo> m_variationDB;
-    std::map<int, StarterSpot> m_starterSpotDB;
-    std::map<int, FilterSpotOption> m_filterSpotOptions;
-    std::map<int, AttachPointOption> m_attachPointOptions;
     std::vector<VariationDist> m_variationDist;
+
+    std::map<int, SpotOption> m_spotOptions;
+    std::map<int, SpotLabelOption> m_spotLabelOptions;
+    std::vector<GridOption> m_gridOptions;
     
     static const std::vector<int> s_emptyIntVector;
     static const std::string s_emptyString;
+    static GameData* s_instance;
 };

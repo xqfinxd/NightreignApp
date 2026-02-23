@@ -79,6 +79,7 @@ local function table2Csv(tableData, filename, postprocess)
 end
 
 -- cache of known icon types
+-- worldMapPointIconId / pad / WorldMapPointParam.csv
 local knownIcons = {
     [1] = "site of grace",
     [2] = "church",
