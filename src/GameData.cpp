@@ -16,6 +16,8 @@
 #include "generated/StarterRow.h"
 #include "generated/VariationRow.h"
 #include "generated/ManualGridRow.h"
+#include "generated/ConstantRow.h"
+#include "generated/RottedPowerRow.h"
 
 const std::vector<int> GameData::s_emptyIntVector;
 const std::string GameData::s_emptyString = "Unknown";
@@ -112,6 +114,12 @@ bool GameData::loadFromCSV(const std::string& dataPath)
         return false;
 
     if (!loadGridEx(dataPath + "/manual_grids.csv"))
+        return false;
+
+    if (!loadConstant(dataPath + "/manual_constant_spots.csv"))
+        return false;
+
+    if (!loadRottedPowers(dataPath + "/autogen_rotted_power.csv"))
         return false;
 
     return true;
@@ -271,7 +279,7 @@ bool GameData::loadVariationsEx(const std::string& filePath)
         it->second.label = variationLabelRowdata[i].label;
         it->second.sublabel = variationLabelRowdata[i].sublabel;
         it->second.icon = variationLabelRowdata[i].icon;
-        it->second.visible = variationLabelRowdata[i].visible != 0;
+        it->second.visible = variationLabelRowdata[i].visible;
         it->second.iconScale = variationLabelRowdata[i].iconScale;
     }
     
@@ -363,6 +371,46 @@ bool GameData::loadGridEx(const std::string& filePath)
     return true;
 }
 
+bool GameData::loadConstant(const std::string& filePath)
+{
+    auto constantRowdata = readCSVFile<ConstantRow>(filePath);
+    for (size_t i = 0; i < constantRowdata.size(); ++i)
+    {
+        auto& right = constantRowdata[i];
+        ConstantInfo info;
+        info.type           = right.type;
+        info.map            = right.map;
+        info.point.gridXNo  = right.gridXNo;
+        info.point.gridZNo  = right.gridZNo;
+        info.point.posX     = right.posX;
+        info.point.posZ     = right.posZ;
+        info.point.height   = right.height;
+        info.label          = constantRowdata[i].label;
+        info.icon           = constantRowdata[i].icon;
+        info.iconScale      = constantRowdata[i].iconScale;
+        m_constantDB.push_back(info);
+    }
+    return true;
+}
+
+bool GameData::loadRottedPowers(const std::string& filePath)
+{
+    auto rottedPowerRowdata = readCSVFile<RottedPowerRow>(filePath);
+    for (size_t i = 0; i < rottedPowerRowdata.size(); ++i)
+    {
+        auto& right = rottedPowerRowdata[i];
+        RottedPowerInfo info;
+        info.patternId = right.patternId;
+        info.point.gridXNo = right.gridXNo;
+        info.point.gridZNo = right.gridZNo;
+        info.point.posX = right.posX;
+        info.point.posZ = right.posZ;
+        info.point.height = right.height;
+        m_rottedPowers[info.patternId] = info;
+    }
+    return true;
+}
+
 const PatternInfo* GameData::getPattern(int patternId) const
 {
     auto it = m_patternDB.find(patternId);
@@ -438,6 +486,17 @@ std::vector<const VariationDist*> GameData::listDistribution(int patternId) cons
     return result;
 }
 
+std::vector<const ConstantInfo*> GameData::listConstants(int map) const
+{
+    std::vector<const ConstantInfo*> result;
+    for (const auto& info : m_constantDB)
+    {
+        if (info.map == map)
+            result.push_back(&info);
+    }
+    return result;
+}
+
 const StarterInfo *GameData::getStarter(int starterId) const
 {
     auto it = m_starterDB.find(starterId);
@@ -456,6 +515,12 @@ const GridOption* GameData::getGridOption(int map, int x, int y) const
         return opt.x == x && opt.y == y && opt.map == map;
         });
     return it != m_gridOptions.end() ? &(*it) : nullptr;
+}
+
+const RottedPowerInfo* GameData::getRottedPower(int patternId) const
+{
+    auto it = m_rottedPowers.find(patternId);
+    return it != m_rottedPowers.end() ? &it->second : nullptr;
 }
 
 std::vector<const VariationInfo*> GameData::listVariations(int attachId, const std::set<int>& patterns) const

@@ -43,11 +43,34 @@ struct PatternInfo {
 
 // Spot information
 struct SpotInfo {
-    int attachId;
+    int attachId = 0;
 	MapPoint point;
     glm::vec2 normalize() const {
         return point.normalize();
 	}
+};
+
+// Constant Spot information
+struct ConstantInfo {
+    int type = 0;
+    int map = 0;
+    float iconScale = 1.0f;
+    std::string label;
+    std::string icon;
+    MapPoint point;
+    glm::vec2 normalize() const {
+        return point.normalize();
+    }
+};
+
+// Rotted Power information
+struct RottedPowerInfo
+{
+    int patternId = -1;
+    MapPoint point;
+    glm::vec2 normalize() const {
+        return point.normalize();
+    }
 };
 
 // Starter information
@@ -95,8 +118,12 @@ struct VariationInfo {
     }
 
     std::string icon;           // Icon texture name
-    bool visible = true;        // Is visible on map
+    int visible = 0xFF;            // Is visible on map
     float iconScale = 1.0f;     // Icon scale multiplier
+
+    bool isShowIcon() const { return visible & (1); }
+    bool isShowText() const { return visible & (1 << 1); }
+    void showAll() { visible |= 0xFF; }
 };
 
 struct VariationDist {
@@ -128,6 +155,7 @@ public:
     const SpotOption* getSpotOption(int attachId) const;
     const SpotLabelOption* getAttachOption(int attachId) const;
     const GridOption* getGridOption(int map, int x, int y) const;
+    const RottedPowerInfo* getRottedPower(int patternId) const;
 
     std::vector<int> getSpotsByMap(int map, bool legacy = true, bool dlc = true) const;
     std::vector<int> getStarterByMap(int map) const;
@@ -136,6 +164,7 @@ public:
     std::vector<const VariationInfo*> listVariations(int attachId, const std::set<int>& patterns) const;
     std::vector<const VariationInfo*> listVariations(int attachId, int map) const;
     std::vector<const VariationDist*> listDistribution(int patternId) const;
+    std::vector<const ConstantInfo*> listConstants(int map) const;
     
     // Pattern filtering
     std::set<int> filterByMap(int map) const;
@@ -162,6 +191,9 @@ private:
     bool loadSpotsLabelEx(const std::string& filePath);
     bool loadGridEx(const std::string& filePath);
 
+    bool loadConstant(const std::string& filePath);
+    bool loadRottedPowers(const std::string& filePath);
+
     std::map<int, NightlordInfo> m_nightlordDB;
 	std::map<int, MapInfo> m_mapDB;
 	std::map<int, PatternInfo> m_patternDB;
@@ -173,6 +205,9 @@ private:
     std::map<int, SpotOption> m_spotOptions;
     std::map<int, SpotLabelOption> m_spotLabelOptions;
     std::vector<GridOption> m_gridOptions;
+
+    std::vector<ConstantInfo> m_constantDB;
+    std::map<int, RottedPowerInfo> m_rottedPowers;
     
     static const std::vector<int> s_emptyIntVector;
     static const std::string s_emptyString;

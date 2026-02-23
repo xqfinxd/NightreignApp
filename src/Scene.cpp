@@ -1087,7 +1087,7 @@ VariationInfo Scene::getFilterSpot() const
 	VariationInfo temp{};
 	temp.icon = "undefined";
 	temp.label = CHS("交互点");
-	temp.visible = true;
+	temp.showAll();
 	return temp;
 }
 
@@ -1096,7 +1096,7 @@ VariationInfo Scene::getFilterStarter() const
 	VariationInfo temp{};
 	temp.icon = "launch";
 	temp.label = CHS("启始点");
-	temp.visible = true;
+	temp.showAll();
 	return temp;
 }
 
@@ -1108,8 +1108,27 @@ VariationInfo Scene::getPlayArea(int day) const
 		temp.label = CHS("第一天");
 	else if (day == 2)
 		temp.label = CHS("第二天");
-	temp.visible = true;
 	temp.iconScale = 2.f;
+	temp.showAll();
+	return temp;
+}
+
+VariationInfo Scene::getConstant(const ConstantInfo& info) const
+{
+    VariationInfo temp{};
+	temp.iconScale = 1.f;
+    temp.label = info.label;
+    temp.icon = info.icon;
+    temp.iconScale = info.iconScale;
+    temp.showAll();
+    return temp;
+}
+
+VariationInfo Scene::getRottedPower() const
+{
+	VariationInfo temp{};
+	temp.icon = "target";
+	temp.showAll();
 	return temp;
 }
 
@@ -1171,8 +1190,8 @@ Entity& Scene::addBaseSpot(const MapPoint &gridPos, int attachId, const Variatio
 	auto* meshComp = gameObject.getComponent<MeshComponent>();
 
 	auto* textComp = gameObject.getComponent<TextComponent>();
-	textComp->visible = info.visible;
-	meshComp->visible = info.visible;
+	textComp->visible = info.isShowText();
+	meshComp->visible = info.isShowIcon();
 
 	if (auto option = GameData::getRef().getAttachOption(attachId))
 	{
@@ -1180,7 +1199,7 @@ Entity& Scene::addBaseSpot(const MapPoint &gridPos, int attachId, const Variatio
 		textComp->offset = option->offset;
 		textComp->direction = option->direction;
 
-		meshComp->visible = option->showIcon && info.visible;
+		meshComp->visible = meshComp->visible && option->showIcon;
 	}
 	if (isOverlayPoint(gridPos))
 	{
@@ -1279,12 +1298,15 @@ void Scene::clearSpots()
 void Scene::loadSpotsByPattern(int patternId)
 {
 	if (patternId < 0) return;
+	auto& gameData = GameData::getRef();
+	auto* patternInfo = gameData.getPattern(patternId);
+	if (!patternInfo) return;
+
 	// Clear existing spots
 	clearSpots();
-	auto &gameData = GameData::getRef();
-	auto *patternInfo = gameData.getPattern(patternId);
-	auto distList = gameData.listDistribution(patternId);
 
+	auto distList = gameData.listDistribution(patternId);
+    // Add spots based on distribution
 	for (const auto dist : distList)
 	{
 		auto spot = gameData.getSpot(dist->attachId);
@@ -1295,42 +1317,59 @@ void Scene::loadSpotsByPattern(int patternId)
 
 		addBaseSpot(spot->point, dist->attachId, *varInfo);
 	}
-	if (patternInfo)
+	
+    // Add play area spots
+	auto day1Spot = getPlayArea(1);
+	addBaseSpot(patternInfo->playArea1, 1, day1Spot);
+	auto day2Spot = getPlayArea(2);
+	addBaseSpot(patternInfo->playArea2, 2, day2Spot);
+
+    // Add constant spots for this pattern
+    auto constantSpots = gameData.listConstants(patternInfo->map);
+    for (auto* constant : constantSpots)
 	{
-		auto day1Spot = getPlayArea(1);
-		addBaseSpot(patternInfo->playArea1, 1, day1Spot);
-		auto day2Spot = getPlayArea(2);
-		addBaseSpot(patternInfo->playArea2, 2, day2Spot);
+		if (!constant) continue;
+		auto varInfo = getConstant(*constant);
+		addBaseSpot(constant->point, constant->type, varInfo);
+    }
+
+    // rotted power spot (if exists for this pattern)
+	if (auto rottedPower = gameData.getRottedPower(patternId)) {
+		auto varInfo = getRottedPower();
+        addBaseSpot(rottedPower->point, 0, varInfo);
 	}
 	
-	loadMapTiles(gameData.getPattern(patternId)->map, 0);
+    // load map tiles for this pattern
+	loadMapTiles(patternInfo->map, 0);
 
+    // Set current pattern ID
 	m_currentPatternId = patternId;
 
+    // Reset overlay state when loading a new pattern
 	updateB1Overlay();
 
-	if (patternInfo)
-	{
-		// Update info panel with map details
-		std::string htmlContent = "<h3>地图信息</h3>";
-		htmlContent += "<p><strong>夜王：</strong>" + std::to_string(patternInfo->boss) + "</p>";
-		htmlContent += "<p><strong>第一夜BOSS：</strong>" + std::to_string(patternInfo->bossId1) + "</p>";
-		htmlContent += "<p><strong>第二夜BOSS：</strong>" + std::to_string(patternInfo->bossId2) + "</p>";
-		if (patternInfo->extraBossId1 > 0)
-			htmlContent += "<p><strong>第一夜额外BOSS：</strong>" + std::to_string(patternInfo->extraBossId1) + "</p>";
-		if (patternInfo->extraBossId2 > 0)
-			htmlContent += "<p><strong>第二夜额外BOSS：</strong>" + std::to_string(patternInfo->extraBossId2) + "</p>";
-		// TODO: Events, Castle, Great Hollow, etc.
-		setInfoPanelContent(htmlContent);
-	}
+	// Update info panel with map details
+	std::string htmlContent = "<h3>地图信息</h3>";
+	htmlContent += "<p><strong>夜王：</strong>" + std::to_string(patternInfo->boss) + "</p>";
+	htmlContent += "<p><strong>第一夜BOSS：</strong>" + std::to_string(patternInfo->bossId1) + "</p>";
+	htmlContent += "<p><strong>第二夜BOSS：</strong>" + std::to_string(patternInfo->bossId2) + "</p>";
+	if (patternInfo->extraBossId1 > 0)
+		htmlContent += "<p><strong>第一夜额外BOSS：</strong>" + std::to_string(patternInfo->extraBossId1) + "</p>";
+	if (patternInfo->extraBossId2 > 0)
+		htmlContent += "<p><strong>第二夜额外BOSS：</strong>" + std::to_string(patternInfo->extraBossId2) + "</p>";
+	// TODO: Events, Castle, Great Hollow, etc.
+	setInfoPanelContent(htmlContent);
 }
 
 void Scene::loadSpotsByMap(int map)
 {
 	if (map < 0) return;
+	auto& gameData = GameData::getRef();
+
 	// Clear existing spots
 	clearSpots();
-	auto &gameData = GameData::getRef();
+
+    // Add all spots for this map for filtering
 	auto staticSpots = gameData.getSpotsByMap(map);
 	for (auto spotId : staticSpots)
 	{
@@ -1342,6 +1381,7 @@ void Scene::loadSpotsByMap(int map)
 		addFilterSpot(spot->point, spotId, tmp);
 	}
 
+    // Add starter spots for this map for filtering
 	auto starterSpots = gameData.getStarterByMap(map);
 	for (auto starterId : starterSpots)
 	{
@@ -1353,8 +1393,10 @@ void Scene::loadSpotsByMap(int map)
 		addStarterSpot(starter->point, starterId, tmp);
 	}
 
+    // load map tiles for this map (use layer 0 as default)
 	loadMapTiles(map, 0);
 
+    // Reset pattern and filters since we're just browsing the map
 	m_currentPatternId = -1;
 
 	// Update info panel with map details

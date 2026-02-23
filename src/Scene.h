@@ -215,6 +215,8 @@ private:
 	VariationInfo getFilterSpot() const;
 	VariationInfo getFilterStarter() const;
 	VariationInfo getPlayArea(int day) const;
+    VariationInfo getConstant(const ConstantInfo& info) const;
+    VariationInfo getRottedPower() const;
 	
 	bool m_filterMode = false;
 	std::set<int> m_filteredPatterns; // Result of pattern filtering
