@@ -42,28 +42,34 @@ def load_constant(pointbase_path:str, flagbase_path:str):
     pointbase = csvutil.load_csv(pointbase_path, key_column='ID')
     
     constant_list = []
-    filter_types = [2, 16, 28, 30, 51, 71, 73, 74, 75, 76, 79]
+    filter_types = [2, 16, 28, 61, 71, 76]
+    filter_maps = [1, 2, 4, 5]
+    fieldboss_excludes = lambda map,rowdata: int(rowdata.get("eventFlagId6", 0)) == 0 or map == 4
     for point_id, point_data in pointbase.items():
         typeid = point_data.get("worldMapPointIconId", 0)
-        if typeid in filter_types:
-            map = int(point_data.get("pad", 0)) / 10
-            gridXNo = int(point_data.get("gridXNo", 0))
-            gridZNo = int(point_data.get("gridZNo", 0))
-            posX = float(point_data.get("posX", 0))
-            posZ = float(point_data.get("posZ", 0))
-            height = float(point_data.get("posY", 0))
-            constant_list.append({
-                "type": typeid,
-                "map": map,
-                "gridXNo": gridXNo,
-                "gridZNo": gridZNo,
-                "posX": posX,
-                "posZ": posZ,
-                "height": height,
-                "label": KnownIcons.get(typeid, "unknown"),
-                'icon': "undefined",
-                'iconScale': 1.0,
-            })
+        map = int(point_data.get("pad", 0)) / 10
+        if typeid not in filter_types or map not in filter_maps:
+            continue
+        if typeid == 16 and fieldboss_excludes(map, point_data):
+            continue
+        gridXNo = int(point_data.get("gridXNo", 0))
+        gridZNo = int(point_data.get("gridZNo", 0))
+        posX = float(point_data.get("posX", 0))
+        posZ = float(point_data.get("posZ", 0))
+        height = float(point_data.get("posY", 0))
+        constant_list.append({
+            "type": typeid,
+            "map": map,
+            "gridXNo": gridXNo,
+            "gridZNo": gridZNo,
+            "posX": posX,
+            "posZ": posZ,
+            "height": height,
+            "label": KnownIcons.get(typeid, "unknown"),
+            'icon': "undefined",
+            'iconScale': 1.0,
+        })
+
     rotted_power_dict = []
     power_flags = pointbase.filter(worldMapPointIconId=61)
     for flag in power_flags:
@@ -87,20 +93,6 @@ def load_constant(pointbase_path:str, flagbase_path:str):
                         "posZ": posZ,
                         "height": height,
                     })
-        else:
-            typeid = flag.get("worldMapPointIconId", 0)
-            constant_list.append({
-                "type": typeid,
-                "map": map,
-                "gridXNo": gridXNo,
-                "gridZNo": gridZNo,
-                "posX": posX,
-                "posZ": posZ,
-                "height": height,
-                "label": KnownIcons.get(typeid, "unknown"),
-                'icon': "undefined",
-                'iconScale': 1.0,
-            })
     
     return constant_list, rotted_power_dict
         
@@ -124,7 +116,7 @@ constant_header = {
     'icon': 'std::string',
     'iconScale': 'float',
 }
-constant_csv_file = assets_dir / "datas" / "manual_constant.csv"
+constant_csv_file = assets_dir / "datas" / "manual_constant_template.csv"
 constant_cpp_header_file = base_dir / "src" / "generated" / "ConstantRow.h"
 csvutil.generate_csv(constant_header, constant_list, constant_csv_file)
 csvutil.generate_cpp_header(constant_header, constant_cpp_header_file, "ConstantRow")
