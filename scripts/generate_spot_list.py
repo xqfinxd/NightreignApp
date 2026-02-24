@@ -1,8 +1,35 @@
 #!/usr/bin/env python3
 
 import csvutil
+import defines
 from pathlib import Path
 from generate_pattern_list import load_pattern_list
+
+CastleAttachIds = [190, 2190]
+LTDivineTowerAttachIds = [1114, 1115, 1116]
+RBDivineTowerAttachIds = [1111, 1112, 1113]
+LTCityAttachIds = [1142]
+RBCityAttachIds = [1136]
+
+def remap_point(attachid: int, pointbase: dict) -> int:
+    if attachid in CastleAttachIds:
+        castle = pointbase.filter(worldMapPointIconId=11)[0].get("ID", attachid)
+        return int(castle)
+    if attachid in LTDivineTowerAttachIds:
+        towers = pointbase.filter(worldMapPointIconId=73)
+        sorted_towers = sorted(towers, key=lambda t: t.get("gridXNo", 0)) # x -> left or right
+        return int(sorted_towers[0].get("ID", attachid)) # left tower
+    if attachid in RBDivineTowerAttachIds:
+        towers = pointbase.filter(worldMapPointIconId=73)
+        sorted_towers = sorted(towers, key=lambda t: t.get("gridXNo", 0)) # x -> left or right
+        return int(sorted_towers[-1].get("ID", attachid)) # right tower
+    if attachid in LTCityAttachIds:
+        city = pointbase.filter(worldMapPointIconId=75)[0].get("ID", attachid)
+        return int(city)
+    if attachid in RBCityAttachIds:
+        city = pointbase.filter(worldMapPointIconId=74)[0].get("ID", attachid)
+        return int(city)
+    return attachid
 
 def generate_hash(v1: int, v2: int, f1: float, f2: float, f3: float) -> int:
     return f"{v1}_{v2}_{f1:.2f}_{f2:.2f}_{f3:.2f}"
@@ -61,7 +88,11 @@ def load_spot_list(pattern_mapbase: dict, attachbase_path:str, pointbase_path:st
         if mapindex < 0:
             continue
         point = csvutil.find_point(pointbase, attachid)
-        if len(point) == 0:
+        if point == None or len(point) == 0:
+            # remap
+            newattachid = remap_point(attachid, pointbase)
+            point = csvutil.find_point(pointbase, newattachid)
+        if point == None or len(point) == 0:
             continue
         variation_list.append({
             'patternId': patternid,

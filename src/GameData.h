@@ -73,6 +73,18 @@ struct RottedPowerInfo
     }
 };
 
+struct GreatHollowBindingInfo {
+    float iconScale = 1.0f;
+    int visible = 255;
+    int binding = -1;
+    std::string icon;
+    std::string label;
+    MapPoint point;
+    glm::vec2 normalize() const {
+        return point.normalize();
+    }
+};
+
 // Starter information
 struct StarterInfo {
     int starterId;
@@ -165,6 +177,7 @@ public:
     std::vector<const VariationInfo*> listVariations(int attachId, int map) const;
     std::vector<const VariationDist*> listDistribution(int patternId) const;
     std::vector<const ConstantInfo*> listConstants(int map) const;
+    std::vector<const GreatHollowBindingInfo*> listGreatHollowBinding(int patternId) const;
     
     // Pattern filtering
     std::set<int> filterByMap(int map) const;
@@ -193,6 +206,7 @@ private:
 
     bool loadConstant(const std::string& filePath);
     bool loadRottedPowers(const std::string& filePath);
+    bool loadGreatHollowBindings(const std::string& filePath);
 
     std::map<int, NightlordInfo> m_nightlordDB;
 	std::map<int, MapInfo> m_mapDB;
@@ -208,6 +222,7 @@ private:
 
     std::vector<ConstantInfo> m_constantDB;
     std::map<int, RottedPowerInfo> m_rottedPowers;
+    std::vector<GreatHollowBindingInfo> m_greatHollowBindings;
     
     static const std::vector<int> s_emptyIntVector;
     static const std::string s_emptyString;

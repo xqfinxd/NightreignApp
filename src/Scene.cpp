@@ -1132,6 +1132,16 @@ VariationInfo Scene::getRottedPower() const
 	return temp;
 }
 
+VariationInfo Scene::getGreatHollowSmallBoss(const GreatHollowBindingInfo& info) const
+{
+	VariationInfo temp{};
+	temp.icon = info.icon;
+	temp.label = info.label;
+	temp.iconScale = info.iconScale;
+	temp.visible = info.visible;
+	return temp;
+}
+
 void Scene::updateB1Overlay()
 {
 	auto gameObjects = findObjectsByComponent<MapSpot>();
@@ -1339,6 +1349,15 @@ void Scene::loadSpotsByPattern(int patternId)
         addBaseSpot(rottedPower->point, 0, varInfo);
 	}
 	
+	// great hollow boss spot (if exists for this pattern)
+	auto greastHollowSmallBossList = gameData.listGreatHollowBinding(patternId);
+	for (auto* boss : greastHollowSmallBossList)
+	{
+		if (!boss) continue;
+		auto varInfo = getGreatHollowSmallBoss(*boss);
+		addBaseSpot(boss->point, boss->binding, varInfo);
+	}
+
     // load map tiles for this pattern
 	loadMapTiles(patternInfo->map, 0);
 

@@ -18,6 +18,7 @@
 #include "generated/ManualGridRow.h"
 #include "generated/ConstantRow.h"
 #include "generated/RottedPowerRow.h"
+#include "generated/GreatHollowBindingRow.h"
 
 const std::vector<int> GameData::s_emptyIntVector;
 const std::string GameData::s_emptyString = "Unknown";
@@ -120,6 +121,9 @@ bool GameData::loadFromCSV(const std::string& dataPath)
         return false;
 
     if (!loadRottedPowers(dataPath + "/autogen_rotted_power.csv"))
+        return false;
+
+    if (!loadGreatHollowBindings(dataPath + "/manual_great_hollow_binding_spots.csv"))
         return false;
 
     return true;
@@ -411,6 +415,28 @@ bool GameData::loadRottedPowers(const std::string& filePath)
     return true;
 }
 
+bool GameData::loadGreatHollowBindings(const std::string &filePath)
+{
+    auto bindingRowdata = readCSVFile<GreatHollowBindingRow>(filePath);
+    for (size_t i = 0; i < bindingRowdata.size(); ++i)
+    {
+        auto& right = bindingRowdata[i];
+        GreatHollowBindingInfo info;
+        info.iconScale = right.iconScale;
+        info.visible = right.visible;
+        info.binding = right.binding;
+        info.icon = right.icon;
+        info.label = right.label;
+        info.point.gridXNo = right.gridXNo;
+        info.point.gridZNo = right.gridZNo;
+        info.point.posX = right.posX;
+        info.point.posZ = right.posZ;
+        info.point.height = right.height;
+        m_greatHollowBindings.push_back(info);
+    }
+    return true;
+}
+
 const PatternInfo* GameData::getPattern(int patternId) const
 {
     auto it = m_patternDB.find(patternId);
@@ -492,6 +518,28 @@ std::vector<const ConstantInfo*> GameData::listConstants(int map) const
     for (const auto& info : m_constantDB)
     {
         if (info.map == map)
+            result.push_back(&info);
+    }
+    return result;
+}
+
+std::vector<const GreatHollowBindingInfo *> GameData::listGreatHollowBinding(int patternId) const
+{
+    std::vector<const GreatHollowBindingInfo *> result;
+    std::set<int> variationSet;
+    for (const auto& dist : m_variationDist)
+    {
+        if (dist.patternId == patternId)
+        {
+            auto varIt = m_variationDB.find(dist.variationKey);
+            if (varIt == m_variationDB.end())
+                continue;
+            variationSet.insert(varIt->second.variationId);
+        }
+    }
+    for (const auto& info : m_greatHollowBindings)
+    {
+        if (variationSet.count(info.binding))
             result.push_back(&info);
     }
     return result;
