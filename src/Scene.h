@@ -40,7 +40,7 @@ public:
 	}
 	template<class TComp>
 	const TComp* getComponent() const {
-		return const_cast<Entity*>(this)->getComponent();
+		return const_cast<Entity*>(this)->getComponent<TComp>();
 	}
 	template<class TComp, typename... Args>
 	TComp& addComponent(Args &&...args) {

@@ -6,7 +6,7 @@ nightreign/assets/datas/autogen_starter_distribution.csv,1,7904d445
 nightreign/assets/datas/autogen_starter_list.csv,1,3257ba74
 nightreign/assets/datas/autogen_variation_list.csv,1,75993fdd
 nightreign/assets/datas/chs.txt,1,477c006f
-nightreign/assets/datas/manual_attachpoints.csv,1,9b45bafe
+nightreign/assets/datas/manual_attachpoints.csv,1,24bf5560
 nightreign/assets/datas/manual_constant_spots.csv,1,46e1e74a
 nightreign/assets/datas/manual_great_hollow_binding_spots.csv,1,60b245c7
 nightreign/assets/datas/manual_grids.csv,1,ee6e0004
@@ -19,3 +19,4 @@ nightreign/assets/shaders/font.frag,1,7bf5ddf5
 nightreign/assets/shaders/font.vert,1,1917b3d2
 nightreign/assets/shaders/texture.frag,1,d7b7916a
 nightreign/assets/shaders/texture.vert,1,1bfaf310
+nightreign/atlas.csv,2,2325e25f

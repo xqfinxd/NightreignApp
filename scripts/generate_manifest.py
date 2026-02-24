@@ -84,7 +84,14 @@ def generate_subdir_manifest(
                 'priority': default_priority,
                 'crc': crc
             })
-        
+
+    atlas_path = assets_root / 'atlas.csv'
+    if atlas_path.exists():
+        files_info.append({
+            'path': str(atlas_path.relative_to(assets_root.parent)).replace('\\', '/'),
+            'priority': default_priority + 1,
+            'crc': calculate_crc32(str(atlas_path))
+        })
     # 按文件路径排序
     files_info.sort(key=lambda x: x['path'])    
     return files_info

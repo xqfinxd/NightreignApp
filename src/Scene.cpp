@@ -1205,7 +1205,6 @@ Entity& Scene::addBaseSpot(const MapPoint &gridPos, int attachId, const Variatio
 
 	if (auto option = GameData::getRef().getAttachOption(attachId))
 	{
-		// TODO: use height
 		textComp->offset = option->offset;
 		textComp->direction = option->direction;
 
