@@ -6,6 +6,7 @@ Extract Chinese characters from manual CSV files and CHS macro in source code
 import os
 import re
 import csv
+import defines
 from pathlib import Path
 
 def is_chinese_char(char):
@@ -18,13 +19,13 @@ def extract_chinese_from_text(text):
         return set()
     return {char for char in text if is_chinese_char(char)}
 
-def extract_from_csv_files(asset_dir):
+def extract_from_csv_files(assets_dir):
     """Extract Chinese characters from manual*.csv files"""
     chinese_chars = set()
     
     # Search for manual*.csv in datas directory
     search_dirs = [
-        asset_dir / 'assets' / 'datas'
+        assets_dir / 'datas'
     ]
     
     for search_dir in search_dirs:
@@ -92,19 +93,19 @@ def extract_from_source_code(src_dir):
 
 def main():
     # Get project root directory (parent of scripts)
-    base_dir = Path(__file__).resolve().parent.parent
+    paths = defines.PathDefinitions(__file__)
     
-    print(f"Project root: {base_dir}")
+    print(f"Project root: {paths.project_dir}")
     print("=" * 60)
     
     # Extract from CSV files
     print("\n--- Extracting from CSV files ---")
-    csv_chars = extract_from_csv_files(base_dir / 'nightreign')
+    csv_chars = extract_from_csv_files(paths.assets_dir)
     print(f"\nTotal Chinese characters from CSV: {len(csv_chars)}")
     
     # Extract from source code
     print("\n--- Extracting from source code ---")
-    code_chars = extract_from_source_code(base_dir / 'src')
+    code_chars = extract_from_source_code(paths.src_dir)
     print(f"\nTotal Chinese characters from code: {len(code_chars)}")
     
     # Combine all characters
@@ -116,8 +117,8 @@ def main():
     sorted_chars = sorted(all_chars)
     
     # Write to chs.txt
-    output_file = base_dir / 'nightreign' / 'assets' / 'datas' / 'chs.txt'
-    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file = paths.get_output("chs.txt")
+    Path(output_file).parent.mkdir(parents=True, exist_ok=True)
     
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write(''.join(sorted_chars))

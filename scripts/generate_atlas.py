@@ -8,6 +8,7 @@ import os
 import sys
 import re
 import csvutil
+import defines
 from pathlib import Path
 
 try:
@@ -107,14 +108,10 @@ def write_atlas_csv(textures, output_file):
 
 
 def main():
-    base_dir = Path(__file__).resolve().parent.parent
-    textures_dir = base_dir / "nightreign" / "assets" / "textures"
+    paths = defines.PathDefinitions(__file__)
     
-    csv_file = base_dir / "nightreign" / "atlas.csv"
-    cpp_header_file = base_dir / "src" / "generated" / "AtlasRow.h"
-    
-    print(f"扫描目录: {textures_dir}")
-    textures = scan_textures(textures_dir)
+    print(f"扫描目录: {paths.textures_dir}")
+    textures = scan_textures(paths.textures_dir)
     header = {
         'alias': 'std::string',
         'path': 'std::string',
@@ -127,8 +124,8 @@ def main():
         print("警告: 未找到任何PNG文件")
         return 1
     
-    csvutil.generate_csv(header, textures, csv_file)
-    csvutil.generate_cpp_header(header, cpp_header_file, "AtlasRow")
+    csvutil.generate_csv(header, textures, paths.get_atlas_csv())
+    csvutil.generate_cpp_header(header, paths.get_cpp_header("AtlasRow"), "AtlasRow")
     # 统计信息
     total_size = sum(t['width'] * t['height'] * 4 for t in textures)  # 假设RGBA
     print(f"  预估内存占用: {total_size / (1024*1024):.2f} MB")

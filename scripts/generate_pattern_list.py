@@ -7,6 +7,7 @@
 import os
 import sys
 import csvutil
+import defines
 from pathlib import Path
 
 
@@ -97,17 +98,14 @@ def _safe_int(value, default=0):
 
 def main():
     """主函数"""
-    # 假设CSV文件在当前目录
-    base_dir = Path(__file__).resolve().parent.parent 
-    assets_dir = base_dir / "nightreign" / "assets"
-    
-    meta_dir = assets_dir / "metadata"
-    flagbase_path = meta_dir / "LotResultMapPatternFlag.csv"
-    createbase_path = meta_dir / "PlayAreaCreateParam.csv"
-    areabase_path = meta_dir / "LotResultPlayAreaParam.csv"
+    paths = defines.PathDefinitions(__file__)
 
-    csv_file = assets_dir / "datas" / "autogen_pattern_list.csv"
-    cpp_header_file = base_dir / "src" / "generated" / "PatternRow.h"
+    flagbase_path = Path(paths.get_metadata("LotResultMapPatternFlag.csv"))
+    createbase_path = Path(paths.get_metadata("PlayAreaCreateParam.csv"))
+    areabase_path = Path(paths.get_metadata("LotResultPlayAreaParam.csv"))
+
+    csv_file = paths.get_output("autogen_pattern_list.csv")
+    cpp_header_file = paths.get_cpp_header("PatternRow")
 
     header = {
         'id': 'int',
@@ -146,8 +144,8 @@ def main():
         )
         
         # 保存结果
-        csvutil.generate_csv(header, list(pattern_mapbase.values()), str(csv_file))
-        csvutil.generate_cpp_header(header, str(cpp_header_file), "PatternRow")
+        csvutil.generate_csv(header, list(pattern_mapbase.values()), csv_file)
+        csvutil.generate_cpp_header(header, cpp_header_file, "PatternRow")
         
         print("\nProcessing completed successfully!")
         return 0

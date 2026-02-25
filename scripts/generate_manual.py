@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
 
 import csvutil
-from pathlib import Path
+import defines
 
-base_dir = Path(__file__).resolve().parent.parent 
+paths = defines.PathDefinitions(__file__)
 
-map_cpp_header_file = base_dir / "src" / "generated" / "ManualMapRow.h"
+map_cpp_header_file = paths.get_cpp_header("ManualMapRow")
 map_header = {
     'id': 'int',
     'name': 'std::string',
 }
 csvutil.generate_cpp_header(map_header, map_cpp_header_file, 'ManualMapRow')
 
-nightlord_cpp_header_file = base_dir / "src" / "generated" / "ManualNightlordRow.h"
+nightlord_cpp_header_file = paths.get_cpp_header("ManualNightlordRow")
 nightlord_header = {
     'id': 'int',
     'name': 'std::string',
 }
 csvutil.generate_cpp_header(nightlord_header, nightlord_cpp_header_file, 'ManualNightlordRow')
 
-validation_cpp_header_file = base_dir / "src" / "generated" / "ManualValidationRow.h"
+validation_cpp_header_file = paths.get_cpp_header("ManualValidationRow")
 validation_header = {
     'id': 'int',
     'smallBaseMapId': 'int',
@@ -32,7 +32,7 @@ validation_header = {
 }
 csvutil.generate_cpp_header(validation_header, validation_cpp_header_file, 'ManualValidationRow')
 
-spot_cpp_header_file = base_dir / "src" / "generated" / "ManualSpotRow.h"
+spot_cpp_header_file = paths.get_cpp_header("ManualSpotRow")
 spot_header = {
     'id': 'int',
     'disable_filter': 'int',
@@ -40,7 +40,7 @@ spot_header = {
 }
 csvutil.generate_cpp_header(spot_header, spot_cpp_header_file, 'ManualSpotRow')
 
-spot_label_cpp_header_file = base_dir / "src" / "generated" / "ManualSpotLabelRow.h"
+spot_label_cpp_header_file = paths.get_cpp_header("ManualSpotLabelRow")
 spot_label_header = {
     'id': 'int',
     'direction': 'int',
@@ -50,7 +50,7 @@ spot_label_header = {
 }
 csvutil.generate_cpp_header(spot_label_header, spot_label_cpp_header_file, 'ManualSpotLabelRow')
 
-grid_cpp_header_file = base_dir / "src" / "generated" / "ManualGridRow.h"
+grid_cpp_header_file = paths.get_cpp_header("ManualGridRow")
 grid_header = {
     'x': 'int',
     'y': 'int',

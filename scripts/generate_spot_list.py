@@ -2,7 +2,6 @@
 
 import csvutil
 import defines
-from pathlib import Path
 from generate_pattern_list import load_pattern_list
 
 CastleAttachIds = [190, 2190]
@@ -149,29 +148,18 @@ def load_spot_list(pattern_mapbase: dict, attachbase_path:str, pointbase_path:st
     return spot_list, variation_list
 
 
-base_dir = Path(__file__).resolve().parent.parent 
-assets_dir = base_dir / "nightreign" / "assets"
-
-meta_dir = assets_dir / "metadata"
-flagbase_path = meta_dir / "LotResultMapPatternFlag.csv"
-createbase_path = meta_dir / "PlayAreaCreateParam.csv"
-areabase_path = meta_dir / "LotResultPlayAreaParam.csv"
-attachbase_path = meta_dir / "LotResultSmallBaseAndSpot.csv"
-pointbase_path = meta_dir / "WorldMapPointParam.csv"
+paths = defines.PathDefinitions(__file__)
 
 pattern_mapbase = load_pattern_list(
-    str(flagbase_path),
-    str(createbase_path),
-    str(areabase_path)
+    paths.get_metadata("LotResultMapPatternFlag.csv"),
+    paths.get_metadata("PlayAreaCreateParam.csv"),
+    paths.get_metadata("LotResultPlayAreaParam.csv"),
 )
 spot_list, variation_list = load_spot_list(
     pattern_mapbase,
-    str(attachbase_path),
-    str(pointbase_path),
+    paths.get_metadata("LotResultSmallBaseAndSpot.csv"),
+    paths.get_metadata("WorldMapPointParam.csv"),
 )
-
-spot_csv_file = assets_dir / "datas" / "autogen_spot_list.csv"
-spot_cpp_header_file = base_dir / "src" / "generated" / "SpotRow.h"
 header = {
     'attachId': 'int',
     'map': 'int',
@@ -183,16 +171,14 @@ header = {
     'posZ': 'float',
     'height': 'float',
 }
-csvutil.generate_csv(header, spot_list, str(spot_csv_file))
-csvutil.generate_cpp_header(header, str(spot_cpp_header_file), "SpotRow")
+csvutil.generate_csv(header, spot_list, paths.get_output("autogen_spot_list.csv"))
+csvutil.generate_cpp_header(header, paths.get_cpp_header("SpotRow"), "SpotRow")
 
-variation_csv_file = assets_dir / "datas" / "autogen_variation_list.csv"
-variation_cpp_header_file = base_dir / "src" / "generated" / "VariationRow.h"
 variation_header = {
     'patternId': 'int',
     'variationId': 'int',
     'variationType': 'int',
     'attachId': 'int',
 }
-csvutil.generate_csv(variation_header, variation_list, str(variation_csv_file))
-csvutil.generate_cpp_header(variation_header, str(variation_cpp_header_file), "VariationRow")
+csvutil.generate_csv(variation_header, variation_list, paths.get_output("autogen_variation_list.csv"))
+csvutil.generate_cpp_header(variation_header, paths.get_cpp_header("VariationRow"), "VariationRow")

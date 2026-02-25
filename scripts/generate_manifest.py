@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import List, Dict, Optional
 import argparse
 import csvutil
+import defines
 
 
 def calculate_crc32(file_path: str, chunk_size: int = 8192) -> str:
@@ -96,12 +97,12 @@ def generate_subdir_manifest(
     files_info.sort(key=lambda x: x['path'])    
     return files_info
 
-base_dir = Path(__file__).resolve().parent.parent / "nightreign"
+paths = defines.PathDefinitions(__file__)
 
-csv_file = base_dir / "manifest.csv"
+csv_file = paths.get_manifest_csv()
 
 manifest = generate_subdir_manifest(
-    assets_path=str(base_dir),
+    assets_path=str(paths.asset_root_dir),
     subdirs=['assets/shaders', 'assets/fonts', 'assets/datas'],
     default_priority=1,
 )

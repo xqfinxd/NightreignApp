@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import csvutil
-from pathlib import Path
+import defines
 
 starter_distribution = [
     { 'id':0, 'starter':700},
@@ -60,8 +60,7 @@ starter_list = [
     { 'id':708, 'gridXNo':45, 'gridZNo':38, 'posX':-86.00, 'posZ':81.00, 'height':0},
 ]
 
-base_dir = Path(__file__).resolve().parent.parent 
-assets_dir = base_dir / "nightreign" / "assets"
+paths = defines.PathDefinitions(__file__)
 
 list_header = {
     'id': 'int',
@@ -71,16 +70,12 @@ list_header = {
     'posZ': 'float',
     'height': 'float'
 }
-list_csv_file = assets_dir / "datas" / "autogen_starter_list.csv"
-list_cpp_header_file = base_dir / "src" / "generated" / "StarterRow.h"
-csvutil.generate_csv(list_header, starter_list, list_csv_file)
-csvutil.generate_cpp_header(list_header, list_cpp_header_file, "StarterRow")
+csvutil.generate_csv(list_header, starter_list, paths.get_output("autogen_starter_list.csv"))
+csvutil.generate_cpp_header(list_header, paths.get_cpp_header("StarterRow"), "StarterRow")
 
 distribution_header = {
     'id': 'int',
     'starter': 'int'
 }
-distribution_csv_file = assets_dir / "datas" / "autogen_starter_distribution.csv"
-distribution_cpp_header_file = base_dir / "src" / "generated" / "StarterDistributionRow.h"
-csvutil.generate_csv(distribution_header, starter_distribution, distribution_csv_file)
-csvutil.generate_cpp_header(distribution_header, distribution_cpp_header_file, "StarterDistributionRow")
+csvutil.generate_csv(distribution_header, starter_distribution, paths.get_output("autogen_starter_distribution.csv"))
+csvutil.generate_cpp_header(distribution_header, paths.get_cpp_header("StarterDistributionRow"), "StarterDistributionRow")

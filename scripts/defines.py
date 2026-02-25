@@ -1,3 +1,7 @@
+import os
+import sys
+from pathlib import Path
+
 KnownIcons = {
     1 : "site of grace",
     2 :"church",
@@ -38,3 +42,76 @@ SpecialAttachIds = [
     1138, 1139, 1140, 1141, 1143, 1145, 1146, 1147, 1148,
     1200, 1201, 1202, # play area
 ]
+
+# Event Flags: 7705, 7725
+InvasionEvents = {
+    510 : "Caligo Blizzard",
+    520 : "Gladius Invasion",
+    540 : "Maris Bubbles",
+    550 : "Gnoster Plague",
+    560 : "Libra Curse",
+
+    3040 : "Morgott Invasion",
+    3050 : "Maris Bubbles",
+    3060 : "Gnoster Plague",
+    3070 : "Libra Curse",
+    3110 : "Caligo Blizzard",
+    3120 : "Gladius Invasion",
+    3130 : "Balancers Raid",
+}
+
+EventDefinitions = {
+    7704 : "Day 1 Night Horde",
+    7724 : "Day 2 Night Horde",
+
+    7701 : "Day 1 Meteor Strike",
+    7721 : "Day 2 Meteor Strike",
+
+    7702 : "Walking Mausoleum",
+    7722 : "Walking Mausoleum",
+
+    7700 : "Day 1 Extra Night Boss",
+    7720 : "Day 2 Extra Night Boss",
+
+    7707 : "Frenzy Tower",
+    7727 : "Frenzy Tower",
+
+    7706 : "Difficult Sorcerer's Rise",
+    7726 : "Difficult Sorcerer's Rise",
+
+    # 8075 : "Morgott Invasion",
+    # 8076 : "Maris Bubbles",
+    # 8077 : "Gladius Invasion",
+    # 8078 : "Gnoster Plague",
+    # 8079 : "Libra Curse",
+    # 8080 : "Caligo Blizzard",
+    # 8081 : "Balancers Raid",
+    7705 : lambda modifier, modifierSet: "Day 1 " + InvasionEvents[modifierSet],
+    7725 : lambda modifier, modifierSet: "Day 2 " + InvasionEvents[modifierSet],
+}
+
+class PathDefinitions:
+    def __init__(self, script_path: str):
+        self.project_dir = Path(script_path).resolve().parent.parent 
+        self.asset_root_dir= self.project_dir / "nightreign"
+        self.assets_dir= self.asset_root_dir / "assets"
+        self.metadata_dir = self.assets_dir / "metadata"
+        self.datas_dir = self.assets_dir / "datas"
+        self.textures_dir = self.assets_dir / "textures"
+        self.src_dir = self.project_dir / "src"
+        self.cpp_header_dir= self.src_dir / "generated"
+
+    def get_cpp_header(self, fn: str):
+        return str(self.cpp_header_dir / f'{fn}.h')
+    
+    def get_metadata(self, fn: str):
+        return str(self.metadata_dir / fn)
+
+    def get_output(self, fn: str):
+        return str(self.datas_dir / fn)
+
+    def get_atlas_csv(self):
+        return str(self.asset_root_dir / "atlas.csv")
+
+    def get_manifest_csv(self):
+        return str(self.asset_root_dir / "manifest.csv")

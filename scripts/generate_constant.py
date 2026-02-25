@@ -102,14 +102,15 @@ def load_constant(pointbase_path:str, flagbase_path:str, variationbase_path:str)
         })
     return constant_list, rotted_power_dict, great_hollow_bindings
         
-    
-base_dir = Path(__file__).resolve().parent.parent 
-assets_dir = base_dir / "nightreign" / "assets"
+paths = defines.PathDefinitions(__file__)
 
-pointbase_path = assets_dir / "metadata" / "WorldMapPointParam.csv"
-flagbase_path = assets_dir / "metadata" / "LotResultMapPatternFlag.csv"
-variationbase_path = assets_dir / "metadata" / "SmallBaseMapVariationParam.csv"
-constant_list, rotted_power_dict, great_hollow_bindings = load_constant(str(pointbase_path), str(flagbase_path), str(variationbase_path))
+pointbase_path = paths.get_metadata("WorldMapPointParam.csv")
+flagbase_path = paths.get_metadata("LotResultMapPatternFlag.csv")
+variationbase_path = paths.get_metadata("SmallBaseMapVariationParam.csv")
+constant_list, rotted_power_dict, great_hollow_bindings = load_constant(
+    str(pointbase_path),
+    str(flagbase_path),
+    str(variationbase_path))
 
 constant_header = {
     "type": "int",
@@ -123,10 +124,12 @@ constant_header = {
     'icon': 'std::string',
     'iconScale': 'float',
 }
-constant_csv_file = assets_dir / "datas" / "manual_constant_template.csv"
-constant_cpp_header_file = base_dir / "src" / "generated" / "ConstantRow.h"
-csvutil.generate_csv(constant_header, constant_list, constant_csv_file)
-csvutil.generate_cpp_header(constant_header, constant_cpp_header_file, "ConstantRow")
+csvutil.generate_csv(constant_header,
+    constant_list,
+    paths.get_output("manual_constant_template.csv"))
+csvutil.generate_cpp_header(constant_header,
+    paths.get_cpp_header("ConstantRow"),
+    "ConstantRow")
 
 rotted_power_header = {
     "patternId": "int",
@@ -136,10 +139,12 @@ rotted_power_header = {
     "posZ": "float",
     "height": "float",
 }
-rotted_power_csv_file = assets_dir / "datas" / "autogen_rotted_power.csv"
-rotted_power_cpp_header_file = base_dir / "src" / "generated" / "RottedPowerRow.h"
-csvutil.generate_csv(rotted_power_header, rotted_power_dict, rotted_power_csv_file)
-csvutil.generate_cpp_header(rotted_power_header, rotted_power_cpp_header_file, "RottedPowerRow")
+csvutil.generate_csv(rotted_power_header,
+    rotted_power_dict,
+    paths.get_output("autogen_rotted_power.csv"))
+csvutil.generate_cpp_header(rotted_power_header,
+    paths.get_cpp_header("RottedPowerRow"),
+    "RottedPowerRow")
 
 great_hollow_binding_header = {
     "gridXNo": "int",
@@ -153,7 +158,9 @@ great_hollow_binding_header = {
     "visible": "int",
     "binding": "int",
 }
-great_hollow_binding_csv_file = assets_dir / "datas" / "manual_great_hollow_binding_template.csv"
-great_hollow_binding_cpp_header_file = base_dir / "src" / "generated" / "GreatHollowBindingRow.h"
-csvutil.generate_csv(great_hollow_binding_header, great_hollow_bindings, great_hollow_binding_csv_file)
-csvutil.generate_cpp_header(great_hollow_binding_header, great_hollow_binding_cpp_header_file, "GreatHollowBindingRow")
+csvutil.generate_csv(great_hollow_binding_header,
+    great_hollow_bindings,
+    paths.get_output("manual_great_hollow_binding_template.csv"))
+csvutil.generate_cpp_header(great_hollow_binding_header,
+    paths.get_cpp_header("GreatHollowBindingRow"),
+    "GreatHollowBindingRow")
