@@ -90,6 +90,39 @@ EventDefinitions = {
     7725 : lambda modifier, modifierSet: "Day 2 " + InvasionEvents[modifierSet],
 }
 
+InvasionEventsCHS = {
+    510 : "卡莉果冰风暴",
+    520 : "格拉迪乌斯入侵",
+    540 : "玛利斯气泡",
+    550 : "格诺斯塔瘟疫",
+    560 : "天秤恶魔诅咒",
+
+    3040 : "蒙格特入侵",
+    3050 : "玛利斯气泡",
+    3060 : "格诺斯塔瘟疫",
+    3070 : "天秤恶魔诅咒",
+    3110 : "卡莉果冰风暴",
+    3120 : "格拉迪乌斯入侵",
+    3130 : "平衡者突袭",
+}
+
+EventDefinitionsCHS = {
+    7704 : "第一天黑夜势力",
+    7724 : "第二天黑夜势力",
+    7701 : "第一天陨石坠地",
+    7721 : "第二天陨石坠地",
+    7702 : "漫步陵庙",
+    7722 : "漫步陵庙",
+    7700 : "第一天额外夜晚Boss",
+    7720 : "第二天额外夜晚Boss",
+    7707 : "癫火塔",
+    7727 : "癫火塔",
+    7706 : "远古魔法塔",
+    7726 : "远古魔法塔",
+    7705 : lambda modifier, modifierSet: "第一天 " + InvasionEventsCHS[modifierSet],
+    7725 : lambda modifier, modifierSet: "第二天 " + InvasionEventsCHS[modifierSet],
+}
+
 class PathDefinitions:
     def __init__(self, script_path: str):
         self.project_dir = Path(script_path).resolve().parent.parent 

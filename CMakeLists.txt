@@ -59,6 +59,17 @@ if(EMSCRIPTEN)
 	)
 	target_compile_definitions(NightreignApp PRIVATE 
 	)
+	add_custom_command(TARGET NightreignApp POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E copy_directory
+			${CMAKE_SOURCE_DIR}/nightreign
+			${CMAKE_SOURCE_DIR}/deploy/nightreign
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different
+			$<TARGET_FILE:NightreignApp>
+			${CMAKE_SOURCE_DIR}/deploy/nightreign/
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different
+			$<TARGET_FILE_DIR:NightreignApp>/$<TARGET_FILE_BASE_NAME:NightreignApp>.wasm
+			${CMAKE_SOURCE_DIR}/deploy/nightreign/
+	)
 elseif(MSVC)
 	add_subdirectory(3rdparty/glad)
 	add_subdirectory(3rdparty/lua)

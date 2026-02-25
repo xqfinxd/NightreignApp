@@ -171,6 +171,7 @@ public:
 private:
 	void clearMapTiles();
     bool isOverlayPoint(const MapPoint& point) const;
+	void updatePanelInfo(const PatternInfo& point);
 
 private:
 	PROPERTY float m_minZoom = 0.5f;

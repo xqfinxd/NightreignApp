@@ -1082,6 +1082,42 @@ bool Scene::isOverlayPoint(const MapPoint& point) const
     return point.height < option->height;
 }
 
+void Scene::updatePanelInfo(const PatternInfo &patternInfo)
+{
+	auto& gameData = GameData::getRef();
+	// Update info panel with map details
+	std::string htmlContent = "<h3>地图信息</h3>";
+	if (auto nightlordInfo = gameData.getNightlord(patternInfo.boss))
+	{
+		htmlContent += "<p><strong>夜王：</strong>" + nightlordInfo->name + "</p>";
+	}
+	else
+	{
+		htmlContent += "<p><strong>未定义夜王：</strong>" + std::to_string(patternInfo.boss) + "</p>";
+	}
+	auto appendBossInfo = [&](const std::string& title, int bossId) {
+		if (bossId <= 0) return;
+		if (auto bossInfo = gameData.getVariationById(bossId))
+		{
+			htmlContent += "<p><strong>" + title + "：</strong>" + bossInfo->getText() + "</p>";
+		}
+		else
+		{
+			htmlContent += "<p><strong>未定义" + title + "：</strong>" + std::to_string(bossId) + "</p>";
+		}
+	};
+	appendBossInfo("第一夜BOSS", patternInfo.bossId1);
+	appendBossInfo("第二夜BOSS", patternInfo.bossId2);
+	appendBossInfo("第一夜额外BOSS", patternInfo.extraBossId1);
+	appendBossInfo("第二夜额外BOSS", patternInfo.extraBossId2);
+	
+	if (auto eventInfo = gameData.getEvent(patternInfo.id))
+	{
+		htmlContent += "<p><strong>事件：</strong>" + eventInfo->event + "</p>";
+	}
+	setInfoPanelContent(htmlContent);
+}
+
 VariationInfo Scene::getFilterSpot() const
 {
 	VariationInfo temp{};
@@ -1366,17 +1402,7 @@ void Scene::loadSpotsByPattern(int patternId)
     // Reset overlay state when loading a new pattern
 	updateB1Overlay();
 
-	// Update info panel with map details
-	std::string htmlContent = "<h3>地图信息</h3>";
-	htmlContent += "<p><strong>夜王：</strong>" + std::to_string(patternInfo->boss) + "</p>";
-	htmlContent += "<p><strong>第一夜BOSS：</strong>" + std::to_string(patternInfo->bossId1) + "</p>";
-	htmlContent += "<p><strong>第二夜BOSS：</strong>" + std::to_string(patternInfo->bossId2) + "</p>";
-	if (patternInfo->extraBossId1 > 0)
-		htmlContent += "<p><strong>第一夜额外BOSS：</strong>" + std::to_string(patternInfo->extraBossId1) + "</p>";
-	if (patternInfo->extraBossId2 > 0)
-		htmlContent += "<p><strong>第二夜额外BOSS：</strong>" + std::to_string(patternInfo->extraBossId2) + "</p>";
-	// TODO: Events, Castle, Great Hollow, etc.
-	setInfoPanelContent(htmlContent);
+	updatePanelInfo(*patternInfo);
 }
 
 void Scene::loadSpotsByMap(int map)

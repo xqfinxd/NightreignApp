@@ -19,6 +19,7 @@
 #include "generated/ConstantRow.h"
 #include "generated/RottedPowerRow.h"
 #include "generated/GreatHollowBindingRow.h"
+#include "generated/EventRow.h"
 
 const std::vector<int> GameData::s_emptyIntVector;
 const std::string GameData::s_emptyString = "Unknown";
@@ -124,6 +125,9 @@ bool GameData::loadFromCSV(const std::string& dataPath)
         return false;
 
     if (!loadGreatHollowBindings(dataPath + "/manual_great_hollow_binding_spots.csv"))
+        return false;
+
+    if (!loadEventsEx(dataPath + "/manual_events.csv"))
         return false;
 
     return true;
@@ -501,6 +505,16 @@ const VariationInfo *GameData::getVariation(int patternId, int attachId) const
     return nullptr;
 }
 
+const VariationInfo *GameData::getVariationById(int variationId) const
+{
+    for (const auto& pair : m_variationDB)
+    {
+        if (pair.second.variationId == variationId)
+            return &pair.second;
+    }
+    return nullptr;
+}
+
 std::vector<const VariationDist*> GameData::listDistribution(int patternId) const
 {
     std::vector<const VariationDist*> result;
@@ -647,4 +661,29 @@ const SpotOption* GameData::getSpotOption(int attachId) const
         return &it->second;
     }
     return nullptr;
+}
+
+bool GameData::loadEventsEx(const std::string& filePath)
+{
+    auto rowdata = readCSVFile<EventRow>(filePath);
+    for (size_t i = 0; i < rowdata.size(); ++i)
+    {
+        EventInfo info;
+        info.id    = rowdata[i].id;
+        info.event = rowdata[i].event;
+        m_eventDB[info.id] = info;
+    }
+    return true;
+}
+
+const EventInfo* GameData::getEvent(int patternId) const
+{
+    auto it = m_eventDB.find(patternId);
+    return it != m_eventDB.end() ? &it->second : nullptr;
+}
+
+const NightlordInfo *GameData::getNightlord(int nightlordId) const
+{
+    auto it = m_nightlordDB.find(nightlordId);
+    return it != m_nightlordDB.end() ? &it->second : nullptr;
 }

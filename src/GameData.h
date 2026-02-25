@@ -144,6 +144,11 @@ struct VariationDist {
     int patternId = -1;
 };
 
+struct EventInfo {
+    int id = -1;      // patternId
+    std::string event;
+};
+
 // Game data manager - loads and manages all CSV data
 class GameData {
 public:
@@ -164,10 +169,13 @@ public:
     const StarterInfo* getStarter(int starterId) const;
     const VariationInfo* getVariation(int varKey) const;
     const VariationInfo* getVariation(int patternId, int attachId) const;
+    const VariationInfo* getVariationById(int variationId) const;
     const SpotOption* getSpotOption(int attachId) const;
     const SpotLabelOption* getAttachOption(int attachId) const;
     const GridOption* getGridOption(int map, int x, int y) const;
     const RottedPowerInfo* getRottedPower(int patternId) const;
+    const EventInfo* getEvent(int patternId) const;
+    const NightlordInfo* getNightlord(int nightlordId) const;
 
     std::vector<int> getSpotsByMap(int map, bool legacy = true, bool dlc = true) const;
     std::vector<int> getStarterByMap(int map) const;
@@ -207,6 +215,7 @@ private:
     bool loadConstant(const std::string& filePath);
     bool loadRottedPowers(const std::string& filePath);
     bool loadGreatHollowBindings(const std::string& filePath);
+    bool loadEventsEx(const std::string& filePath);
 
     std::map<int, NightlordInfo> m_nightlordDB;
 	std::map<int, MapInfo> m_mapDB;
@@ -223,7 +232,8 @@ private:
     std::vector<ConstantInfo> m_constantDB;
     std::map<int, RottedPowerInfo> m_rottedPowers;
     std::vector<GreatHollowBindingInfo> m_greatHollowBindings;
-    
+    std::map<int, EventInfo> m_eventDB;
+
     static const std::vector<int> s_emptyIntVector;
     static const std::string s_emptyString;
     static GameData* s_instance;

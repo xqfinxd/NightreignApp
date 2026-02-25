@@ -13,6 +13,7 @@ python -B .\generate_pattern_list.py
 python -B .\generate_starter_list.py
 python -B .\generate_spot_list.py
 python -B .\generate_manual.py
+python -B .\generate_events.py
 python -B .\generate_chinese_chars.py
 
 pause

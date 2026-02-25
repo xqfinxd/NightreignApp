@@ -5,3 +5,5 @@ build-wasm/
 .vs
 deploy/nightreign/NightreignApp*
 deploy/nightreign/assets/
+deploy/nightreign/atlas.csv
+deploy/nightreign/manifest.csv
