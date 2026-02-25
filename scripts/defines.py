@@ -128,9 +128,10 @@ class PathDefinitions:
         self.project_dir = Path(script_path).resolve().parent.parent 
         self.asset_root_dir= self.project_dir / "nightreign"
         self.assets_dir= self.asset_root_dir / "assets"
-        self.metadata_dir = self.assets_dir / "metadata"
+        self.metadata_dir = self.project_dir / "scripts" /"metadata"
         self.datas_dir = self.assets_dir / "datas"
         self.textures_dir = self.assets_dir / "textures"
+        self.fonts_dir = self.assets_dir / "fonts"
         self.src_dir = self.project_dir / "src"
         self.cpp_header_dir= self.src_dir / "generated"
 

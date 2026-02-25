@@ -15,5 +15,6 @@ python -B .\generate_spot_list.py
 python -B .\generate_manual.py
 python -B .\generate_events.py
 python -B .\generate_chinese_chars.py
+python -B .\generate_font_subset.py
 
 pause
