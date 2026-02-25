@@ -26,8 +26,13 @@ struct MeshComponent
 
 struct TextComponent
 {
+    enum class Direction: int {
+        Bottom = 0,
+        Center = 1,
+        Top = 2
+    };
     std::string text;
-    int direction = 0;
+    Direction direction = Direction::Bottom;
     glm::vec2 offset{ 0,0 };
     bool visible = true;
 };

@@ -268,26 +268,44 @@ void Renderer::renderText(const Camera& camera,
 		float textHeight = textSize.y * textScale;
 		
 		glm::vec3 textWorldPos = transform->position;
-		if (textComp->direction == 0) // bottom
-			textWorldPos.y -= scale.y * 0.5f + textHeight * 0.1f;			
+		auto direction = textComp->direction;
+		const float kLineSpacingY = 0.1f;
+		const float kTextDepth = textWorldPos.z - 0.001f;
+		const glm::vec2 kZeroUV(0.0f, 0.0f);
+		const float kBgPadding = textHeight * 0.1f;
+		if (auto meshComp = o->getComponent<MeshComponent>())
+		{
+			// no icon but text, fall back to center
+			direction = meshComp->visible ? textComp->direction : TextComponent::Direction::Center;
+		}
+		switch (direction)
+		{
+		case TextComponent::Direction::Bottom:
+			textWorldPos.y -= scale.y * 0.5f + textHeight * (0.5f + kLineSpacingY);
+			break;
+		case TextComponent::Direction::Top:
+			textWorldPos.y += scale.y * 0.5f + textHeight * (0.5f + kLineSpacingY);
+			break;
+		default:
+			break;
+		}
 		textWorldPos += glm::vec3(textComp->offset, 0.0f);
 		
 		// Draw background rectangle first (if background color has alpha > 0)
 		if (bgColor.a > 0.0f)
 		{
 			// Add padding around text
-			float padding = textHeight * 0.2f;
-			float bgX0 = textWorldPos.x - textWidth * 0.5f - padding;
-			float bgX1 = textWorldPos.x + textWidth * 0.5f + padding;
-			float bgY0 = textWorldPos.y - textHeight - padding;
-			float bgY1 = textWorldPos.y + padding;
+			float bgX0 = textWorldPos.x - textWidth * 0.5f - kBgPadding;
+			float bgX1 = textWorldPos.x + textWidth * 0.5f + kBgPadding;
+			float bgY0 = textWorldPos.y - textHeight * 0.5f - kBgPadding;
+			float bgY1 = textWorldPos.y + textHeight * 0.5f + kBgPadding;
 			
 			// Create background quad with no texture (use dummy UV coords)
 			std::vector<Vertex> bgVertices;
-			bgVertices.emplace_back(glm::vec3(bgX0, bgY0, textWorldPos.z - 0.001f), glm::vec2(0.0f, 0.0f), bgColor);
-			bgVertices.emplace_back(glm::vec3(bgX1, bgY0, textWorldPos.z - 0.001f), glm::vec2(0.0f, 0.0f), bgColor);
-			bgVertices.emplace_back(glm::vec3(bgX1, bgY1, textWorldPos.z - 0.001f), glm::vec2(0.0f, 0.0f), bgColor);
-			bgVertices.emplace_back(glm::vec3(bgX0, bgY1, textWorldPos.z - 0.001f), glm::vec2(0.0f, 0.0f), bgColor);
+			bgVertices.emplace_back(glm::vec3(bgX0, bgY0, kTextDepth-0.001f), kZeroUV, bgColor);
+			bgVertices.emplace_back(glm::vec3(bgX1, bgY0, kTextDepth-0.001f), kZeroUV, bgColor);
+			bgVertices.emplace_back(glm::vec3(bgX1, bgY1, kTextDepth-0.001f), kZeroUV, bgColor);
+			bgVertices.emplace_back(glm::vec3(bgX0, bgY1, kTextDepth-0.001f), kZeroUV, bgColor);
 			
 			std::vector<uint32_t> bgIndices = {0, 1, 2, 2, 3, 0};
 			
@@ -312,8 +330,8 @@ void Renderer::renderText(const Camera& camera,
 		}
 		
 		// Render each character
-		float cursorX = textWorldPos.x - textWidth * 0.5f; // Center horizontally
-		float cursorY = textWorldPos.y;
+		float cursorX = textWorldPos.x - textWidth * 0.5f;
+		float cursorY = textWorldPos.y + textHeight * 0.5f;
 		
 		std::vector<Vertex> vertices;
 		std::vector<uint32_t> indices;
@@ -353,13 +371,13 @@ void Renderer::renderText(const Camera& camera,
 			float v1 = glyph->V1;
 			
 			// Bottom-left
-			vertices.emplace_back(glm::vec3(x0, y0, textWorldPos.z), glm::vec2(u0, v0), fgColor);
+			vertices.emplace_back(glm::vec3(x0, y0, kTextDepth), glm::vec2(u0, v0), fgColor);
 			// Bottom-right
-			vertices.emplace_back(glm::vec3(x1, y0, textWorldPos.z), glm::vec2(u1, v0), fgColor);
+			vertices.emplace_back(glm::vec3(x1, y0, kTextDepth), glm::vec2(u1, v0), fgColor);
 			// Top-right
-			vertices.emplace_back(glm::vec3(x1, y1, textWorldPos.z), glm::vec2(u1, v1), fgColor);
+			vertices.emplace_back(glm::vec3(x1, y1, kTextDepth), glm::vec2(u1, v1), fgColor);
 			// Top-left
-			vertices.emplace_back(glm::vec3(x0, y1, textWorldPos.z), glm::vec2(u0, v1), fgColor);
+			vertices.emplace_back(glm::vec3(x0, y1, kTextDepth), glm::vec2(u0, v1), fgColor);
 			
 			// Add indices for two triangles
 			indices.push_back(indexOffset + 0);

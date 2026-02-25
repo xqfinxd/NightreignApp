@@ -1240,7 +1240,7 @@ Entity& Scene::addBaseSpot(const MapPoint &gridPos, int attachId, const Variatio
 	if (auto option = GameData::getRef().getAttachOption(attachId))
 	{
 		textComp->offset = option->offset;
-		textComp->direction = option->direction;
+		textComp->direction = static_cast<TextComponent::Direction>(option->direction);
 
 		meshComp->visible = meshComp->visible && option->showIcon;
 	}
