@@ -134,29 +134,20 @@
 
                 const path = parts[0].trim();
                 const priority = parseInt(parts[1].trim());
-                const info = parts[2].trim();
+                const crc = parts[2].trim();
 
                 // 只加载 priority >= 1 的文件
                 if (priority >= 1) {
                     this.state.essentialFiles.push({
                         path: path,
                         priority: priority,
-                        info: info,
-                        size: this.parseFileSize(info)
+                        crc: crc,
                     });
                 }
             }
 
             this.state.totalCount = this.state.essentialFiles.length;
             console.log(`[Bootstrap] Found ${this.state.totalCount} essential files`);
-        },
-
-        /**
-         * 解析文件大小（从 info 字段）
-         */
-        parseFileSize: function(info) {
-            const size = parseInt(info);
-            return isNaN(size) ? 0 : size;
         },
 
         /**
@@ -190,7 +181,31 @@
         },
 
         /**
-         * 阶段 3: 检查文件缓存状态
+         * 计算 CRC32（与 Python zlib.crc32 一致，返回 8 位小写十六进制字符串）
+         */
+        computeCRC32: function(data) {
+            // 预计算查找表
+            if (!this._crc32Table) {
+                const table = new Uint32Array(256);
+                for (let i = 0; i < 256; i++) {
+                    let c = i;
+                    for (let j = 0; j < 8; j++) {
+                        c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+                    }
+                    table[i] = c;
+                }
+                this._crc32Table = table;
+            }
+            const table = this._crc32Table;
+            let crc = 0xFFFFFFFF;
+            for (let i = 0; i < data.length; i++) {
+                crc = table[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8);
+            }
+            return ((crc ^ 0xFFFFFFFF) >>> 0).toString(16).padStart(8, '0');
+        },
+
+        /**
+         * 阶段 3: 检查文件缓存状态（含 CRC 校验）
          */
         checkCache: function() {
             console.log('[Bootstrap] Phase 3: Checking cache...');
@@ -204,7 +219,24 @@
                 try {
                     const stat = FS.analyzePath(fullPath);
                     if (stat.exists) {
-                        console.log(`[Bootstrap] Cached: ${file.path}`);
+                        // 文件存在时校验 CRC
+                        if (file.crc) {
+                            try {
+                                const existingData = FS.readFile(fullPath);
+                                const actualCrc = this.computeCRC32(existingData);
+                                if (actualCrc === file.crc) {
+                                    console.log(`[Bootstrap] Cached (CRC OK): ${file.path}`);
+                                } else {
+                                    console.warn(`[Bootstrap] CRC mismatch: ${file.path} (expected=${file.crc}, actual=${actualCrc}), re-downloading`);
+                                    this.state.downloadQueue.push(file);
+                                }
+                            } catch (e) {
+                                console.warn(`[Bootstrap] CRC check failed for ${file.path}:`, e);
+                                this.state.downloadQueue.push(file);
+                            }
+                        } else {
+                            console.log(`[Bootstrap] Cached: ${file.path}`);
+                        }
                     } else {
                         console.log(`[Bootstrap] Missing: ${file.path}`);
                         this.state.downloadQueue.push(file);
