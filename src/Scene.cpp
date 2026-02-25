@@ -1361,10 +1361,22 @@ void Scene::loadSpotsByPattern(int patternId)
 		addBaseSpot(spot->point, dist->attachId, *varInfo);
 	}
 	
+	auto appendBossInfo = [&](std::string& str, int bossId) {
+		if (bossId <= 0) return;
+		if (auto bossInfo = gameData.getVariationById(bossId))
+		{
+			str.append("\n");
+			str.append(bossInfo->getText());
+		}
+	};
     // Add play area spots
 	auto day1Spot = getPlayArea(1);
+	appendBossInfo(day1Spot.label, patternInfo->bossId1);
+	appendBossInfo(day1Spot.label, patternInfo->extraBossId1);
 	addBaseSpot(patternInfo->playArea1, 1, day1Spot);
 	auto day2Spot = getPlayArea(2);
+	appendBossInfo(day2Spot.label, patternInfo->bossId2);
+	appendBossInfo(day2Spot.label, patternInfo->extraBossId2);
 	addBaseSpot(patternInfo->playArea2, 2, day2Spot);
 
     // Add constant spots for this pattern

@@ -19,6 +19,7 @@
 #include <imgui_internal.h>
 #include <algorithm>
 #include <vector>
+#include <sstream>
 
 Renderer::Renderer(Device* device, ResourceManager* resmgr)
 	: m_device(device), m_resource_mgr(resmgr)
@@ -237,8 +238,7 @@ void Renderer::renderText(const Camera& camera,
 		return;
 	
 	shader->use();
-	float textScale = MapSpot::textScale;
-	
+
 	// Set up OpenGL state for text rendering
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -246,6 +246,12 @@ void Renderer::renderText(const Camera& camera,
 	glBindTexture(GL_TEXTURE_2D, (GLuint)(intptr_t)atlas->TexID);
 	shader->setInt("fontTexture", 0);
 	
+	const glm::vec2 kZeroUV(0.0f, 0.0f);
+	const float kTextScale = MapSpot::textScale;
+	const float kFontHeight = font->FontSize * kTextScale;
+	const float kBgPadding = kFontHeight * 0.05f;
+	const float kLineSpacingY = kFontHeight * -0.05f;
+
 	// Get view-projection matrix
 	glm::mat4 viewProj = camera.getProjectionMatrix() * camera.getViewMatrix();
 
@@ -256,35 +262,44 @@ void Renderer::renderText(const Camera& camera,
 		auto* transform = o->getComponent<Transform>();
 		if (!o->getEnabled() || !textComp || !textComp->visible || textComp->text.empty())
 			continue;
+		
+		std::stringstream ss(textComp->text);
+		std::string line;
+		std::vector<std::string> lines;
+		while (std::getline(ss, line)) {
+			lines.push_back(line);
+		}
+		if (lines.empty()) continue;
+
+		glm::vec3 textWorldPos = transform->position;
+		float depth = textWorldPos.z;
+
+		float textHeight = 0.0f;
+		float maxLineWidth = 0.0f;
+		std::vector<float> lineWidths;
+		for (const auto& l : lines) {
+			ImVec2 size = font->CalcTextSizeA(font->FontSize, FLT_MAX, 0.0f, l.c_str());
+			maxLineWidth = std::max(maxLineWidth, size.x * kTextScale);
+			textHeight += size.y * kTextScale;
+			lineWidths.push_back(size.x * kTextScale);
+		}
+		textHeight += (lines.size() - 1) * kLineSpacingY;
+
+		if (maxLineWidth == 0.0f || textHeight == 0.0f) continue;
+		
+		auto direction = textComp->direction;
+		if (auto meshComp = o->getComponent<MeshComponent>())
+			direction = meshComp->visible ? textComp->direction : TextComponent::Direction::Center;
 		glm::vec3 scale = transform->scale;
 		if (auto* interactable = o->getComponent<Interactable>())
 			scale *= interactable->scaleMultipler();
-
-		// Calculate text size
-		ImVec2 textSize = font->CalcTextSizeA(font->FontSize, FLT_MAX, 0.0f, textComp->text.c_str());
-
-		// Calculate centered offset
-		float textWidth = textSize.x * textScale;
-		float textHeight = textSize.y * textScale;
-		
-		glm::vec3 textWorldPos = transform->position;
-		auto direction = textComp->direction;
-		const float kLineSpacingY = 0.1f;
-		const float kTextDepth = textWorldPos.z - 0.001f;
-		const glm::vec2 kZeroUV(0.0f, 0.0f);
-		const float kBgPadding = textHeight * 0.1f;
-		if (auto meshComp = o->getComponent<MeshComponent>())
-		{
-			// no icon but text, fall back to center
-			direction = meshComp->visible ? textComp->direction : TextComponent::Direction::Center;
-		}
 		switch (direction)
 		{
 		case TextComponent::Direction::Bottom:
-			textWorldPos.y -= scale.y * 0.5f + textHeight * (0.5f + kLineSpacingY);
+			textWorldPos.y -= scale.y * 0.5f + textHeight * 0.5f + kLineSpacingY;
 			break;
 		case TextComponent::Direction::Top:
-			textWorldPos.y += scale.y * 0.5f + textHeight * (0.5f + kLineSpacingY);
+			textWorldPos.y += scale.y * 0.5f + textHeight * 0.5f + kLineSpacingY;
 			break;
 		default:
 			break;
@@ -295,17 +310,17 @@ void Renderer::renderText(const Camera& camera,
 		if (bgColor.a > 0.0f)
 		{
 			// Add padding around text
-			float bgX0 = textWorldPos.x - textWidth * 0.5f - kBgPadding;
-			float bgX1 = textWorldPos.x + textWidth * 0.5f + kBgPadding;
+			float bgX0 = textWorldPos.x - maxLineWidth * 0.5f - kBgPadding;
+			float bgX1 = textWorldPos.x + maxLineWidth * 0.5f + kBgPadding;
 			float bgY0 = textWorldPos.y - textHeight * 0.5f - kBgPadding;
 			float bgY1 = textWorldPos.y + textHeight * 0.5f + kBgPadding;
 			
 			// Create background quad with no texture (use dummy UV coords)
 			std::vector<Vertex> bgVertices;
-			bgVertices.emplace_back(glm::vec3(bgX0, bgY0, kTextDepth-0.001f), kZeroUV, bgColor);
-			bgVertices.emplace_back(glm::vec3(bgX1, bgY0, kTextDepth-0.001f), kZeroUV, bgColor);
-			bgVertices.emplace_back(glm::vec3(bgX1, bgY1, kTextDepth-0.001f), kZeroUV, bgColor);
-			bgVertices.emplace_back(glm::vec3(bgX0, bgY1, kTextDepth-0.001f), kZeroUV, bgColor);
+			bgVertices.emplace_back(glm::vec3(bgX0, bgY0, depth - 0.001f), kZeroUV, bgColor);
+			bgVertices.emplace_back(glm::vec3(bgX1, bgY0, depth - 0.001f), kZeroUV, bgColor);
+			bgVertices.emplace_back(glm::vec3(bgX1, bgY1, depth - 0.001f), kZeroUV, bgColor);
+			bgVertices.emplace_back(glm::vec3(bgX0, bgY1, depth - 0.001f), kZeroUV, bgColor);
 			
 			std::vector<uint32_t> bgIndices = {0, 1, 2, 2, 3, 0};
 			
@@ -319,7 +334,8 @@ void Renderer::renderText(const Camera& camera,
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bgEbo);
 			glBufferData(GL_ELEMENT_ARRAY_BUFFER, bgIndices.size() * sizeof(uint32_t), bgIndices.data(), GL_DYNAMIC_DRAW);
 			
-			shader->setVec4("backgroundColor", glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+			glm::vec4 mask(1.0f, 1.0f, 1.0f, 1.0f); // use vertex color
+			shader->setVec4("backgroundColor", mask);
 			shader->setMat4("mvp", viewProj);
 			
 			setupVertexAttributes();
@@ -329,68 +345,69 @@ void Renderer::renderText(const Camera& camera,
 			glDeleteBuffers(1, &bgEbo);
 		}
 		
-		// Render each character
-		float cursorX = textWorldPos.x - textWidth * 0.5f;
-		float cursorY = textWorldPos.y + textHeight * 0.5f;
-		
 		std::vector<Vertex> vertices;
 		std::vector<uint32_t> indices;
 		uint32_t indexOffset = 0;
-		
-		// Reset shader colors for text rendering
+		float cursorY = textWorldPos.y + textHeight * 0.5f;
 
-		// Properly decode UTF-8 characters
-		const char* text_begin = textComp->text.c_str();
-		const char* text_end = text_begin + textComp->text.length();
-		
-		for (const char* s = text_begin; s < text_end; )
-		{
-			unsigned int c = 0;
-			int bytes_count = ImTextCharFromUtf8(&c, s, text_end);
-			if (bytes_count <= 0)
-				break;
-			s += bytes_count;
+		// Render each character
+		for (size_t i = 0; i < lines.size(); i++) {
+			float cursorX = textWorldPos.x - lineWidths[i] * 0.5f;
 			
-			if (c < 32)
-				continue;
+			// Properly decode UTF-8 characters
+			const char* text_begin = lines[i].c_str();
+			const char* text_end = text_begin + lines[i].length();
 			
-			const ImFontGlyph* glyph = font->FindGlyph((ImWchar)c);
-			if (!glyph)
-				continue;
-			
-			// Calculate glyph quad
-			float x0 = cursorX + glyph->X0 * textScale;
-			float y0 = cursorY - glyph->Y0 * textScale;
-			float x1 = cursorX + glyph->X1 * textScale;
-			float y1 = cursorY - glyph->Y1 * textScale;
-			
-			// UV coordinates from font atlas
-			float u0 = glyph->U0;
-			float v0 = glyph->V0;
-			float u1 = glyph->U1;
-			float v1 = glyph->V1;
-			
-			// Bottom-left
-			vertices.emplace_back(glm::vec3(x0, y0, kTextDepth), glm::vec2(u0, v0), fgColor);
-			// Bottom-right
-			vertices.emplace_back(glm::vec3(x1, y0, kTextDepth), glm::vec2(u1, v0), fgColor);
-			// Top-right
-			vertices.emplace_back(glm::vec3(x1, y1, kTextDepth), glm::vec2(u1, v1), fgColor);
-			// Top-left
-			vertices.emplace_back(glm::vec3(x0, y1, kTextDepth), glm::vec2(u0, v1), fgColor);
-			
-			// Add indices for two triangles
-			indices.push_back(indexOffset + 0);
-			indices.push_back(indexOffset + 1);
-			indices.push_back(indexOffset + 2);
-			indices.push_back(indexOffset + 2);
-			indices.push_back(indexOffset + 3);
-			indices.push_back(indexOffset + 0);
-			
-			indexOffset += 4;
-			
-			// Advance cursor
-			cursorX += glyph->AdvanceX * textScale;
+			for (const char* s = text_begin; s < text_end; )
+			{
+				unsigned int c = 0;
+				int bytes_count = ImTextCharFromUtf8(&c, s, text_end);
+				if (bytes_count <= 0)
+					break;
+				s += bytes_count;
+				
+				if (c < 32)
+					continue;
+				
+				const ImFontGlyph* glyph = font->FindGlyph((ImWchar)c);
+				if (!glyph)
+					continue;
+				
+				// Calculate glyph quad
+				float x0 = cursorX + glyph->X0 * kTextScale;
+				float y0 = cursorY - glyph->Y0 * kTextScale;
+				float x1 = cursorX + glyph->X1 * kTextScale;
+				float y1 = cursorY - glyph->Y1 * kTextScale;
+				
+				// UV coordinates from font atlas
+				float u0 = glyph->U0;
+				float v0 = glyph->V0;
+				float u1 = glyph->U1;
+				float v1 = glyph->V1;
+				
+				// Bottom-left
+				vertices.emplace_back(glm::vec3(x0, y0, depth), glm::vec2(u0, v0), fgColor);
+				// Bottom-right
+				vertices.emplace_back(glm::vec3(x1, y0, depth), glm::vec2(u1, v0), fgColor);
+				// Top-right
+				vertices.emplace_back(glm::vec3(x1, y1, depth), glm::vec2(u1, v1), fgColor);
+				// Top-left
+				vertices.emplace_back(glm::vec3(x0, y1, depth), glm::vec2(u0, v1), fgColor);
+				
+				// Add indices for two triangles
+				indices.push_back(indexOffset + 0);
+				indices.push_back(indexOffset + 1);
+				indices.push_back(indexOffset + 2);
+				indices.push_back(indexOffset + 2);
+				indices.push_back(indexOffset + 3);
+				indices.push_back(indexOffset + 0);
+				
+				indexOffset += 4;
+				
+				// Advance cursor
+				cursorX += glyph->AdvanceX * kTextScale;
+			}
+			cursorY -= kFontHeight + kLineSpacingY;
 		}
 		
 		if (vertices.empty())
@@ -406,8 +423,8 @@ void Renderer::renderText(const Camera& camera,
 		
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(uint32_t), indices.data(), GL_DYNAMIC_DRAW);
-		
-		shader->setVec4("backgroundColor", glm::vec4(0.0f, 0.0f, 0.0f, 0.0f));
+		glm::vec4 mask(0.0f, 0.0f, 0.0f, 0.0f); // use texture color
+		shader->setVec4("backgroundColor", mask);
 		// Set MVP matrix
 		shader->setMat4("mvp", viewProj);
 		
