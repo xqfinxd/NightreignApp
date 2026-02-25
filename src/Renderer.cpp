@@ -217,7 +217,9 @@ void Renderer::applyBlendFunc(BlendType type)
 	}
 }
 
-void Renderer::renderText(const Camera& camera, const std::vector<Entity*>& gameObjects, glm::vec4 bgColor, glm::vec4 fgColor)
+void Renderer::renderText(const Camera& camera,
+	const std::vector<Entity*>& gameObjects,
+	glm::vec4 bgColor, glm::vec4 fgColor)
 {
 	// Get ImGui font atlas
 	ImGuiIO& io = ImGui::GetIO();
@@ -236,12 +238,6 @@ void Renderer::renderText(const Camera& camera, const std::vector<Entity*>& game
 	
 	shader->use();
 	float textScale = MapSpot::textScale;
-	
-	// Set custom foreground and background colors
-	glm::vec4 foregroundColor = fgColor;
-	glm::vec4 backgroundColor = bgColor;
-	shader->setVec4("foregroundColor", foregroundColor);
-	shader->setVec4("backgroundColor", backgroundColor);
 	
 	// Set up OpenGL state for text rendering
 	glEnable(GL_BLEND);
@@ -277,7 +273,7 @@ void Renderer::renderText(const Camera& camera, const std::vector<Entity*>& game
 		textWorldPos += glm::vec3(textComp->offset, 0.0f);
 		
 		// Draw background rectangle first (if background color has alpha > 0)
-		if (backgroundColor.a > 0.0f)
+		if (bgColor.a > 0.0f)
 		{
 			// Add padding around text
 			float padding = textHeight * 0.2f;
@@ -288,10 +284,10 @@ void Renderer::renderText(const Camera& camera, const std::vector<Entity*>& game
 			
 			// Create background quad with no texture (use dummy UV coords)
 			std::vector<Vertex> bgVertices;
-			bgVertices.emplace_back(glm::vec3(bgX0, bgY0, textWorldPos.z - 0.001f), glm::vec2(0.0f, 0.0f), backgroundColor);
-			bgVertices.emplace_back(glm::vec3(bgX1, bgY0, textWorldPos.z - 0.001f), glm::vec2(0.0f, 0.0f), backgroundColor);
-			bgVertices.emplace_back(glm::vec3(bgX1, bgY1, textWorldPos.z - 0.001f), glm::vec2(0.0f, 0.0f), backgroundColor);
-			bgVertices.emplace_back(glm::vec3(bgX0, bgY1, textWorldPos.z - 0.001f), glm::vec2(0.0f, 0.0f), backgroundColor);
+			bgVertices.emplace_back(glm::vec3(bgX0, bgY0, textWorldPos.z - 0.001f), glm::vec2(0.0f, 0.0f), bgColor);
+			bgVertices.emplace_back(glm::vec3(bgX1, bgY0, textWorldPos.z - 0.001f), glm::vec2(0.0f, 0.0f), bgColor);
+			bgVertices.emplace_back(glm::vec3(bgX1, bgY1, textWorldPos.z - 0.001f), glm::vec2(0.0f, 0.0f), bgColor);
+			bgVertices.emplace_back(glm::vec3(bgX0, bgY1, textWorldPos.z - 0.001f), glm::vec2(0.0f, 0.0f), bgColor);
 			
 			std::vector<uint32_t> bgIndices = {0, 1, 2, 2, 3, 0};
 			
@@ -305,9 +301,8 @@ void Renderer::renderText(const Camera& camera, const std::vector<Entity*>& game
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bgEbo);
 			glBufferData(GL_ELEMENT_ARRAY_BUFFER, bgIndices.size() * sizeof(uint32_t), bgIndices.data(), GL_DYNAMIC_DRAW);
 			
+			shader->setVec4("backgroundColor", glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
 			shader->setMat4("mvp", viewProj);
-			shader->setVec4("foregroundColor", backgroundColor);
-			shader->setVec4("backgroundColor", backgroundColor);
 			
 			setupVertexAttributes();
 			glDrawElements(GL_TRIANGLES, bgIndices.size(), GL_UNSIGNED_INT, 0);
@@ -325,8 +320,6 @@ void Renderer::renderText(const Camera& camera, const std::vector<Entity*>& game
 		uint32_t indexOffset = 0;
 		
 		// Reset shader colors for text rendering
-		shader->setVec4("foregroundColor", foregroundColor);
-		shader->setVec4("backgroundColor", glm::vec4(0.0f, 0.0f, 0.0f, 0.0f));
 
 		// Properly decode UTF-8 characters
 		const char* text_begin = textComp->text.c_str();
@@ -359,16 +352,14 @@ void Renderer::renderText(const Camera& camera, const std::vector<Entity*>& game
 			float u1 = glyph->U1;
 			float v1 = glyph->V1;
 			
-			// Add vertices (position + texcoord + dummy color)
-			glm::vec4 whiteColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
 			// Bottom-left
-			vertices.emplace_back(glm::vec3(x0, y0, textWorldPos.z), glm::vec2(u0, v0), whiteColor);
+			vertices.emplace_back(glm::vec3(x0, y0, textWorldPos.z), glm::vec2(u0, v0), fgColor);
 			// Bottom-right
-			vertices.emplace_back(glm::vec3(x1, y0, textWorldPos.z), glm::vec2(u1, v0), whiteColor);
+			vertices.emplace_back(glm::vec3(x1, y0, textWorldPos.z), glm::vec2(u1, v0), fgColor);
 			// Top-right
-			vertices.emplace_back(glm::vec3(x1, y1, textWorldPos.z), glm::vec2(u1, v1), whiteColor);
+			vertices.emplace_back(glm::vec3(x1, y1, textWorldPos.z), glm::vec2(u1, v1), fgColor);
 			// Top-left
-			vertices.emplace_back(glm::vec3(x0, y1, textWorldPos.z), glm::vec2(u0, v1), whiteColor);
+			vertices.emplace_back(glm::vec3(x0, y1, textWorldPos.z), glm::vec2(u0, v1), fgColor);
 			
 			// Add indices for two triangles
 			indices.push_back(indexOffset + 0);
@@ -398,6 +389,7 @@ void Renderer::renderText(const Camera& camera, const std::vector<Entity*>& game
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(uint32_t), indices.data(), GL_DYNAMIC_DRAW);
 		
+		shader->setVec4("backgroundColor", glm::vec4(0.0f, 0.0f, 0.0f, 0.0f));
 		// Set MVP matrix
 		shader->setMat4("mvp", viewProj);
 		

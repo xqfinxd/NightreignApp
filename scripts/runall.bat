@@ -1,11 +1,12 @@
 @echo off
 set "target_dir=..\src\generated"
 
-if exist "%target_dir%" (
-    rmdir /s /q "%target_dir%"
+if /i "%1"=="clean" (
+    if exist "%target_dir%" (
+        rmdir /s /q "%target_dir%"
+    )
+    mkdir "%target_dir%"
 )
-
-mkdir "%target_dir%"
 
 python -B .\generate_manifest.py
 python -B .\generate_atlas.py

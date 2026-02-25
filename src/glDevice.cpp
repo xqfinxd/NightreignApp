@@ -65,7 +65,7 @@ void glDevice::initialize() {
 	myGlyph.BuildRanges(&ranges);
 
 	// Load font with custom or default ranges
-	io.Fonts->AddFontFromFileTTF("nightreign/assets/fonts/simhei.ttf", 28.0f, nullptr, ranges.Data);
+	io.Fonts->AddFontFromFileTTF("nightreign/assets/fonts/NotoSansSC.ttf", 32.0f, nullptr, ranges.Data);
 	io.Fonts->Build();
 	
 	ImGui_ImplSDL2_InitForOpenGL(handle, m_context);

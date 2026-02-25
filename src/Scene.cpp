@@ -20,7 +20,7 @@
 #include <set>
 #include <SDL_events.h>
 
-float MapSpot::textScale = 0.003f;
+float MapSpot::textScale = 0.004f;
 float MapSpot::iconSize = 0.2f;
 
 struct HitResult
@@ -505,8 +505,6 @@ void Scene::handleInput(const InputState &result, int width, int height)
 		break;
 	}
 }
-
-
 
 void Scene::render(Renderer *renderer)
 {
