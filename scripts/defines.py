@@ -134,12 +134,16 @@ class PathDefinitions:
         self.fonts_dir = self.assets_dir / "fonts"
         self.src_dir = self.project_dir / "src"
         self.cpp_header_dir= self.src_dir / "generated"
+        self.queries_dir = self.project_dir / "scripts" / "queries"
 
     def get_cpp_header(self, fn: str):
         return str(self.cpp_header_dir / f'{fn}.h')
     
     def get_metadata(self, fn: str):
         return str(self.metadata_dir / fn)
+
+    def get_queries(self, fn: str):
+        return str(self.queries_dir / fn)
 
     def get_output(self, fn: str):
         return str(self.datas_dir / fn)
