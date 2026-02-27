@@ -8,4 +8,5 @@ INSERT OR IGNORE INTO Nightlord (nightlord_id, name) VALUES
 (6,"冰龙"),
 (7,"黑夜王"),
 (8,"七仙女"),
-(9,"垃圾王");
+(9,"垃圾王")
+ON CONFLICT(nightlord_id) DO UPDATE SET name=excluded.name;

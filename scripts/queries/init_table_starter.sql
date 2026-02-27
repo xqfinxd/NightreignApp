@@ -10,4 +10,9 @@ INSERT OR IGNORE INTO Starter (starter_id, grid_x, grid_z, pos_x, pos_z) VALUES
 (705,44,37,-52.0,-76.0),
 (706,44,39,-72.0,44.0),
 (707,45,37,86.0,4.0),
-(708,45,38,-86.0,81.0);
+(708,45,38,-86.0,81.0)
+ON CONFLICT(starter_id) DO UPDATE SET
+    grid_x=excluded.grid_x,
+    grid_z=excluded.grid_z,
+    pos_x=excluded.pos_x,
+    pos_z=excluded.pos_z;

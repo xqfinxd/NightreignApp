@@ -10,17 +10,17 @@ CREATE TABLE IF NOT EXISTS Nightlord (
 
 CREATE TABLE IF NOT EXISTS SmallBaseMap (
     smallbase_id INT PRIMARY KEY,
-    label CHAR(32) NOT NULL,
+    label CHAR(32),
     icon_atlas CHAR(32),
     icon_scale DECIMAL(6,2) DEFAULT 1.0,
     group_id TINYINT,
-    flags TINYINT DEFAULT 0
+    flags TINYINT DEFAULT 255
 );
 
 CREATE TABLE IF NOT EXISTS VariationParam (
     smallbase_id INT NOT NULL,
     variation_id TINYINT NOT NULL,
-    label CHAR(32) NOT NULL,
+    label CHAR(32),
     icon_atlas CHAR(32),
     PRIMARY KEY (smallbase_id, variation_id),
     FOREIGN KEY (smallbase_id) REFERENCES SmallBaseMap(smallbase_id) ON DELETE CASCADE
@@ -87,11 +87,17 @@ CREATE TABLE IF NOT EXISTS SpotConfig (
     smallbase_id INT NOT NULL,
     variation_id TINYINT NOT NULL,
     
-    PRIMARY KEY (attach_id, pattern_id, smallbase_id, variation_id),
+    PRIMARY KEY (attach_id, pattern_id),
     
     FOREIGN KEY (attach_id) REFERENCES AttachPoint(attach_id) ON DELETE CASCADE,
     FOREIGN KEY (pattern_id) REFERENCES Pattern(pattern_id) ON DELETE CASCADE,
     FOREIGN KEY (smallbase_id, variation_id) REFERENCES VariationParam(smallbase_id, variation_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS EventConfig (
+    pattern_id SMALLINT PRIMARY KEY,
+    content CHAR(64) NOT NULL,
+    FOREIGN KEY (pattern_id) REFERENCES Pattern(pattern_id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_pattern_nightlord ON Pattern(nightlord_id);
