@@ -244,23 +244,19 @@ Texture* glDevice::createTexture(const std::string& path) {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
 	// Determine format
-	GLenum format = GL_RGB;
-	TextureFormat texFormat = TextureFormat::RGB;
-	if (channels == 4) {
-		format = GL_RGBA;
-		texFormat = TextureFormat::RGBA;
+	GLenum format = GL_RGBA;
+	switch (channels) {
+    case 1: format = GL_RED; break;
+    case 3: format = GL_RGB; break;
+    case 4: format = GL_RGBA; break;
 	}
-	else if (channels == 1) {
-		format = GL_RED;
-		texFormat = TextureFormat::R;
-	}
-
+	
 	glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
 	glBindTexture(GL_TEXTURE_2D, 0);
 
 	stbi_image_free(data);
 
-	Texture* texture = new Texture(textureId, width, height, texFormat);
+	Texture* texture = new Texture(textureId, width, height, channels);
 	m_textures.push_back(texture);
 	SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "Device: Created texture %s (%dx%d, %d channels, ID: %u)",
 		path.c_str(), width, height, channels, textureId);

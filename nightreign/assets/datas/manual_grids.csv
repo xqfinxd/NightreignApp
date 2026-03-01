@@ -1,4 +1,4 @@
-x,y,height,map
+grid_x,grid_z,height,map_id
 2,1,-720,4
 3,1,-720,4
 4,1,-720,4

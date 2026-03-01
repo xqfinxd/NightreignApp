@@ -3,7 +3,6 @@
 #include "Device.h"
 #include "Buffer.h"
 #include "Texture.h"
-#include "AsyncResourceLoader.h"
 #include "TextureRegistry.h"
 #include <SDL_log.h>
 
@@ -13,7 +12,6 @@ ResourceManager::ResourceManager(Device* device)
     : m_device(device)
 {
     s_instance = this;
-    m_async_loader = new AsyncResourceLoader(this);
     m_texture_registry = new TextureRegistry();
 }
 
@@ -21,7 +19,6 @@ ResourceManager::~ResourceManager()
 {
     cleanup();
     delete m_texture_registry;
-    delete m_async_loader;
     s_instance = nullptr;
 }
 
@@ -29,7 +26,8 @@ void ResourceManager::initialize()
 {
     SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Initialized");
     
-    m_texture_registry->LoadAtlas("nightreign/atlas.csv");
+    m_texture_registry->loadAtlasJson("nightreign/atlas.json");
+    m_texture_registry->loadCompositeAtlasJson("nightreign/composite_atlas.json");
 }
 
 void ResourceManager::cleanup()
@@ -105,39 +103,44 @@ Texture* ResourceManager::loadTexture(const std::string& name, const std::string
         return nullptr;
     }
 
-    #ifdef __EMSCRIPTEN__
     GLuint placeholderId = m_texture_registry->CreatePlaceholderForAlias(name);
-    if (placeholderId != 0) {
-        Texture* placeholderTexture = new Texture(placeholderId, metadata->width, metadata->height, metadata->format);
-        m_textures[name] = placeholderTexture;
-        
-        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Created placeholder for '%s' (ID: %u, Size: %dx%d)",
-            name.c_str(), placeholderId, metadata->width, metadata->height);
-        
-        m_async_loader->loadTextureDataAsync(name, m_texture_registry, 
-            [name](bool success) {
-                if (success) {
-                    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Async texture loaded: %s", name.c_str());
-                } else {
-                    SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Failed to load async texture: %s", name.c_str());
-                }
-            });
-        
-        return placeholderTexture;
-    }
-    #else
-    std::string loadPath = metadata->path;
-    Texture* texture = m_device->createTexture(loadPath);
-    if (!texture || !texture->isValid()) {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Failed to load texture '%s' from '%s'", name.c_str(), loadPath.c_str());
+    if (placeholderId == 0) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Failed to create placeholder for texture '%s'", name.c_str());
         return nullptr;
     }
 
-    m_textures[name] = texture;
-    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Texture '%s' loaded successfully (ID: %u, Size: %dx%d)", 
-        name.c_str(), texture->getId(), texture->getWidth(), texture->getHeight());
-    return texture;
-    #endif
+    Texture* placeholderTexture = new Texture(placeholderId, metadata->width, metadata->height, metadata->channel);
+    m_textures[name] = placeholderTexture;
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Created placeholder for '%s' (ID: %u, Size: %dx%d)",
+        name.c_str(), placeholderId, metadata->width, metadata->height);
+
+    if (!metadata->layers.empty()) {
+        for (const auto& layer : metadata->layers) {
+            if (!getTexture(layer.sourceAlias))
+                loadTexture(layer.sourceAlias);
+        }
+        bool baked = m_texture_registry->BakeComposite(name);
+        GLuint id = m_texture_registry->GetTextureId(name);
+        if (!baked || id == 0) {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                "ResourceManager: Failed to bake composite texture '%s'", name.c_str());
+            return placeholderTexture;
+        }
+    } else if (!metadata->path.empty()) {
+        m_texture_registry->loadTextureDataAsync(name,
+            [name](bool success) {
+                if (success) {
+                    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Async texture loaded: %s", name.c_str());
+                }
+                else {
+                    SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "ResourceManager: Failed to load async texture: %s", name.c_str());
+                }
+            }
+        );
+    }
+
+    return placeholderTexture;
 }
 
 Texture* ResourceManager::getTexture(const std::string& name)

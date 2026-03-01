@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <SDL_log.h>
 #include <SDL_assert.h>
+#include "sqlite3.h"
 
 #include "generated/ManualMapRow.h"
 #include "generated/ManualNightlordRow.h"
@@ -51,9 +52,8 @@ namespace {
 		return point;
 	}
 
-    std::vector<int> getIntList(const CsvReader& csv, size_t row, const std::string& column, char delimiter = '_') {
+    std::vector<int> separateIntList(const std::string& str, char delimiter = ',') {
         std::vector<int> result;
-		std::string str = getString(csv, row, column);
         std::stringstream ss(str);
         std::string item;
         while (std::getline(ss, item, delimiter)) {
@@ -62,6 +62,12 @@ namespace {
             }
         }
         return result;
+    }
+
+    std::vector<int> getIntList(const CsvReader& csv, size_t row, const std::string& column, char delimiter = '_') {
+        std::vector<int> result;
+		std::string str = getString(csv, row, column);
+        return separateIntList(str, delimiter);
 	}
 
     void sortAndUnique(std::vector<int>& vec) {
@@ -687,3 +693,521 @@ const NightlordInfo *GameData::getNightlord(int nightlordId) const
     auto it = m_nightlordDB.find(nightlordId);
     return it != m_nightlordDB.end() ? &it->second : nullptr;
 }
+
+// ============================================================
+//  SQLite helpers
+// ============================================================
+namespace {
+    static bool dbPrepare(sqlite3* db, const char* sql, sqlite3_stmt** stmt)
+    {
+        int rc = sqlite3_prepare_v2(db, sql, -1, stmt, nullptr);
+        if (rc != SQLITE_OK)
+        {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                "GameData DB prepare error: %s\nSQL: %s", sqlite3_errmsg(db), sql);
+            return false;
+        }
+        return true;
+    }
+
+    static std::string dbText(sqlite3_stmt* stmt, int col)
+    {
+        const char* txt = reinterpret_cast<const char*>(sqlite3_column_text(stmt, col));
+        return txt ? txt : "";
+    }
+
+    static MapPoint dbMapPoint(sqlite3_stmt* stmt, int firstCol)
+    {
+        MapPoint p;
+        p.gridXNo = sqlite3_column_int(stmt, firstCol);
+        p.gridZNo = sqlite3_column_int(stmt, firstCol + 1);
+        p.posX    = static_cast<float>(sqlite3_column_double(stmt, firstCol + 2));
+        p.posZ    = static_cast<float>(sqlite3_column_double(stmt, firstCol + 3));
+        p.height  = static_cast<float>(sqlite3_column_double(stmt, firstCol + 4));
+        return p;
+    }
+
+    static int dbNullableInt(sqlite3_stmt* stmt, int col, int defaultVal = 0)
+    {
+        return sqlite3_column_type(stmt, col) == SQLITE_NULL
+            ? defaultVal : sqlite3_column_int(stmt, col);
+    }
+} // anonymous namespace
+
+// ============================================================
+//  loadFromDB  – replaces loadFromCSV
+// ============================================================
+bool GameData::loadFromDB(const std::string& dbPath)
+{
+    sqlite3* db = nullptr;
+    int rc = sqlite3_open_v2(dbPath.c_str(), &db, SQLITE_OPEN_READONLY, nullptr);
+    if (rc != SQLITE_OK)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+            "GameData: Failed to open DB '%s': %s", dbPath.c_str(), sqlite3_errmsg(db));
+        sqlite3_close(db);
+        return false;
+    }
+
+    bool ok = dbLoadNightlords(db)
+           && dbLoadMaps(db)
+           && dbLoadPatterns(db)
+           && dbLoadAttachPoints(db)
+           && dbLoadStarters(db)
+           && dbLoadVariations(db)
+           && dbLoadSpotConfig(db)
+           && dbLoadFixedSpots(db)
+           && dbLoadGridHeights(db)
+           && dbLoadEvents(db)
+           && dbLoadMapBindings(db)
+           && dbLoadPatternBindings(db)
+           && dbLoadSmallBaseBindings(db);
+
+    sqlite3_close(db);
+    return ok;
+}
+
+// ============================================================
+//  Nightlord  →  m_nightlordDB
+// ============================================================
+bool GameData::dbLoadNightlords(sqlite3* db)
+{
+    static const char* sql =
+        "SELECT nightlord_id, name FROM Nightlord";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(db, sql, &stmt)) return false;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        NightlordInfo info;
+        info.id   = sqlite3_column_int(stmt, 0);
+        info.name = dbText(stmt, 1);
+        m_nightlordDB[info.id] = info;
+    }
+    sqlite3_finalize(stmt);
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+        "GameData DB: loaded %d nightlords", (int)m_nightlordDB.size());
+    return true;
+}
+
+// ============================================================
+//  Map  →  m_mapDB (name only; lists filled by later steps)
+// ============================================================
+bool GameData::dbLoadMaps(sqlite3* db)
+{
+    static const char* sql =
+        "SELECT map_id, name FROM Map";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(db, sql, &stmt)) return false;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        MapInfo map;
+        map.id   = sqlite3_column_int(stmt, 0);
+        map.name = dbText(stmt, 1);
+        m_mapDB[map.id] = map;
+    }
+    sqlite3_finalize(stmt);
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+        "GameData DB: loaded %d maps", (int)m_mapDB.size());
+    return true;
+}
+
+// ============================================================
+//  Pattern + PlayArea JOIN  →  m_patternDB
+//  Side-effect: fills m_mapDB[].legacyPatterns/dlcPatterns/starters
+// ============================================================
+bool GameData::dbLoadPatterns(sqlite3* db)
+{
+    // Columns:
+    //  0  pattern_id      1  map_id          2  nightlord_id    3  dlc
+    //  4  starter_id
+    //  5  day1boss        6  day2boss        7  day1extraboss   8  day2extraboss
+    //  9  pa1.grid_x     10 pa1.grid_z      11 pa1.pos_x       12 pa1.pos_z      13 pa1.height
+    // 14  pa2.grid_x     15 pa2.grid_z      16 pa2.pos_x       17 pa2.pos_z      18 pa2.height
+    static const char* sql =
+        "SELECT p.pattern_id, p.map_id, p.nightlord_id, p.dlc, p.starter_id,"
+        "       p.day1boss_smallbase_id, p.day2boss_smallbase_id,"
+        "       p.day1extraboss_smallbase_id, p.day2extraboss_smallbase_id,"
+        "       pa1.grid_x, pa1.grid_z, pa1.pos_x, pa1.pos_z, pa1.height,"
+        "       pa2.grid_x, pa2.grid_z, pa2.pos_x, pa2.pos_z, pa2.height"
+        " FROM Pattern p"
+        " LEFT JOIN PlayArea pa1 ON p.day1_playarea_id = pa1.playarea_id"
+        " LEFT JOIN PlayArea pa2 ON p.day2_playarea_id = pa2.playarea_id";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(db, sql, &stmt)) return false;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        PatternInfo pattern;
+        pattern.id          = sqlite3_column_int(stmt,  0);
+        pattern.map         = sqlite3_column_int(stmt,  1);
+        pattern.boss        = sqlite3_column_int(stmt,  2);
+        pattern.isdlc       = sqlite3_column_int(stmt,  3) != 0;
+        pattern.starter     = dbNullableInt(stmt, 4, -1);
+        pattern.bossId1     = dbNullableInt(stmt, 5);
+        pattern.bossId2     = dbNullableInt(stmt, 6);
+        pattern.extraBossId1 = dbNullableInt(stmt, 7);
+        pattern.extraBossId2 = dbNullableInt(stmt, 8);
+        pattern.playArea1   = dbMapPoint(stmt,  9);
+        pattern.playArea2   = dbMapPoint(stmt, 14);
+
+        m_patternDB[pattern.id] = pattern;
+
+        // Populate map pattern lists
+        if (pattern.isdlc)
+            m_mapDB[pattern.map].dlcPatterns.push_back(pattern.id);
+        else
+            m_mapDB[pattern.map].legacyPatterns.push_back(pattern.id);
+
+        // Populate starter list per map
+        if (pattern.starter > 0)
+            m_mapDB[pattern.map].starters.push_back(pattern.starter);
+    }
+    sqlite3_finalize(stmt);
+
+    for (auto& pair : m_mapDB)
+    {
+        sortAndUnique(pair.second.legacyPatterns);
+        sortAndUnique(pair.second.dlcPatterns);
+        sortAndUnique(pair.second.starters);
+    }
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+        "GameData DB: loaded %d patterns", (int)m_patternDB.size());
+    return true;
+}
+
+// ============================================================
+//  AttachPoint  →  m_spotDB
+// ============================================================
+bool GameData::dbLoadAttachPoints(sqlite3* db)
+{
+    static const char* sql =
+        "SELECT attach_id, grid_x, grid_z, pos_x, pos_z, height FROM AttachPoint";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(db, sql, &stmt)) return false;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        SpotInfo info;
+        info.attachId       = sqlite3_column_int(stmt, 0);
+        info.point.gridXNo  = sqlite3_column_int(stmt, 1);
+        info.point.gridZNo  = sqlite3_column_int(stmt, 2);
+        info.point.posX     = static_cast<float>(sqlite3_column_double(stmt, 3));
+        info.point.posZ     = static_cast<float>(sqlite3_column_double(stmt, 4));
+        info.point.height   = static_cast<float>(sqlite3_column_double(stmt, 5));
+        m_spotDB[info.attachId] = info;
+    }
+    sqlite3_finalize(stmt);
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+        "GameData DB: loaded %d attach points", (int)m_spotDB.size());
+    return true;
+}
+
+// ============================================================
+//  Starter  →  m_starterDB
+// ============================================================
+bool GameData::dbLoadStarters(sqlite3* db)
+{
+    static const char* sql =
+        "SELECT starter_id, grid_x, grid_z, pos_x, pos_z, height FROM Starter";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(db, sql, &stmt)) return false;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        StarterInfo info;
+        info.starterId      = sqlite3_column_int(stmt, 0);
+        info.point.gridXNo  = sqlite3_column_int(stmt, 1);
+        info.point.gridZNo  = sqlite3_column_int(stmt, 2);
+        info.point.posX     = static_cast<float>(sqlite3_column_double(stmt, 3));
+        info.point.posZ     = static_cast<float>(sqlite3_column_double(stmt, 4));
+        info.point.height   = static_cast<float>(sqlite3_column_double(stmt, 5));
+        m_starterDB[info.starterId] = info;
+    }
+    sqlite3_finalize(stmt);
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+        "GameData DB: loaded %d starters", (int)m_starterDB.size());
+    return true;
+}
+
+// ============================================================
+//  SmallBaseMap + VariationParam  →  m_variationDB
+// ============================================================
+bool GameData::dbLoadVariations(sqlite3* db)
+{
+    // label priority: VariationParam.label → SmallBaseMap.label
+    // icon  priority: VariationParam.icon_atlas → SmallBaseMap.icon_atlas
+    // visible/flags come from SmallBaseMap.flags
+    static const char* sql =
+        "SELECT v.smallbase_id, v.variation_id, s.label, v.label,"
+        "       COALESCE(v.icon_atlas, s.icon_atlas, ''),"
+        "       s.flags"
+        " FROM VariationParam v"
+        " JOIN SmallBaseMap s ON v.smallbase_id = s.smallbase_id";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(db, sql, &stmt)) return false;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        VariationInfo var;
+        var.variationId   = sqlite3_column_int(stmt, 0);  // smallbase_id
+        var.variationType = sqlite3_column_int(stmt, 1);  // variation_id
+        var.label         = dbText(stmt, 2);
+        var.sublabel      = dbText(stmt, 3);
+        var.icon          = dbText(stmt, 4);
+        var.visible       = dbNullableInt(stmt, 5, 0xFF);
+        var.iconScale     = 1.0f;
+        m_variationDB[var.getKey()] = var;
+    }
+    sqlite3_finalize(stmt);
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+        "GameData DB: loaded %d variations", (int)m_variationDB.size());
+    return true;
+}
+
+// ============================================================
+//  SpotConfig  →  m_variationDist
+//  Side-effect: fills m_mapDB[].legacyFilterPoints/dlcFilterPoints
+// ============================================================
+bool GameData::dbLoadSpotConfig(sqlite3* db)
+{
+    static const char* sql =
+        "SELECT sc.pattern_id, sc.attach_id, sc.smallbase_id, sc.variation_id,"
+        "       p.map_id, p.dlc"
+        " FROM SpotConfig sc"
+        " JOIN Pattern p ON sc.pattern_id = p.pattern_id";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(db, sql, &stmt)) return false;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        VariationDist dist;
+        dist.patternId    = sqlite3_column_int(stmt, 0);
+        dist.attachId     = sqlite3_column_int(stmt, 1);
+        int smallbaseId   = sqlite3_column_int(stmt, 2);
+        int variationId   = sqlite3_column_int(stmt, 3);
+        int mapId         = sqlite3_column_int(stmt, 4);
+        bool isDlc        = sqlite3_column_int(stmt, 5) != 0;
+
+        dist.variationKey = smallbaseId * 10 + variationId;
+        m_variationDist.push_back(dist);
+    }
+    sqlite3_finalize(stmt);
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+        "GameData DB: loaded %d spot configs", (int)m_variationDist.size());
+    return true;
+}
+
+bool GameData::dbLoadFixedSpots(sqlite3 *db)
+{
+    static const char* sql =
+        "SELECT p.map_id, p.dlc,"
+        " COUNT(DISTINCT p.pattern_id) AS coord_pattern_count,"
+        " ("
+        "     SELECT COUNT(*) "
+        "     FROM Pattern "
+        "     WHERE map_id = p.map_id AND dlc = p.dlc"
+        " ) AS map_total_patterns_by_dlc,"
+        " ROUND("
+        "     COUNT(DISTINCT p.pattern_id) * 1.0 / "
+        "     (SELECT COUNT(*) FROM Pattern WHERE map_id = p.map_id AND dlc = p.dlc),"
+        "     4"
+        " ) AS occupancy_rate,"
+        " ROUND("
+        "     COUNT(DISTINCT p.pattern_id) * 100.0 / "
+        "     (SELECT COUNT(*) FROM Pattern WHERE map_id = p.map_id AND dlc = p.dlc),"
+        "     2"
+        " ) || '%' AS occupancy_percentage,"
+        " GROUP_CONCAT(DISTINCT ap.attach_id) AS attach_ids"
+        " FROM AttachPoint ap"
+        " JOIN SpotConfig sc ON ap.attach_id = sc.attach_id"
+        " JOIN Pattern p ON sc.pattern_id = p.pattern_id"
+        " GROUP BY ap.grid_x, ap.grid_z, ap.pos_x, ap.pos_z, p.map_id, p.dlc "
+        " ORDER BY occupancy_rate DESC";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(db, sql, &stmt)) return false;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        int mapId           = sqlite3_column_int(stmt, 0);
+        bool isDlc          = sqlite3_column_int(stmt, 1) != 0;
+        float occupancyRate = static_cast<float>(sqlite3_column_double(stmt, 4));
+        auto attachIds      = separateIntList(dbText(stmt, 6), ',');
+
+        if (occupancyRate < 0.9f) // Threshold for "fixed" spots
+            continue;
+
+        auto& target = isDlc ? m_mapDB[mapId].dlcFilterPoints : m_mapDB[mapId].legacyFilterPoints;
+        target.insert(target.end(), attachIds.begin(), attachIds.end());
+    }
+    sqlite3_finalize(stmt);
+
+    for (auto& pair : m_mapDB)
+    {
+        sortAndUnique(pair.second.legacyFilterPoints);
+        sortAndUnique(pair.second.dlcFilterPoints);
+    }
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+        "GameData DB: loaded %d fixed spots", (int)m_variationDist.size());
+    return true;
+}
+
+// ============================================================
+//  GridHeight  →  m_gridOptions
+// ============================================================
+bool GameData::dbLoadGridHeights(sqlite3* db)
+{
+    static const char* sql =
+        "SELECT grid_x, grid_z, height, map_id FROM GridHeight";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(db, sql, &stmt)) return false;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        GridOption opt;
+        opt.x      = sqlite3_column_int(stmt, 0);
+        opt.y      = sqlite3_column_int(stmt, 1);
+        opt.height = static_cast<float>(sqlite3_column_double(stmt, 2));
+        opt.map    = sqlite3_column_int(stmt, 3);
+        m_gridOptions.push_back(opt);
+    }
+    sqlite3_finalize(stmt);
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+        "GameData DB: loaded %d grid heights", (int)m_gridOptions.size());
+    return true;
+}
+
+// ============================================================
+//  EventConfig  →  m_eventDB
+// ============================================================
+bool GameData::dbLoadEvents(sqlite3* db)
+{
+    static const char* sql =
+        "SELECT pattern_id, content FROM EventConfig";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(db, sql, &stmt)) return false;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        EventInfo info;
+        info.id    = sqlite3_column_int(stmt, 0);
+        info.event = dbText(stmt, 1);
+        m_eventDB[info.id] = info;
+    }
+    sqlite3_finalize(stmt);
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+        "GameData DB: loaded %d events", (int)m_eventDB.size());
+    return true;
+}
+
+// ============================================================
+//  AttachMapBinding + AttachPoint  →  m_constantDB
+//  Columns: attach_id(type), map_id, label, icon_atlas,
+//           grid_x, grid_z, pos_x, pos_z, height
+// ============================================================
+bool GameData::dbLoadMapBindings(sqlite3* db)
+{
+    static const char* sql =
+        "SELECT b.attach_id, b.map_id, b.label, b.icon_atlas,"
+        "       ap.grid_x, ap.grid_z, ap.pos_x, ap.pos_z, ap.height"
+        " FROM AttachMapBinding b"
+        " JOIN AttachPoint ap ON b.attach_id = ap.attach_id";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(db, sql, &stmt)) return false;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        ConstantInfo info;
+        info.type    = sqlite3_column_int(stmt, 0);   // attach_id used as type/id
+        info.map     = sqlite3_column_int(stmt, 1);
+        info.label   = dbText(stmt, 2);
+        info.icon    = dbText(stmt, 3);
+        info.iconScale = 1.0f;
+        info.point   = dbMapPoint(stmt, 4);
+        m_constantDB.push_back(info);
+    }
+    sqlite3_finalize(stmt);
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+        "GameData DB: loaded %d map bindings (constants)", (int)m_constantDB.size());
+    return true;
+}
+
+// ============================================================
+//  AttachPatternBinding + AttachPoint  →  m_rottedPowers
+//  Columns: attach_id, pattern_id, grid_x, grid_z, pos_x, pos_z, height
+// ============================================================
+bool GameData::dbLoadPatternBindings(sqlite3* db)
+{
+    static const char* sql =
+        "SELECT b.attach_id, b.pattern_id,"
+        "       ap.grid_x, ap.grid_z, ap.pos_x, ap.pos_z, ap.height"
+        " FROM AttachPatternBinding b"
+        " JOIN AttachPoint ap ON b.attach_id = ap.attach_id";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(db, sql, &stmt)) return false;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        RottedPowerInfo info;
+        info.patternId = sqlite3_column_int(stmt, 1);
+        info.point     = dbMapPoint(stmt, 2);
+        m_rottedPowers[info.patternId] = info;
+    }
+    sqlite3_finalize(stmt);
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+        "GameData DB: loaded %d pattern bindings (rotted powers)", (int)m_rottedPowers.size());
+    return true;
+}
+
+// ============================================================
+//  AttachSmallBaseBinding + AttachPoint + SmallBaseMap  →  m_greatHollowBindings
+//  Columns: attach_id, smallbase_id(binding), label, icon_atlas,
+//           grid_x, grid_z, pos_x, pos_z, height, flags(visible)
+// ============================================================
+bool GameData::dbLoadSmallBaseBindings(sqlite3* db)
+{
+    static const char* sql =
+        "SELECT b.attach_id, b.smallbase_id, b.label, b.icon_atlas,"
+        "       ap.grid_x, ap.grid_z, ap.pos_x, ap.pos_z, ap.height,"
+        "       s.flags"
+        " FROM AttachSmallBaseBinding b"
+        " JOIN AttachPoint ap ON b.attach_id = ap.attach_id"
+        " LEFT JOIN SmallBaseMap s ON b.smallbase_id = s.smallbase_id";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(db, sql, &stmt)) return false;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        GreatHollowBindingInfo info;
+        // attach_id (col 0) is not stored; binding uses smallbase_id
+        info.binding   = sqlite3_column_int(stmt, 1);
+        info.label     = dbText(stmt, 2);
+        info.icon      = dbText(stmt, 3);
+        info.point     = dbMapPoint(stmt, 4);
+        info.visible   = dbNullableInt(stmt, 9, 0xFF);
+        info.iconScale = 1.0f;
+        m_greatHollowBindings.push_back(info);
+    }
+    sqlite3_finalize(stmt);
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+        "GameData DB: loaded %d smallbase bindings (great hollow)", (int)m_greatHollowBindings.size());
+    return true;
+}
+

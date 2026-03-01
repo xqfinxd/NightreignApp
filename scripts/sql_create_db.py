@@ -250,9 +250,9 @@ def init_table_pattern(db_path: str, paths: defines.PathDefinitions):
         
         cursor.execute(
             """INSERT INTO Pattern (pattern_id, map_id, nightlord_id, starter_id,
-                day1_playarea_id, day2_playarea_id,
+                day1_playarea_id, day2_playarea_id, dlc,
                 day1boss_smallbase_id, day2boss_smallbase_id,
-                day1extraboss_smallbase_id, day2extraboss_smallbase_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                day1extraboss_smallbase_id, day2extraboss_smallbase_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(pattern_id) DO UPDATE SET
                     map_id=excluded.map_id,
                     nightlord_id=excluded.nightlord_id,
@@ -262,9 +262,10 @@ def init_table_pattern(db_path: str, paths: defines.PathDefinitions):
                     day1boss_smallbase_id=excluded.day1boss_smallbase_id,
                     day2boss_smallbase_id=excluded.day2boss_smallbase_id,
                     day1extraboss_smallbase_id=excluded.day1extraboss_smallbase_id,
-                    day2extraboss_smallbase_id=excluded.day2extraboss_smallbase_id""",
+                    day2extraboss_smallbase_id=excluded.day2extraboss_smallbase_id,
+                    dlc=excluded.dlc""",
             (pattern_id, map_id, nightlord_id, starter_id,
-            day1_playarea_id, day2_playarea_id,
+            day1_playarea_id, day2_playarea_id, dlc,
             day1boss_smallbase_id, day2boss_smallbase_id,
             day1extraboss_smallbase_id, day2extraboss_smallbase_id))
 
@@ -334,14 +335,116 @@ def init_table_eventconfig(db_path: str, paths: defines.PathDefinitions):
     # 关闭连接
     conn.close()
 
-def main():
+def init_table_bindings(db_path: str, paths: defines.PathDefinitions):
+    """通过CSV文件初始化AttachBinding数据"""
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    attach_point_csv = csvutil.load_csv(paths.get_metadata('WorldMapPointParam.csv'), key_column='ID')
+    pattern_flag_csv = csvutil.load_csv(paths.get_metadata("LotResultMapPatternFlag.csv"), key_column='ID')
+
+    # handle shift earth power points
+    logging.info("正在初始化特殊地形力量数据")
+    power_points = attach_point_csv.filter(worldMapPointIconId=61)
+    for rowdata in power_points:
+        attach_id = int(rowdata.get("ID", 0))
+        grid_x = int(rowdata.get("gridXNo", 0))
+        grid_z = int(rowdata.get("gridZNo", 0))
+        pos_x = float(rowdata.get("posX", 0))
+        pos_z = float(rowdata.get("posZ", 0))
+        height = float(rowdata.get("posY", 0))
+        map_id = int(rowdata.get("pad", 0)) // 10
+        
+        cursor.execute(
+            """INSERT INTO AttachPoint (attach_id, grid_x, grid_z, pos_x, pos_z, height) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(attach_id) DO UPDATE SET
+                    grid_x=excluded.grid_x,
+                    grid_z=excluded.grid_z,
+                    pos_x=excluded.pos_x,
+                    pos_z=excluded.pos_z,
+                    height=excluded.height""",
+            (attach_id, grid_x, grid_z, pos_x, pos_z, height))
+        if map_id == 3: # rotted wood only
+            flag_id = int(rowdata.get("eventFlagId1", 0))
+            patterns = pattern_flag_csv.filter(modifierSet=500, eventFlag=flag_id)
+            for pattern in patterns:
+                pattern_id = int(pattern.get("patternId", -1))
+                if pattern_id >= 0:
+                    cursor.execute(
+                        """INSERT INTO AttachPatternBinding (pattern_id, attach_id) VALUES (?, ?)
+                            ON CONFLICT(pattern_id, attach_id) DO NOTHING""",
+                        (pattern_id, attach_id))
+        else:
+            cursor.execute("""INSERT INTO AttachMapBinding (attach_id, map_id) VALUES (?, ?)
+                ON CONFLICT(attach_id, map_id) DO NOTHING""",
+            (attach_id, map_id))
+
+    logging.info("正在初始化地形固定点数据")
+    enabled_types = [2, 16, 28, 71, 76]
+    enabled_maps = [1, 2, 3, 4, 5]
+    sorted_attach_points = attach_point_csv.group_by('worldMapPointIconId')
+    for point_type, rows in sorted_attach_points.items():
+        if point_type not in enabled_types:
+            continue
+        for rowdata in rows:
+            map_id = int(rowdata.get("pad", 0)) // 10
+            if map_id not in enabled_maps:
+                continue
+            
+            attach_id = int(rowdata.get("ID", 0))
+            grid_x = int(rowdata.get("gridXNo", 0))
+            grid_z = int(rowdata.get("gridZNo", 0))
+            pos_x = float(rowdata.get("posX", 0))
+            pos_z = float(rowdata.get("posZ", 0))
+            height = float(rowdata.get("posY", 0))
+            cursor.execute(
+                """INSERT INTO AttachPoint (attach_id, grid_x, grid_z, pos_x, pos_z, height) VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(attach_id) DO UPDATE SET
+                        grid_x=excluded.grid_x,
+                        grid_z=excluded.grid_z,
+                        pos_x=excluded.pos_x,
+                        pos_z=excluded.pos_z,
+                        height=excluded.height""",
+                (attach_id, grid_x, grid_z, pos_x, pos_z, height))
+            
+            flagid6 = int(rowdata.get("eventFlagId6", 0))
+            if point_type == 16:
+                flagid2 = int(rowdata.get("eventFlagId2", 0))
+                flagid0 = int(rowdata.get("eventFlagId0", 0))
+                smallbase_id = flagid0 // 10000
+                # great hollow boss points, bind to small base
+                if map_id == 4 and flagid2 > 0 and smallbase_id > 0:
+                    flagid0 = int(rowdata.get("eventFlagId0", 0))
+                    cursor.execute("""
+                        INSERT INTO AttachSmallBaseBinding (attach_id, smallbase_id)
+                        SELECT ?, ?
+                        WHERE EXISTS (SELECT 1 FROM SmallBaseMap WHERE smallbase_id = ?)
+                        ON CONFLICT(attach_id, smallbase_id) DO NOTHING
+                    """, (attach_id, smallbase_id, smallbase_id))
+                elif flagid6 > 0: # other field boss points, bind to map
+                    cursor.execute(
+                        """INSERT INTO AttachMapBinding (attach_id, map_id) VALUES (?, ?)
+                            ON CONFLICT(attach_id, map_id) DO NOTHING""",
+                        (attach_id, map_id))
+            else:
+                cursor.execute(
+                    """INSERT INTO AttachMapBinding (attach_id, map_id) VALUES (?, ?)
+                        ON CONFLICT(attach_id, map_id) DO NOTHING""",
+                    (attach_id, map_id))
+
+    conn.commit()
+    print_db_changes(conn)
+    # 关闭连接
+    conn.close()
+
+def main(step:callable=None):
     """主函数"""
     import argparse
 
     paths = defines.PathDefinitions(__file__)
     
     parser = argparse.ArgumentParser(description='创建地图模式配置数据库')
-    default_db_path = paths.get_metadata('game_data.db')
+    default_db_path = paths.get_output('game_data.db')
     parser.add_argument('-o', '--output', default=default_db_path, 
                        help=f'输出数据库文件路径 (默认: {default_db_path})')
     
@@ -350,6 +453,11 @@ def main():
     
     # 创建数据库
     db_path = create_database(args.output, paths.get_queries('create_tables.sql'))
+    # 如果指定了步骤函数，则只执行该步骤
+    if step is not None:
+        step(db_path, paths)
+        return
+    
     # 使用SQL文件初始化表数据
     init_table_by_sqlfiles(db_path, [
         paths.get_queries('init_table_map.sql'),
@@ -371,6 +479,8 @@ def main():
     init_table_spotconfig(db_path, paths)
     # 使用CSV文件初始化EventConfig表数据
     init_table_eventconfig(db_path, paths)
+    # 使用CSV文件初始化Binding表数据
+    init_table_bindings(db_path, paths)
 
 if __name__ == "__main__":
-    main()
+    main(init_table_pattern)

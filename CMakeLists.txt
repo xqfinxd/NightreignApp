@@ -28,13 +28,17 @@ target_include_directories(NightreignApp PRIVATE
 	"3rdparty/glm/include"
 	"3rdparty/stb_image"
 	"3rdparty/entt"
+	"3rdparty/sqlite3"
+	"3rdparty/RapidJSON/include"
 )
 
 target_link_libraries(NightreignApp PRIVATE
 	ImGui
+	sqlite3
 )
 
 add_subdirectory(3rdparty/IMGUI)
+add_subdirectory(3rdparty/sqlite3)
 
 if(EMSCRIPTEN)
 	target_compile_options(NightreignApp PRIVATE 

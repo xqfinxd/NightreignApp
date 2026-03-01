@@ -4,15 +4,15 @@ Texture::Texture()
 	: m_id(0)
 	, m_width(0)
 	, m_height(0)
-	, m_format(TextureFormat::Unknown)
+	, m_channel(0)
 {
 }
 
-Texture::Texture(uint32_t id, int width, int height, TextureFormat format)
+Texture::Texture(uint32_t id, int width, int height, int channel)
 	: m_id(id)
 	, m_width(width)
 	, m_height(height)
-	, m_format(format)
+	, m_channel(channel)
 {
 }
 
@@ -22,24 +22,10 @@ Texture::~Texture()
 	// This just releases the reference
 }
 
-int Texture::getChannelCount() const
-{
-	switch (m_format) {
-	case TextureFormat::R:
-		return 1;
-	case TextureFormat::RGB:
-		return 3;
-	case TextureFormat::RGBA:
-		return 4;
-	default:
-		return 0;
-	}
-}
-
 void Texture::release()
 {
 	m_id = 0;
 	m_width = 0;
 	m_height = 0;
-	m_format = TextureFormat::Unknown;
+	m_channel = 0;
 }

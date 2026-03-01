@@ -1,24 +1,20 @@
 #include "AsyncResourceLoader.h"
-#include "ResourceManager.h"
 #include "Texture.h"
 #include "TextureRegistry.h"
 #include <SDL_log.h>
 #include <stdio.h>
+#include <stb_image.h>
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #include <emscripten/fetch.h>
-#include <stb_image.h>
 #include <sys/stat.h>
 #include <errno.h>
 #endif
 
-AsyncResourceLoader::AsyncResourceLoader(ResourceManager* resourceMgr)
-    : m_resource_mgr(resourceMgr)
+AsyncResourceLoader::AsyncResourceLoader()
 {
-#ifdef __EMSCRIPTEN__
     stbi_set_flip_vertically_on_load(1);
-#endif
     SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "AsyncResourceLoader: Initialized");
 }
 
@@ -152,8 +148,23 @@ void AsyncResourceLoader::loadTextureDataAsync(const std::string& alias, Texture
 
     emscripten_fetch(&attr, realPath.c_str());
 #else
-    SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "AsyncResourceLoader: Async texture update not supported in non-Emscripten builds");
-    if (callback) callback(false);
+    bool success = false;
+
+    int width, height, channels;
+    unsigned char* pixels = stbi_load(realPath.c_str(), &width, &height, &channels, 0);
+    if (pixels) {
+        size_t dataSize = width * height * channels;
+        success = registry->UpdateTexture(alias, pixels, dataSize);
+
+        if (success) {
+            SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "AsyncResourceLoader: Cached texture loaded: '%s' (%dx%d, %d channels)",
+                alias.c_str(), width, height, channels);
+        }
+
+        stbi_image_free(pixels);
+    }
+    if (callback) callback(success);
+    return;
 #endif
 }
 

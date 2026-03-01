@@ -53,7 +53,6 @@ def build_pattern_flags(flagdistbase):
 def resolve_pattern_events(pattern_flags, flag_filters):
     """Match event flags to patterns and resolve event names."""
     pattern_events = []
-    invasion_flags = {7705, 7725}
 
     for pattern_id, data in pattern_flags.items():
         for event_flag in data["flags"]:
@@ -61,6 +60,7 @@ def resolve_pattern_events(pattern_flags, flag_filters):
             if not filter_set:
                 continue
 
+            mismatch = True
             for f in filter_set:
                 # Check require/exclude conditions
                 match = True
@@ -73,14 +73,9 @@ def resolve_pattern_events(pattern_flags, flag_filters):
                 if f["exclude2"] != 0 and f["exclude2"] in data["modifiers"]:
                     match = False
 
-                if not match:
+                if not match:    
                     continue
-
-                if event_flag in invasion_flags:
-                    # Invasion events also require modifierSet to match
-                    if f["modifierSet"] != data["modifiers"].get(f["modifier"]):
-                        continue
-
+                mismatch = True
                 # Resolve event name
                 definition = EventDefinitions.get(event_flag)
                 if definition is None:
@@ -99,7 +94,8 @@ def resolve_pattern_events(pattern_flags, flag_filters):
                         "event": event_name,
                     })
                 break  # first matching filter wins
-
+            if mismatch:
+                print(f"Warning: No matching filter for pattern {pattern_id} with event flag {event_flag}")
     return pattern_events
 
 

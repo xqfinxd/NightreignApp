@@ -1,0 +1,554 @@
+{
+    "spot_ruins_bleed": {
+        "layers": [
+            {
+                "source_alias": "spot_ruins",
+                "anchor_x": 0,
+                "anchor_y": 0,
+                "pivot_x": 0,
+                "pivot_y": 0,
+                "scale": 1
+            },
+            {
+                "source_alias": "spot_bleed",
+                "anchor_x": 1,
+                "anchor_y": 0,
+                "pivot_x": 1,
+                "pivot_y": 0,
+                "scale": 0.8
+            }
+        ],
+        "width": 234,
+        "height": 128,
+        "format": 4
+    },
+    "spot_ruins_cold": {
+        "layers": [
+            {
+                "source_alias": "spot_ruins",
+                "anchor_x": 0,
+                "anchor_y": 0,
+                "pivot_x": 0,
+                "pivot_y": 0,
+                "scale": 1
+            },
+            {
+                "source_alias": "spot_cold",
+                "anchor_x": 1,
+                "anchor_y": 0,
+                "pivot_x": 1,
+                "pivot_y": 0,
+                "scale": 0.8
+            }
+        ],
+        "width": 234,
+        "height": 128,
+        "format": 4
+    },
+    "spot_ruins_death": {
+        "layers": [
+            {
+                "source_alias": "spot_ruins",
+                "anchor_x": 0,
+                "anchor_y": 0,
+                "pivot_x": 0,
+                "pivot_y": 0,
+                "scale": 1
+            },
+            {
+                "source_alias": "spot_death",
+                "anchor_x": 1,
+                "anchor_y": 0,
+                "pivot_x": 1,
+                "pivot_y": 0,
+                "scale": 0.8
+            }
+        ],
+        "width": 234,
+        "height": 128,
+        "format": 4
+    },
+    "spot_ruins_fire": {
+        "layers": [
+            {
+                "source_alias": "spot_ruins",
+                "anchor_x": 0,
+                "anchor_y": 0,
+                "pivot_x": 0,
+                "pivot_y": 0,
+                "scale": 1
+            },
+            {
+                "source_alias": "spot_fire",
+                "anchor_x": 1,
+                "anchor_y": 0,
+                "pivot_x": 1,
+                "pivot_y": 0,
+                "scale": 0.8
+            }
+        ],
+        "width": 234,
+        "height": 128,
+        "format": 4
+    },
+    "spot_ruins_holy": {
+        "layers": [
+            {
+                "source_alias": "spot_ruins",
+                "anchor_x": 0,
+                "anchor_y": 0,
+                "pivot_x": 0,
+                "pivot_y": 0,
+                "scale": 1
+            },
+            {
+                "source_alias": "spot_holy",
+                "anchor_x": 1,
+                "anchor_y": 0,
+                "pivot_x": 1,
+                "pivot_y": 0,
+                "scale": 0.8
+            }
+        ],
+        "width": 234,
+        "height": 128,
+        "format": 4
+    },
+    "spot_ruins_mad": {
+        "layers": [
+            {
+                "source_alias": "spot_ruins",
+                "anchor_x": 0,
+                "anchor_y": 0,
+                "pivot_x": 0,
+                "pivot_y": 0,
+                "scale": 1
+            },
+            {
+                "source_alias": "spot_mad",
+                "anchor_x": 1,
+                "anchor_y": 0,
+                "pivot_x": 1,
+                "pivot_y": 0,
+                "scale": 0.8
+            }
+        ],
+        "width": 234,
+        "height": 128,
+        "format": 4
+    },
+    "spot_ruins_magic": {
+        "layers": [
+            {
+                "source_alias": "spot_ruins",
+                "anchor_x": 0,
+                "anchor_y": 0,
+                "pivot_x": 0,
+                "pivot_y": 0,
+                "scale": 1
+            },
+            {
+                "source_alias": "spot_magic",
+                "anchor_x": 1,
+                "anchor_y": 0,
+                "pivot_x": 1,
+                "pivot_y": 0,
+                "scale": 0.8
+            }
+        ],
+        "width": 234,
+        "height": 128,
+        "format": 4
+    },
+    "spot_ruins_poison": {
+        "layers": [
+            {
+                "source_alias": "spot_ruins",
+                "anchor_x": 0,
+                "anchor_y": 0,
+                "pivot_x": 0,
+                "pivot_y": 0,
+                "scale": 1
+            },
+            {
+                "source_alias": "spot_poison",
+                "anchor_x": 1,
+                "anchor_y": 0,
+                "pivot_x": 1,
+                "pivot_y": 0,
+                "scale": 0.8
+            }
+        ],
+        "width": 234,
+        "height": 128,
+        "format": 4
+    },
+    "spot_ruins_rot": {
+        "layers": [
+            {
+                "source_alias": "spot_ruins",
+                "anchor_x": 0,
+                "anchor_y": 0,
+                "pivot_x": 0,
+                "pivot_y": 0,
+                "scale": 1
+            },
+            {
+                "source_alias": "spot_rot",
+                "anchor_x": 1,
+                "anchor_y": 0,
+                "pivot_x": 1,
+                "pivot_y": 0,
+                "scale": 0.8
+            }
+        ],
+        "width": 234,
+        "height": 128,
+        "format": 4
+    },
+    "spot_ruins_sleep": {
+        "layers": [
+            {
+                "source_alias": "spot_ruins",
+                "anchor_x": 0,
+                "anchor_y": 0,
+                "pivot_x": 0,
+                "pivot_y": 0,
+                "scale": 1
+            },
+            {
+                "source_alias": "spot_sleep",
+                "anchor_x": 1,
+                "anchor_y": 0,
+                "pivot_x": 1,
+                "pivot_y": 0,
+                "scale": 0.8
+            }
+        ],
+        "width": 234,
+        "height": 128,
+        "format": 4
+    },
+    "spot_ruins_thunder": {
+        "layers": [
+            {
+                "source_alias": "spot_ruins",
+                "anchor_x": 0,
+                "anchor_y": 0,
+                "pivot_x": 0,
+                "pivot_y": 0,
+                "scale": 1
+            },
+            {
+                "source_alias": "spot_thunder",
+                "anchor_x": 1,
+                "anchor_y": 0,
+                "pivot_x": 1,
+                "pivot_y": 0,
+                "scale": 0.8
+            }
+        ],
+        "width": 234,
+        "height": 128,
+        "format": 4
+    },
+    "spot_fort_magic" : {
+        "layers": [
+            {
+                "source_alias": "spot_fort",
+                "anchor_x": 0,
+                "anchor_y": 0,
+                "pivot_x": 0,
+                "pivot_y": 0,
+                "scale": 1
+            },
+            {
+                "source_alias": "spot_magic",
+                "anchor_x": 1,
+                "anchor_y": 0,
+                "pivot_x": 1,
+                "pivot_y": 0,
+                "scale": 0.8
+            }
+        ],
+        "width": 266,
+        "height": 202,
+        "format": 4
+    },
+    "spot_encampment_fire" : {
+        "layers": [
+            {
+                "source_alias": "spot_encampment",
+                "anchor_x": 0,
+                "anchor_y": 0,
+                "pivot_x": 0,
+                "pivot_y": 0,
+                "scale": 1
+            },
+            {
+                "source_alias": "spot_fire",
+                "anchor_x": 1,
+                "anchor_y": 0,
+                "pivot_x": 1,
+                "pivot_y": 0,
+                "scale": 0.8
+            }
+        ],
+        "width": 224,
+        "height": 128,
+        "format": 4
+    },
+    "spot_encampment_mad" : {
+        "layers": [
+            {
+                "source_alias": "spot_encampment",
+                "anchor_x": 0,
+                "anchor_y": 0,
+                "pivot_x": 0,
+                "pivot_y": 0,
+                "scale": 1
+            },
+            {
+                "source_alias": "spot_mad",
+                "anchor_x": 1,
+                "anchor_y": 0,
+                "pivot_x": 1,
+                "pivot_y": 0,
+                "scale": 0.8
+            }
+        ],
+        "width": 224,
+        "height": 128,
+        "format": 4
+    },
+    "spot_encampment_thunder" : {
+        "layers": [
+            {
+                "source_alias": "spot_encampment",
+                "anchor_x": 0,
+                "anchor_y": 0,
+                "pivot_x": 0,
+                "pivot_y": 0,
+                "scale": 1
+            },
+            {
+                "source_alias": "spot_thunder",
+                "anchor_x": 1,
+                "anchor_y": 0,
+                "pivot_x": 1,
+                "pivot_y": 0,
+                "scale": 0.8
+            }
+        ],
+        "width": 224,
+        "height": 128,
+        "format": 4
+    },
+    "spot_temple_cold" : {
+        "layers": [
+            {
+                "source_alias": "spot_temple",
+                "anchor_x": 0,
+                "anchor_y": 0,
+                "pivot_x": 0,
+                "pivot_y": 0,
+                "scale": 1
+            },
+            {
+                "source_alias": "spot_cold",
+                "anchor_x": 1,
+                "anchor_y": 0,
+                "pivot_x": 1,
+                "pivot_y": 0,
+                "scale": 0.8
+            }
+        ],
+        "width": 248,
+        "height": 210,
+        "format": 4
+    },
+    "spot_temple_fire" : {
+        "layers": [
+            {
+                "source_alias": "spot_temple",
+                "anchor_x": 0,
+                "anchor_y": 0,
+                "pivot_x": 0,
+                "pivot_y": 0,
+                "scale": 1
+            },
+            {
+                "source_alias": "spot_fire",
+                "anchor_x": 1,
+                "anchor_y": 0,
+                "pivot_x": 1,
+                "pivot_y": 0,
+                "scale": 0.8
+            }
+        ],
+        "width": 248,
+        "height": 210,
+        "format": 4
+    },
+    "spot_temple_holy" : {
+        "layers": [
+            {
+                "source_alias": "spot_temple",
+                "anchor_x": 0,
+                "anchor_y": 0,
+                "pivot_x": 0,
+                "pivot_y": 0,
+                "scale": 1
+            },
+            {
+                "source_alias": "spot_holy",
+                "anchor_x": 1,
+                "anchor_y": 0,
+                "pivot_x": 1,
+                "pivot_y": 0,
+                "scale": 0.8
+            }
+        ],
+        "width": 248,
+        "height": 210,
+        "format": 4
+    },
+    "spot_temple_sleep" : {
+        "layers": [
+            {
+                "source_alias": "spot_temple",
+                "anchor_x": 0,
+                "anchor_y": 0,
+                "pivot_x": 0,
+                "pivot_y": 0,
+                "scale": 1
+            },
+            {
+                "source_alias": "spot_sleep",
+                "anchor_x": 1,
+                "anchor_y": 0,
+                "pivot_x": 1,
+                "pivot_y": 0,
+                "scale": 0.8
+            }
+        ],
+        "width": 248,
+        "height": 210,
+        "format": 4
+    },
+    "spot_temple_thunder" : {
+        "layers": [
+            {
+                "source_alias": "spot_temple",
+                "anchor_x": 0,
+                "anchor_y": 0,
+                "pivot_x": 0,
+                "pivot_y": 0,
+                "scale": 1
+            },
+            {
+                "source_alias": "spot_thunder",
+                "anchor_x": 1,
+                "anchor_y": 0,
+                "pivot_x": 1,
+                "pivot_y": 0,
+                "scale": 0.8
+            }
+        ],
+        "width": 248,
+        "height": 210,
+        "format": 4
+    },
+    "spot_city1_holy" : {
+        "layers": [
+            {
+                "source_alias": "spot_city1",
+                "anchor_x": 0,
+                "anchor_y": 0,
+                "pivot_x": 0,
+                "pivot_y": 0,
+                "scale": 1
+            },
+            {
+                "source_alias": "spot_holy",
+                "anchor_x": 1,
+                "anchor_y": 0,
+                "pivot_x": 1,
+                "pivot_y": 0,
+                "scale": 0.8
+            }
+        ],
+        "width": 200,
+        "height": 200,
+        "format": 4
+    },
+    "spot_city1_rot" : {
+        "layers": [
+            {
+                "source_alias": "spot_city1",
+                "anchor_x": 0,
+                "anchor_y": 0,
+                "pivot_x": 0,
+                "pivot_y": 0,
+                "scale": 1
+            },
+            {
+                "source_alias": "spot_rot",
+                "anchor_x": 1,
+                "anchor_y": 0,
+                "pivot_x": 1,
+                "pivot_y": 0,
+                "scale": 0.8
+            }
+        ],
+        "width": 200,
+        "height": 200,
+        "format": 4
+    },
+    "spot_city2_fire" : {
+        "layers": [
+            {
+                "source_alias": "spot_city2",
+                "anchor_x": 0,
+                "anchor_y": 0,
+                "pivot_x": 0,
+                "pivot_y": 0,
+                "scale": 1
+            },
+            {
+                "source_alias": "spot_fire",
+                "anchor_x": 1,
+                "anchor_y": 0,
+                "pivot_x": 1,
+                "pivot_y": 0,
+                "scale": 0.8
+            }
+        ],
+        "width": 200,
+        "height": 200,
+        "format": 4
+    },
+    "spot_city2_magic" : {
+        "layers": [
+            {
+                "source_alias": "spot_city2",
+                "anchor_x": 0,
+                "anchor_y": 0,
+                "pivot_x": 0,
+                "pivot_y": 0,
+                "scale": 1
+            },
+            {
+                "source_alias": "spot_magic",
+                "anchor_x": 1,
+                "anchor_y": 0,
+                "pivot_x": 1,
+                "pivot_y": 0,
+                "scale": 0.8
+            }
+        ],
+        "width": 200,
+        "height": 200,
+        "format": 4
+    }
+}

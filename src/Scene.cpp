@@ -168,8 +168,8 @@ Scene::~Scene()
 
 void Scene::initialize()
 {
-	// Load game data from CSV files
-	if (!m_gameData->loadFromCSV("nightreign/assets/datas"))
+	// Load game data from SQLite database
+	if (!m_gameData->loadFromDB("nightreign/assets/datas/game_data.db"))
 	{
 		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Application: Failed to load game data");
 	}
@@ -1347,6 +1347,12 @@ void Scene::loadSpotsByPattern(int patternId)
 
 	// Clear existing spots
 	clearSpots();
+	
+	// load map tiles for this pattern
+	loadMapTiles(patternInfo->map, 0);
+
+    // Set current pattern ID
+	m_currentPatternId = patternId;
 
 	auto distList = gameData.listDistribution(patternId);
     // Add spots based on distribution
@@ -1403,12 +1409,6 @@ void Scene::loadSpotsByPattern(int patternId)
 		addBaseSpot(boss->point, boss->binding, varInfo);
 	}
 
-    // load map tiles for this pattern
-	loadMapTiles(patternInfo->map, 0);
-
-    // Set current pattern ID
-	m_currentPatternId = patternId;
-
     // Reset overlay state when loading a new pattern
 	updateB1Overlay();
 
@@ -1422,6 +1422,12 @@ void Scene::loadSpotsByMap(int map)
 
 	// Clear existing spots
 	clearSpots();
+
+	// load map tiles for this map (use layer 0 as default)
+	loadMapTiles(map, 0);
+
+    // Reset pattern and filters since we're just browsing the map
+	m_currentPatternId = -1;
 
     // Add all spots for this map for filtering
 	auto staticSpots = gameData.getSpotsByMap(map);
@@ -1446,12 +1452,6 @@ void Scene::loadSpotsByMap(int map)
 		auto tmp = getFilterStarter();
 		addStarterSpot(starter->point, starterId, tmp);
 	}
-
-    // load map tiles for this map (use layer 0 as default)
-	loadMapTiles(map, 0);
-
-    // Reset pattern and filters since we're just browsing the map
-	m_currentPatternId = -1;
 
 	// Update info panel with map details
 	std::string htmlContent = "<h3>选择模式</h3>";

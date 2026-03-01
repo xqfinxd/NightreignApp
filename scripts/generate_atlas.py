@@ -4,7 +4,7 @@
 输出格式: alias,path,width,height,format
 """
 
-import os
+import json
 import sys
 import re
 import hashlib
@@ -69,7 +69,7 @@ def scan_textures(textures_path):
         try:
             with Image.open(png_file) as img:
                 width, height = img.size
-                mode = img.mode
+                mode = len(img.getbands())
             rel_path = png_file.relative_to(textures_path)
             alias = generate_alias(rel_path)
             path_str = "nightreign/assets/textures/" + rel_path.as_posix()
@@ -93,7 +93,7 @@ def scan_textures(textures_path):
             try:
                 with Image.open(png_file) as img:
                     width, height = img.size
-                    mode = img.mode
+                    mode = len(img.getbands())
                 rel_path = png_file.relative_to(textures_path)
                 path_str = "nightreign/assets/textures/" + rel_path.as_posix()
                 alias = generate_alias(rel_path)
@@ -123,7 +123,7 @@ def scan_textures(textures_path):
             try:
                 with Image.open(png_file) as img:
                     width, height = img.size
-                    mode = img.mode
+                    mode = len(img.getbands())
                 rel_path = png_file.relative_to(textures_path)
                 alias = generate_alias(rel_path)
 
@@ -185,7 +185,7 @@ def main():
         'path': 'std::string',
         'width': 'int',
         'height': 'int',
-        'format': 'std::string'
+        'format': 'int'
     }
     
     if not textures:
@@ -197,6 +197,15 @@ def main():
     # 统计信息
     total_size = sum(t['width'] * t['height'] * 4 for t in textures)  # 假设RGBA
     print(f"  预估内存占用: {total_size / (1024*1024):.2f} MB")
+    jsonfmt = {}
+    for tex in textures:
+        jsonfmt[tex['alias']] = {
+            'path': tex['path'],
+            'width': tex['width'],
+            'height': tex['height'],
+            'format': tex['format']
+        }
+    json.dump(jsonfmt, open(paths.asset_root_dir / "atlas.json", 'w', encoding='utf_8_sig'), indent=4, ensure_ascii=False)
     
     return 0
 

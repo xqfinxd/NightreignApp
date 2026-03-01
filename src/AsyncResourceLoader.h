@@ -20,7 +20,7 @@ public:
     using LoadCallback = std::function<void(bool success, Texture* texture)>;
     using UpdateCallback = std::function<void(bool success)>;
     
-    AsyncResourceLoader(ResourceManager* resourceMgr);
+    AsyncResourceLoader();
     ~AsyncResourceLoader();
     
     // 异步加载纹理数据并更新已存在的占位纹理
@@ -52,7 +52,6 @@ private:
         UpdateCallback callback;
     };
     
-    ResourceManager* m_resource_mgr;
     std::unordered_map<std::string, LoadRequest> m_loading_requests;
     std::unordered_map<std::string, UpdateRequest> m_update_requests;
     int m_pending_count = 0;

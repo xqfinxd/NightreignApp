@@ -6,6 +6,8 @@
 #include <set>
 #include <glm/glm.hpp>
 
+struct sqlite3;
+
 // Nightlord information
 struct NightlordInfo {
     int id;
@@ -159,6 +161,7 @@ public:
     static GameData& getRef() { return *getInstance(); }
     
     bool loadFromCSV(const std::string& dataPath);
+    bool loadFromDB(const std::string& dbPath);
     
     // Map data for IMGUI
     std::vector<const char*> getMapNames() const;
@@ -216,6 +219,21 @@ private:
     bool loadRottedPowers(const std::string& filePath);
     bool loadGreatHollowBindings(const std::string& filePath);
     bool loadEventsEx(const std::string& filePath);
+
+    // SQLite loading
+    bool dbLoadNightlords(sqlite3* db);
+    bool dbLoadMaps(sqlite3* db);
+    bool dbLoadPatterns(sqlite3* db);
+    bool dbLoadAttachPoints(sqlite3* db);
+    bool dbLoadStarters(sqlite3* db);
+    bool dbLoadVariations(sqlite3* db);
+    bool dbLoadSpotConfig(sqlite3* db);
+    bool dbLoadFixedSpots(sqlite3* db);
+    bool dbLoadGridHeights(sqlite3* db);
+    bool dbLoadEvents(sqlite3* db);
+    bool dbLoadMapBindings(sqlite3* db);
+    bool dbLoadPatternBindings(sqlite3* db);
+    bool dbLoadSmallBaseBindings(sqlite3* db);
 
     std::map<int, NightlordInfo> m_nightlordDB;
 	std::map<int, MapInfo> m_mapDB;

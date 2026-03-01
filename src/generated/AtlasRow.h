@@ -12,14 +12,14 @@ struct AtlasRow {
     std::string path;
     int width;
     int height;
-    std::string format;
+    int format;
 
     AtlasRow() {
         alias = "";
         path = "";
         width = 0;
         height = 0;
-        format = "";
+        format = 0;
     }
 
     AtlasRow(
@@ -27,7 +27,7 @@ struct AtlasRow {
         std::string path_,
         int width_,
         int height_,
-        std::string format_
+        int format_
     ) {
         alias = alias_;
         path = path_;
@@ -78,7 +78,11 @@ struct AtlasRow {
                 height = 0;
             }
             // 解析 format
-            format = tokens[4];
+            if (!tokens[4].empty()) {
+                format = std::stoi(tokens[4]);
+            } else {
+                format = 0;
+            }
         } catch (const std::exception& e) {
             std::cerr << "Parse error: " << e.what() << std::endl;
             return false;

@@ -1,0 +1,3 @@
+composite_alias,width,height,source_alias,anchor_x,anchor_y,pivot_x,pivot_y,scale
+spot_ruins_cold,234,128,spot_ruins,0,0,0,0,1.0
+spot_ruins_cold,234,128,spot_cold,1,0,1,0,0.6
