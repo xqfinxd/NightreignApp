@@ -244,7 +244,7 @@ GLenum TextureRegistry::GetGLFormat(int format) const {
     switch (format) {
         case 4: return GL_RGBA;
         case 3: return GL_RGB;
-        case 1: return GL_R;  // Use luminance for single channel
+        case 1: return GL_LUMINANCE;  // Use luminance for single channel
         default: return GL_RGBA;
     }
 }

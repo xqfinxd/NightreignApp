@@ -86,13 +86,15 @@ def generate_subdir_manifest(
                 'crc': crc
             })
 
-    atlas_path = assets_root / 'atlas.csv'
-    if atlas_path.exists():
-        files_info.append({
-            'path': str(atlas_path.relative_to(assets_root.parent)).replace('\\', '/'),
-            'priority': default_priority + 1,
-            'crc': calculate_crc32(str(atlas_path))
-        })
+    extrant_files = ['atlas.json','composite_atlas.json']
+    for extrant_file in extrant_files:
+        extrant_path = assets_root / extrant_file
+        if extrant_path.exists():
+            files_info.append({
+                'path': str(extrant_path.relative_to(assets_root.parent)).replace('\\', '/'),
+                'priority': default_priority + 1,
+                'crc': calculate_crc32(str(extrant_path))
+            })
     # 按文件路径排序
     files_info.sort(key=lambda x: x['path'])    
     return files_info
