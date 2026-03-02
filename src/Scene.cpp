@@ -169,7 +169,7 @@ Scene::~Scene()
 void Scene::initialize()
 {
 	// Load game data from SQLite database
-	if (!m_gameData->loadFromDB("nightreign/assets/datas/game_data.db"))
+	if (!getGameData().loadFromDB("nightreign/assets/datas/game_data.db"))
 	{
 		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Application: Failed to load game data");
 	}
@@ -255,7 +255,7 @@ void Scene::onSelectSpots(int screenX, int screenY, int width, int height)
 	auto hitsAtLocation = Raycast(*camera, screenX, screenY, width, height);
 	if (hitsAtLocation.empty()) return;
 
-	auto &gameData = GameData::getRef();
+	auto &gameData = getGameData();
 	std::map<int, size_t> uniqueVars; // For deduplicating variations
 
 	for (auto *o : hitsAtLocation)
@@ -581,7 +581,7 @@ void Scene::drawUI()
 	if (m_filterMode)
 	{
 		ImGui::Text("1. Select Map:");
-		auto names = GameData::getRef().getMapNames();
+		auto names = getGameData().getMapNames();
 		static int filterMapSelection = m_currentMapIndex;
 		if (ImGui::Combo("##MapSelect", &filterMapSelection, names.data(), static_cast<int>(names.size())))
 		{
@@ -622,7 +622,7 @@ void Scene::drawUI()
 
 		for (auto id : cachedSelectionData.attachIds)
 		{
-			auto spot = GameData::getRef().getSpot(id);
+			auto spot = getGameData().getSpot(id);
 			ImGui::PushID(std::to_string(id).c_str());
 			if (!spot)
 				ImGui::Text("AttachId: %d (No point info)", id);
@@ -696,7 +696,7 @@ void Scene::drawContextMenu()
 	// Use Popup instead of regular window (auto-closes on click outside)
 	if (ImGui::BeginPopup("ContextMenuPopup", ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
 	{
-		auto &gameData = GameData::getRef();
+		auto &gameData = getGameData();
 
 		// Display header
 		ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), CHS("选项"));
@@ -711,11 +711,11 @@ void Scene::drawContextMenu()
 			int validStarterCount = 0;
 			for (int starterId : m_selectionData.starterIds)
 			{
-				auto starterSpot = gameData.getStarter(starterId);
+				auto starterSpot = getGameData().getStarter(starterId);
 				if (!starterSpot) continue;
 
 				// Calculate how many patterns this would leave
-				auto availPatterns = gameData.filterByStarter(m_filteredPatterns, starterId);
+				auto availPatterns = getGameData().filterByStarter(m_filteredPatterns, starterId);
 
 				// Skip if no patterns match
 				if (availPatterns.empty()) continue;
@@ -1033,10 +1033,9 @@ void Scene::filterMap(int map)
 {
 	m_filterMode = true;
 	loadSpotsByMap(map);
-	auto& gameData = GameData::getRef();
-	m_filteredPatterns = gameData.filterByMap(map);
+	m_filteredPatterns = getGameData().filterByMap(map);
 
-	auto mapNames = gameData.getMapNames();
+	auto mapNames = getGameData().getMapNames();
 	if (map >= 0 && static_cast<size_t>(map) < mapNames.size()) {
 		showToast(std::string("已切换至: ") + mapNames[map]);
 	}
@@ -1044,8 +1043,7 @@ void Scene::filterMap(int map)
 
 void Scene::filterNightlord(int nightlord)
 {
-	auto& gameData = GameData::getRef();
-	auto testPatterns = gameData.filterByNightlord(m_filteredPatterns, nightlord);
+	auto testPatterns = getGameData().filterByNightlord(m_filteredPatterns, nightlord);
 	if (!testPatterns.empty())
 	{
 		m_filteredPatterns = testPatterns;
@@ -1074,7 +1072,7 @@ bool Scene::isOverlayPoint(const MapPoint& point) const
     // no fall in overlay grids
 	if (it == m_overlayGrids.end())
         return false;
-    auto option = GameData::getRef().getGridOption(m_currentMapIndex, point.getX(), point.getZ());
+    auto option = getGameData().getGridOption(m_currentMapIndex, point.getX(), point.getZ());
 	if (!option)
 		return false;
     return point.height < option->height;
@@ -1082,7 +1080,7 @@ bool Scene::isOverlayPoint(const MapPoint& point) const
 
 void Scene::updatePanelInfo(const PatternInfo &patternInfo)
 {
-	auto& gameData = GameData::getRef();
+	auto& gameData = getGameData();
 	// Update info panel with map details
 	std::string htmlContent = "<h3>地图信息</h3>";
 	if (auto nightlordInfo = gameData.getNightlord(patternInfo.boss))
@@ -1237,7 +1235,7 @@ Entity& Scene::addBaseSpot(const MapPoint &gridPos, int attachId, const Variatio
 	textComp->visible = info.isShowText();
 	meshComp->visible = info.isShowIcon();
 
-	if (auto option = GameData::getRef().getAttachOption(attachId))
+	if (auto option = getGameData().getAttachOption(attachId))
 	{
 		textComp->offset = option->offset;
 		textComp->direction = static_cast<TextComponent::Direction>(option->direction);
@@ -1341,7 +1339,7 @@ void Scene::clearSpots()
 void Scene::loadSpotsByPattern(int patternId)
 {
 	if (patternId < 0) return;
-	auto& gameData = GameData::getRef();
+	auto& gameData = getGameData();
 	auto* patternInfo = gameData.getPattern(patternId);
 	if (!patternInfo) return;
 
@@ -1418,7 +1416,7 @@ void Scene::loadSpotsByPattern(int patternId)
 void Scene::loadSpotsByMap(int map)
 {
 	if (map < 0) return;
-	auto& gameData = GameData::getRef();
+	auto& gameData = getGameData();
 
 	// Clear existing spots
 	clearSpots();

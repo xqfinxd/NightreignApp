@@ -169,6 +169,10 @@ public:
 	glm::vec4 getClearColor() const;
 
 private:
+	GameData& getGameData() { return *m_gameData; }
+	const GameData& getGameData() const {
+		return const_cast<Scene*>(this)->getGameData();
+	}
 	void clearMapTiles();
     bool isOverlayPoint(const MapPoint& point) const;
 	void updatePanelInfo(const PatternInfo& point);

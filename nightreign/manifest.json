@@ -1,0 +1,122 @@
+[
+    {
+        "path": "nightreign/assets/datas/autogen_pattern_list.csv",
+        "priority": 1,
+        "crc": "2b4125c2"
+    },
+    {
+        "path": "nightreign/assets/datas/autogen_rotted_power.csv",
+        "priority": 1,
+        "crc": "ab87b51f"
+    },
+    {
+        "path": "nightreign/assets/datas/autogen_spot_list.csv",
+        "priority": 1,
+        "crc": "917cc60a"
+    },
+    {
+        "path": "nightreign/assets/datas/autogen_starter_distribution.csv",
+        "priority": 1,
+        "crc": "7904d445"
+    },
+    {
+        "path": "nightreign/assets/datas/autogen_starter_list.csv",
+        "priority": 1,
+        "crc": "3257ba74"
+    },
+    {
+        "path": "nightreign/assets/datas/autogen_variation_list.csv",
+        "priority": 1,
+        "crc": "75993fdd"
+    },
+    {
+        "path": "nightreign/assets/datas/chs.txt",
+        "priority": 1,
+        "crc": "6809ba5d"
+    },
+    {
+        "path": "nightreign/assets/datas/game_data.db",
+        "priority": 1,
+        "crc": "a2ed1ad0"
+    },
+    {
+        "path": "nightreign/assets/datas/manual_attachpoints.csv",
+        "priority": 1,
+        "crc": "24bf5560"
+    },
+    {
+        "path": "nightreign/assets/datas/manual_constant_spots.csv",
+        "priority": 1,
+        "crc": "46e1e74a"
+    },
+    {
+        "path": "nightreign/assets/datas/manual_events.csv",
+        "priority": 1,
+        "crc": "6ac55811"
+    },
+    {
+        "path": "nightreign/assets/datas/manual_great_hollow_binding_spots.csv",
+        "priority": 1,
+        "crc": "60b245c7"
+    },
+    {
+        "path": "nightreign/assets/datas/manual_grids.csv",
+        "priority": 1,
+        "crc": "40d60b88"
+    },
+    {
+        "path": "nightreign/assets/datas/manual_maps.csv",
+        "priority": 1,
+        "crc": "1ba3e019"
+    },
+    {
+        "path": "nightreign/assets/datas/manual_nightlords.csv",
+        "priority": 1,
+        "crc": "7998378c"
+    },
+    {
+        "path": "nightreign/assets/datas/manual_spots.csv",
+        "priority": 1,
+        "crc": "f37eac39"
+    },
+    {
+        "path": "nightreign/assets/datas/manual_variations.csv",
+        "priority": 1,
+        "crc": "e0a90315"
+    },
+    {
+        "path": "nightreign/assets/fonts/NotoSansSC.ttf",
+        "priority": 1,
+        "crc": "d3f73fe5"
+    },
+    {
+        "path": "nightreign/assets/shaders/font.frag",
+        "priority": 1,
+        "crc": "9723bb5f"
+    },
+    {
+        "path": "nightreign/assets/shaders/font.vert",
+        "priority": 1,
+        "crc": "12613164"
+    },
+    {
+        "path": "nightreign/assets/shaders/texture.frag",
+        "priority": 1,
+        "crc": "d7b7916a"
+    },
+    {
+        "path": "nightreign/assets/shaders/texture.vert",
+        "priority": 1,
+        "crc": "1bfaf310"
+    },
+    {
+        "path": "nightreign/atlas.json",
+        "priority": 2,
+        "crc": "0c8248cd"
+    },
+    {
+        "path": "nightreign/composite_atlas.json",
+        "priority": 2,
+        "crc": "31558dcc"
+    }
+]

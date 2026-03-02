@@ -9,7 +9,7 @@
     const BootstrapLoader = {
         // 配置
         config: {
-            manifestUrl: 'nightreign/manifest.csv',
+            manifestUrl: 'nightreign/manifest.json',
             retryAttempts: 3,
             retryDelay: 1000
         },
@@ -66,7 +66,7 @@
                     }
                     
                     // 先添加下一个 dependency 再移除当前的，避免 dependency 计数为 0
-                    Module.addRunDependency('manifest.csv');
+                    Module.addRunDependency('manifest.json');
                     Module.removeRunDependency('idbfs-mount');
                     
                     this.loadManifest();
@@ -79,7 +79,7 @@
         },
 
         /**
-         * 阶段 2: 下载并解析 manifest.csv
+         * 阶段 2: 下载并解析 manifest.json
          */
         loadManifest: function() {
             console.log('[Bootstrap] Phase 2: Loading manifest...');
@@ -99,49 +99,37 @@
                     this.prepareDownload();
                     
                     // 现在可以安全地移除 manifest dependency
-                    Module.removeRunDependency('manifest.csv');
+                    Module.removeRunDependency('manifest.json');
                     
                     // 执行缓存检查和下载
                     this.checkCache();
                 } catch (e) {
                     console.error('[Bootstrap] Failed to process manifest:', e);
-                    Module.removeRunDependency('manifest.csv');
+                    Module.removeRunDependency('manifest.json');
                     this.handleError('Failed to process manifest', e);
                 }
             }, (error) => {
                 console.error('[Bootstrap] Failed to download manifest:', error);
-                Module.removeRunDependency('manifest.csv');
+                Module.removeRunDependency('manifest.json');
                 this.handleError('Failed to download manifest', error);
             });
         },
 
         /**
-         * 解析 manifest.csv
+         * 解析 manifest.json
          */
         parseManifest: function(content) {
             console.log('[Bootstrap] Parsing manifest...');
-            
-            const lines = content.split('\n');
+
+            const entries = JSON.parse(content);
             this.state.essentialFiles = [];
 
-            // 跳过表头
-            for (let i = 1; i < lines.length; i++) {
-                const line = lines[i].trim();
-                if (!line || line.startsWith('#')) continue;
-
-                const parts = line.split(',');
-                if (parts.length < 3) continue;
-
-                const path = parts[0].trim();
-                const priority = parseInt(parts[1].trim());
-                const crc = parts[2].trim();
-
-                // 只加载 priority >= 1 的文件
-                if (priority >= 1) {
+            for (const entry of entries) {
+                if (entry.priority >= 1) {
                     this.state.essentialFiles.push({
-                        path: path,
-                        priority: priority,
-                        crc: crc,
+                        path: entry.path,
+                        priority: entry.priority,
+                        crc: entry.crc,
                     });
                 }
             }

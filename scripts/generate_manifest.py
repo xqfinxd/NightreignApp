@@ -3,8 +3,7 @@
 为assets子目录生成manifest文件
 """
 
-import os
-import csv
+import json
 import zlib
 from pathlib import Path
 from typing import List, Dict, Optional
@@ -114,3 +113,4 @@ header = {
     'crc': 'string'
 }
 csvutil.generate_csv(header, manifest, str(csv_file))
+json.dump(manifest, open(str(paths.asset_root_dir / "manifest.json"), 'w', encoding='utf-8'), indent=4)

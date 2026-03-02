@@ -205,7 +205,7 @@ def main():
             'height': tex['height'],
             'format': tex['format']
         }
-    json.dump(jsonfmt, open(paths.asset_root_dir / "atlas.json", 'w', encoding='utf_8_sig'), indent=4, ensure_ascii=False)
+    json.dump(jsonfmt, open(paths.asset_root_dir / "atlas.json", 'w', encoding='utf-8'), indent=4, ensure_ascii=False)
     
     return 0
 

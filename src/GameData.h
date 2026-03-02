@@ -158,7 +158,6 @@ public:
     ~GameData();
     // Singleton access (optional)
     static GameData* getInstance(){ return s_instance; }
-    static GameData& getRef() { return *getInstance(); }
     
     bool loadFromCSV(const std::string& dataPath);
     bool loadFromDB(const std::string& dbPath);
