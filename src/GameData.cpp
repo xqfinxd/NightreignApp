@@ -1211,3 +1211,94 @@ bool GameData::dbLoadSmallBaseBindings(sqlite3* db)
     return true;
 }
 
+GameDataDB::GameDataDB()
+{
+}
+
+GameDataDB::~GameDataDB()
+{
+}
+
+bool GameDataDB::open(const std::string& dbPath)
+{
+    int rc = sqlite3_open_v2(dbPath.c_str(), &m_db, SQLITE_OPEN_READONLY, nullptr);
+    if (rc != SQLITE_OK)
+    {
+        close();
+        return false;
+    }
+    m_tempTable = "temp_pattern";
+    resetFilter();
+}
+
+void GameDataDB::close()
+{
+    if (m_db)
+    {
+        sqlite3_close(m_db);
+        m_db = nullptr;
+    }
+}
+
+void GameDataDB::resetFilter()
+{
+    SDL_assert(m_db);
+
+    /*
+    DROP TABLE IF EXISTS @tempTable;
+    CREATE TEMP TABLE @tempTable AS
+    SELECT pattern_id FROM Pattern;
+    */
+    std::stringstream ss;
+    ss << "DROP TABLE IF EXISTS " << m_tempTable << "; "
+       << "CREATE TEMP TABLE " << m_tempTable << " AS "
+       << "SELECT pattern_id FROM Pattern;";
+     sqlite3_exec(m_db, ss.str().c_str(), nullptr, nullptr, nullptr);
+}
+
+std::string IntFieldFilter::apply(const std::string& tempTable) const
+{
+    /*
+    DELETE FROM @tempTable
+    WHERE NOT EXISTS (
+        SELECT p.pattern_id 
+        FROM Pattern p 
+        WHERE p.pattern_id = @tempTable.pattern_id 
+        AND p.@fieldName = @value
+    )
+    */
+    std::stringstream ss;
+    ss << "DELETE FROM " << tempTable
+       << " WHERE NOT EXISTS ("
+       << "SELECT p.pattern_id FROM Pattern p "
+       << "WHERE p.pattern_id = " << tempTable << ".pattern_id "
+       << "AND p." << m_fieldName << " = " << m_value
+       << ");";
+    return ss.str();
+}
+
+std::string VariationFilter::apply(const std::string &tempTable) const
+{
+    /*
+    DELETE FROM @tempTable
+    WHERE NOT EXISTS (
+        SELECT sc.pattern_id 
+        FROM SpotConfig sc 
+        WHERE sc.pattern_id = @tempTable.pattern_id 
+        AND sc.attach_id IN (@m_attachIds)
+        AND sc.smallbase_id <> @m_smallBaseId
+        AND (sc.variation_id = @m_variationId OR @m_variationId < 0)
+    )
+    */
+    std::stringstream ss;
+    ss << "DELETE FROM " << tempTable
+       << " WHERE NOT EXISTS ("
+       << "SELECT sc.pattern_id FROM SpotConfig sc "
+       << "WHERE sc.pattern_id = " << tempTable << ".pattern_id "
+       << "AND sc.attach_id = ";
+    std::copy(m_attachIds.begin(), m_attachIds.end(), std::ostream_iterator<int>(ss, ","));
+    ss << "AND sc.smallbase_id = " << m_smallBaseId
+       << "AND (sc.variation_id = " << m_variationId << " OR " << m_variationId << " < 0)"
+       << ");";
+    return ss.str();
+}

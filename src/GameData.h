@@ -3,14 +3,16 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <memory>
 #include <set>
+#include <sstream>
 #include <glm/glm.hpp>
 
 struct sqlite3;
 
 // Nightlord information
 struct NightlordInfo {
-    int id;
+    int id = -1;
     std::string name;
 };
 
@@ -254,4 +256,59 @@ private:
     static const std::vector<int> s_emptyIntVector;
     static const std::string s_emptyString;
     static GameData* s_instance;
+};
+
+class Filter {
+public:
+    virtual ~Filter() = default;
+    virtual std::string apply(const std::string& tempTable) const = 0;
+    virtual std::string getDescription() const = 0;
+    virtual void drawUI() = 0;
+    virtual std::unique_ptr<Filter> clone() const = 0;
+};
+
+class IntFieldFilter : public Filter {
+public:
+    IntFieldFilter(const std::string& fieldName, int value) : m_fieldName(fieldName), m_value(value) {}
+    std::string apply(const std::string& tempTable) const override;
+    std::string getDescription() const override { return ""; }
+    void drawUI() override {}
+    std::unique_ptr<Filter> clone() const override { return std::make_unique<IntFieldFilter>(*this); }
+private:
+    std::string m_fieldName;
+    int m_value = -1;
+};
+
+class VariationFilter : public Filter {
+public:
+    VariationFilter(const std::vector<int>& attachIds, int smallBaseId, int variationId)
+        : m_attachIds(attachIds), m_smallBaseId(smallBaseId), m_variationId(variationId) {}
+    VariationFilter(const std::vector<int>& attachIds, int smallBaseId)
+        : VariationFilter(attachIds, smallBaseId, -1) {}
+    std::string apply(const std::string& tempTable) const override;
+    std::string getDescription() const override { return ""; }
+    void drawUI() override {}
+    std::unique_ptr<Filter> clone() const override { return std::make_unique<VariationFilter>(*this); }
+private:
+    std::vector<int> m_attachIds = {-1};
+    int m_smallBaseId = -1;
+    int m_variationId = -1;
+};
+
+class GameDataDB {
+public:
+    GameDataDB();
+    ~GameDataDB();
+
+    bool open(const std::string& dbPath);
+    void close();
+    void resetFilter();
+
+private:
+    sqlite3* m_db = nullptr;
+    std::string m_tempTable;
+
+private:
+    std::map<int, MapInfo> m_mapCache;
+    std::map<int, NightlordInfo> m_nightlordCache;
 };
