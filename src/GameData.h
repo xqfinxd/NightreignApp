@@ -6,6 +6,7 @@
 #include <memory>
 #include <set>
 #include <sstream>
+#include <optional>
 #include <glm/glm.hpp>
 
 struct sqlite3;
@@ -258,53 +259,46 @@ private:
     static GameData* s_instance;
 };
 
-class Filter {
-public:
-    virtual ~Filter() = default;
-    virtual std::string apply(const std::string& tempTable) const = 0;
-    virtual std::string getDescription() const = 0;
-    virtual void drawUI() = 0;
-    virtual std::unique_ptr<Filter> clone() const = 0;
+enum SpotFlag {
+    SpotFlag_None = 0,
+    SpotFlag_Icon = 1 << 0,
+    SpotFlag_Label = 1 << 1,
+    SpotFlag_All = 0xFF
 };
 
-class IntFieldFilter : public Filter {
-public:
-    IntFieldFilter(const std::string& fieldName, int value) : m_fieldName(fieldName), m_value(value) {}
-    std::string apply(const std::string& tempTable) const override;
-    std::string getDescription() const override { return ""; }
-    void drawUI() override {}
-    std::unique_ptr<Filter> clone() const override { return std::make_unique<IntFieldFilter>(*this); }
-private:
-    std::string m_fieldName;
-    int m_value = -1;
+struct SmallBaseView {
+    int smallBaseId = -1;
+    int variationId = -1;
+    int groupId = -1;
+    std::string majorName;
+    std::string minorName;
+    std::string iconAlias;
+    SpotFlag flag = SpotFlag_None;
 };
 
-class SmallBaseFilter : public Filter {
-public:
-    SmallBaseFilter(const std::vector<int>& attachIds, int smallBaseId, int variationId)
-        : m_attachIds(attachIds), m_smallBaseId(smallBaseId), m_variationId(variationId) {}
-    SmallBaseFilter(const std::vector<int>& attachIds, int smallBaseId)
-        : SmallBaseFilter(attachIds, smallBaseId, -1) {}
-    std::string apply(const std::string& tempTable) const override;
-    std::string getDescription() const override { return ""; }
-    void drawUI() override {}
-    std::unique_ptr<Filter> clone() const override { return std::make_unique<SmallBaseFilter>(*this); }
-private:
-    std::vector<int> m_attachIds = {-1};
-    int m_groupId = -1;
-    int m_smallBaseId = -1;
-    int m_variationId = -1;
+struct AttachPointView {
+    int attachId = -1;
+    MapPoint point;
+    glm::vec2 normalize() const {
+        return point.normalize();
+    }
 };
 
-struct MapCache {
-    int id = -1;
-    std::string name;
+struct StarterView {
+    int starterId = -1;
+    MapPoint point;
+    glm::vec2 normalize() const {
+        return point.normalize();
+    }
+};
 
-    std::vector<int> legacyFilterPoints;
-    std::vector<int> dlcFilterPoints;
+struct SpotConfigView {
+    AttachPointView attachPoint;
+    SmallBaseView smallBase;
 };
 
 struct PatternView {
+    PatternView(int id) : patternId(id) {}
     int patternId = -1;
     int mapId = -1;
     bool isdlc = false;
@@ -313,38 +307,24 @@ struct PatternView {
     std::string day2BossName;
     std::string day1ExtraBossName;
     std::string day2ExtraBossName;
+    std::string eventContent;
     MapPoint day1PlayArea;
     MapPoint day2PlayArea;
     MapPoint starter;
+    std::vector<SpotConfigView> spots;
 };
 
-enum SpotFlags {
-    SpotFlags_None = 0,
-    SpotFlags_Icon = 1 << 0,
-    SpotFlags_Label = 1 << 1,
-    SpotFlags_All = 0xFF
+struct MapView {
+    MapView(int id) : mapId(id) {}
+    int mapId = -1;
+    std::vector<AttachPointView> attachPoints;
+    std::vector<StarterView> starters;
 };
 
-struct SmallBaseView {
-    int smallBaseId = -1;
-    int variationId = -1;
-    int groupId = -1;
-    std::string groupName;
-    std::string majorName;
-    std::string minorName;
-    std::string iconAlias;
-    SpotFlags flags = SpotFlags_None;
-};
-
-struct SpotView {
-    int attachId = -1;
-    MapPoint attachPoint;
-    SmallBaseView smallBase;
-};
-
-struct SpotOptionView {
-    std::vector<int> attachIds;
-    std::vector<SmallBaseView> smallBases;
+struct MapCache {
+    int id = -1;
+    std::string name;
+    MapView view{ -1 };
 };
 
 class GameDataDB {
@@ -354,16 +334,62 @@ public:
 
     bool open(const std::string& dbPath);
     void close();
-    void resetFilter();
-    bool loadCache();
+
+    // Map info (served from cache)
+    std::vector<const char*>            getMapNames() const;
+    std::vector<int>                    getStarterByMap(int map) const;
+
+    // Single-row queries; return std::nullopt when not found
+    std::optional<PatternInfo>          getPattern(int patternId) const;
+    std::optional<SpotInfo>             getSpot(int attachId) const;
+    std::optional<StarterInfo>          getStarter(int starterId) const;
+    std::optional<VariationInfo>        getVariation(int varKey) const;
+    std::optional<VariationInfo>        getVariation(int patternId, int attachId) const;
+    std::optional<VariationInfo>        getVariationById(int variationId) const;
+    std::optional<SpotOption>           getSpotOption(int attachId) const;
+    std::optional<SpotLabelOption>      getAttachOption(int attachId) const;
+    std::optional<GridOption>           getGridOption(int map, int x, int y) const;
+    std::optional<RottedPowerInfo>      getRottedPower(int patternId) const;
+    std::optional<EventInfo>            getEvent(int patternId) const;
+    std::optional<NightlordInfo>        getNightlord(int nightlordId) const;
+
+    // Multi-row queries
+    std::vector<VariationDist>          listDistribution(int patternId) const;
+    std::vector<VariationInfo>          listVariations(int attachId, int map) const;
+    std::vector<VariationInfo>          listVariations(int attachId, const std::set<int>& patterns) const;
+    std::vector<ConstantInfo>           listConstants(int map) const;
+    std::vector<GreatHollowBindingInfo> listGreatHollowBinding(int patternId) const;
+
+    // Pattern filtering — temp-table based
+    void          resetFilter(int mapId = -1);
+    std::set<int> getFilteredPatterns() const;
+    int           getFilteredPatternCount() const;
+
+    // Convenience filter helpers (accept current patterns, return filtered subset)
+    std::set<int> filterByMap(int map);
+    std::set<int> filterByVariation(const std::set<int>& patterns, int attachId, int varKey) const;
+    std::set<int> filterByStarter(const std::set<int>& patterns, int starterId) const;
+    std::set<int> filterByNightlord(const std::set<int>& patterns, int nightlordId) const;
+
+    // new implementation for pattern filtering with temp table
+    int filterByMap2(int mapId);
+    int filterBySmallBase(std::vector<int> attachIds, int smallBaseId, int variationId);
+    int filterBySmallBase(std::vector<int> attachIds, int smallBaseId);
+    int filterBySmallBaseGroup(std::vector<int> attachIds, int smallBaseId);
+    int filterByStarter2(int starterId);
+    int filterByNightlord2(int nightlordId);
+
+    const MapView& getMapView(int mapId) const;
+    std::optional<PatternView> getPatternView(int patternId) const;
 
 private:
+    bool createTempViews();
+    bool loadCache();
     bool loadMaps();
-    bool loadFixedSpots();
+    std::optional<MapView> loadMapView(int mapId) const;
 
 private:
     sqlite3* m_db = nullptr;
-    std::string m_tempTable;
-
+    std::string m_tempTable = "temp_pattern";
     std::map<int, MapCache> m_cachedMaps;
 };

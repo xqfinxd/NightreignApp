@@ -169,13 +169,13 @@ public:
 	glm::vec4 getClearColor() const;
 
 private:
-	GameData& getGameData() { return *m_gameData; }
-	const GameData& getGameData() const {
+	GameDataDB& getGameData() { return *m_gameData; }
+	const GameDataDB& getGameData() const {
 		return const_cast<Scene*>(this)->getGameData();
 	}
 	void clearMapTiles();
     bool isOverlayPoint(const MapPoint& point) const;
-	void updatePanelInfo(const PatternInfo& point);
+	void updatePanelInfo(const PatternView& point);
 
 private:
 	PROPERTY float m_minZoom = 0.5f;
@@ -231,5 +231,5 @@ private:
 	bool m_showContextMenu = false;
 	glm::vec2 m_contextMenuPos = glm::vec2(0.0f);
 	SelectionData m_selectionData;
-	std::unique_ptr<GameData> m_gameData;
+	std::unique_ptr<GameDataDB> m_gameData;
 };

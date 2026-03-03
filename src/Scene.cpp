@@ -158,7 +158,7 @@ struct Ray
 	}
 };
 
-Scene::Scene() : m_gameData(new GameData)
+Scene::Scene() : m_gameData(new GameDataDB)
 {
 }
 
@@ -169,7 +169,7 @@ Scene::~Scene()
 void Scene::initialize()
 {
 	// Load game data from SQLite database
-	if (!getGameData().loadFromDB("nightreign/assets/datas/game_data.db"))
+	if (!getGameData().open("nightreign/assets/datas/game_data.db"))
 	{
 		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Application: Failed to load game data");
 	}
@@ -281,10 +281,10 @@ void Scene::onSelectSpots(int screenX, int screenY, int width, int height)
 			for (const auto &res : results)
 			{
 				auto outPatterns = gameData.filterByVariation(
-					m_filteredPatterns, mapSpot->metadata, res->getKey());
+					m_filteredPatterns, mapSpot->metadata, res.getKey());
 
 				// Deduplicate variations by key
-				auto it = uniqueVars.find(res->getKey());
+				auto it = uniqueVars.find(res.getKey());
 				if (it != uniqueVars.end() && it->second < m_selectionData.variations.size())
 				{
 					// Merge patterns into existing variation
@@ -295,10 +295,10 @@ void Scene::onSelectSpots(int screenX, int screenY, int width, int height)
 
 				// Add new variation
 				VariationOption var;
-				var.info = *res;
+				var.info = res;
 				var.patterns.insert(outPatterns.begin(), outPatterns.end());
 				m_selectionData.variations.push_back(var);
-				uniqueVars[res->getKey()] = m_selectionData.variations.size() - 1;
+				uniqueVars[res.getKey()] = m_selectionData.variations.size() - 1;
 			}
 		}
 		else if (o->hasTag("base spot"))
@@ -1078,38 +1078,26 @@ bool Scene::isOverlayPoint(const MapPoint& point) const
     return point.height < option->height;
 }
 
-void Scene::updatePanelInfo(const PatternInfo &patternInfo)
+void Scene::updatePanelInfo(const PatternView &patternInfo)
 {
 	auto& gameData = getGameData();
 	// Update info panel with map details
 	std::string htmlContent = "<h3>地图信息</h3>";
-	if (auto nightlordInfo = gameData.getNightlord(patternInfo.boss))
+	htmlContent += "<p><strong>夜王: </strong>" + patternInfo.nightlordName + "</p>";
+	htmlContent += "<p><strong>第一夜BOSS: </strong>" + patternInfo.day1BossName + "</p>";
+	if (!patternInfo.day1ExtraBossName.empty())
 	{
-		htmlContent += "<p><strong>夜王：</strong>" + nightlordInfo->name + "</p>";
+		htmlContent += "<p style=\"text-indent: 2em;\"><strong>额外BOSS: </strong>" + patternInfo.day1ExtraBossName + "</p>";
 	}
-	else
+	htmlContent += "<p><strong>第二夜BOSS: </strong>" + patternInfo.day2BossName + "</p>";
+	if (!patternInfo.day2ExtraBossName.empty())
 	{
-		htmlContent += "<p><strong>未定义夜王：</strong>" + std::to_string(patternInfo.boss) + "</p>";
+		htmlContent += "<p style=\"text-indent: 2em;\"><strong>额外BOSS: </strong>" + patternInfo.day2ExtraBossName + "</p>";
 	}
-	auto appendBossInfo = [&](const std::string& title, int bossId) {
-		if (bossId <= 0) return;
-		if (auto bossInfo = gameData.getVariationById(bossId))
-		{
-			htmlContent += "<p><strong>" + title + "：</strong>" + bossInfo->getText() + "</p>";
-		}
-		else
-		{
-			htmlContent += "<p><strong>未定义" + title + "：</strong>" + std::to_string(bossId) + "</p>";
-		}
-	};
-	appendBossInfo("第一夜BOSS", patternInfo.bossId1);
-	appendBossInfo("第二夜BOSS", patternInfo.bossId2);
-	appendBossInfo("第一夜额外BOSS", patternInfo.extraBossId1);
-	appendBossInfo("第二夜额外BOSS", patternInfo.extraBossId2);
 	
-	if (auto eventInfo = gameData.getEvent(patternInfo.id))
+	if (!patternInfo.eventContent.empty())
 	{
-		htmlContent += "<p><strong>事件：</strong>" + eventInfo->event + "</p>";
+		htmlContent += "<p><strong>事件: </strong>" + patternInfo.eventContent + "</p>";
 	}
 	setInfoPanelContent(htmlContent);
 }
@@ -1339,78 +1327,51 @@ void Scene::clearSpots()
 void Scene::loadSpotsByPattern(int patternId)
 {
 	if (patternId < 0) return;
-	auto& gameData = getGameData();
-	auto* patternInfo = gameData.getPattern(patternId);
-	if (!patternInfo) return;
+	auto patternView = getGameData().getPatternView(patternId);
+	if (!patternView) return;
 
 	// Clear existing spots
 	clearSpots();
 	
 	// load map tiles for this pattern
-	loadMapTiles(patternInfo->map, 0);
+	loadMapTiles(patternView->mapId, 0);
 
     // Set current pattern ID
 	m_currentPatternId = patternId;
 
-	auto distList = gameData.listDistribution(patternId);
     // Add spots based on distribution
-	for (const auto dist : distList)
+	for (const auto& sc : patternView->spots)
 	{
-		auto spot = gameData.getSpot(dist->attachId);
-		auto option = gameData.getSpotOption(dist->attachId);
-		auto varInfo = gameData.getVariation(dist->patternId, dist->attachId);
-		if (!spot || !varInfo || (option && option->disable_view) || !varInfo->visible)
+		if (sc.smallBase.flag == SpotFlag_None)
 			continue;
 
-		addBaseSpot(spot->point, dist->attachId, *varInfo);
+		VariationInfo varInfo{};
+		varInfo.icon = sc.smallBase.iconAlias;
+		varInfo.iconScale = 1.f;
+		varInfo.label = sc.smallBase.majorName;
+		varInfo.sublabel = sc.smallBase.minorName;
+		varInfo.variationId = sc.smallBase.smallBaseId;
+		varInfo.variationType = sc.smallBase.variationId;
+		varInfo.visible = static_cast<int>(sc.smallBase.flag);
+		addBaseSpot(sc.attachPoint.point, sc.attachPoint.attachId, varInfo);
 	}
 	
-	auto appendBossInfo = [&](std::string& str, int bossId) {
-		if (bossId <= 0) return;
-		if (auto bossInfo = gameData.getVariationById(bossId))
-		{
-			str.append("\n");
-			str.append(bossInfo->getText());
-		}
-	};
     // Add play area spots
 	auto day1Spot = getPlayArea(1);
-	appendBossInfo(day1Spot.label, patternInfo->bossId1);
-	appendBossInfo(day1Spot.label, patternInfo->extraBossId1);
-	addBaseSpot(patternInfo->playArea1, 1, day1Spot);
+	day1Spot.label += "\n" + patternView->day1BossName;
+	if (!patternView->day1ExtraBossName.empty())
+		day1Spot.label += "\n" + patternView->day1ExtraBossName;
+	addBaseSpot(patternView->day1PlayArea, 1, day1Spot);
 	auto day2Spot = getPlayArea(2);
-	appendBossInfo(day2Spot.label, patternInfo->bossId2);
-	appendBossInfo(day2Spot.label, patternInfo->extraBossId2);
-	addBaseSpot(patternInfo->playArea2, 2, day2Spot);
-
-    // Add constant spots for this pattern
-    auto constantSpots = gameData.listConstants(patternInfo->map);
-    for (auto* constant : constantSpots)
-	{
-		if (!constant) continue;
-		auto varInfo = getConstant(*constant);
-		addBaseSpot(constant->point, constant->type, varInfo);
-    }
-
-    // rotted power spot (if exists for this pattern)
-	if (auto rottedPower = gameData.getRottedPower(patternId)) {
-		auto varInfo = getRottedPower();
-        addBaseSpot(rottedPower->point, 0, varInfo);
-	}
-	
-	// great hollow boss spot (if exists for this pattern)
-	auto greastHollowSmallBossList = gameData.listGreatHollowBinding(patternId);
-	for (auto* boss : greastHollowSmallBossList)
-	{
-		if (!boss) continue;
-		auto varInfo = getGreatHollowSmallBoss(*boss);
-		addBaseSpot(boss->point, boss->binding, varInfo);
-	}
+	day2Spot.label += "\n" + patternView->day2BossName;
+	if (!patternView->day2ExtraBossName.empty())
+		day2Spot.label += "\n" + patternView->day2ExtraBossName;
+	addBaseSpot(patternView->day2PlayArea, 2, day2Spot);
 
     // Reset overlay state when loading a new pattern
 	updateB1Overlay();
 
-	updatePanelInfo(*patternInfo);
+	updatePanelInfo(patternView.value());
 }
 
 void Scene::loadSpotsByMap(int map)
@@ -1427,28 +1388,22 @@ void Scene::loadSpotsByMap(int map)
     // Reset pattern and filters since we're just browsing the map
 	m_currentPatternId = -1;
 
+	auto mapView = gameData.getMapView(map);
     // Add all spots for this map for filtering
-	auto staticSpots = gameData.getSpotsByMap(map);
-	for (auto spotId : staticSpots)
+	for (auto& attachPoint : mapView.attachPoints)
 	{
-		auto spot = gameData.getSpot(spotId);
-		auto* option = gameData.getSpotOption(spotId);
-		if (!spot || (option && option->disable_filter))
+		auto option = gameData.getSpotOption(attachPoint.attachId);
+		if (option && option->disable_filter)
 			continue;
 		auto tmp = getFilterSpot();
-		addFilterSpot(spot->point, spotId, tmp);
+		addFilterSpot(attachPoint.point, attachPoint.attachId, tmp);
 	}
 
     // Add starter spots for this map for filtering
-	auto starterSpots = gameData.getStarterByMap(map);
-	for (auto starterId : starterSpots)
+	for (auto& starter : mapView.starters)
 	{
-		auto starter = gameData.getStarter(starterId);
-		if (!starter)
-			continue;
-
 		auto tmp = getFilterStarter();
-		addStarterSpot(starter->point, starterId, tmp);
+		addStarterSpot(starter.point, starter.starterId, tmp);
 	}
 
 	// Update info panel with map details

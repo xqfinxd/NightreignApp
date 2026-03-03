@@ -717,14 +717,14 @@ namespace {
         return txt ? txt : "";
     }
 
-    static MapPoint dbMapPoint(sqlite3_stmt* stmt, int firstCol)
+    static MapPoint dbMapPoint(sqlite3_stmt* stmt, int firstCol, bool heightExists = true)
     {
         MapPoint p;
         p.gridXNo = sqlite3_column_int(stmt, firstCol);
         p.gridZNo = sqlite3_column_int(stmt, firstCol + 1);
         p.posX    = static_cast<float>(sqlite3_column_double(stmt, firstCol + 2));
         p.posZ    = static_cast<float>(sqlite3_column_double(stmt, firstCol + 3));
-        p.height  = static_cast<float>(sqlite3_column_double(stmt, firstCol + 4));
+        p.height  = heightExists ? static_cast<float>(sqlite3_column_double(stmt, firstCol + 4)) : 0.0f;
         return p;
     }
 
@@ -1250,6 +1250,11 @@ bool GameDataDB::open(const std::string& dbPath)
         close();
         return false;
     }
+    if (!createTempViews())
+    {
+        close();
+        return false;
+    }
     m_tempTable = "temp_pattern";
     resetFilter();
     loadCache();
@@ -1265,25 +1270,44 @@ void GameDataDB::close()
     }
 }
 
-void GameDataDB::resetFilter()
+void GameDataDB::resetFilter(int mapId)
 {
     SDL_assert(m_db);
-
-    /*
-    DROP TABLE IF EXISTS @tempTable;
-    CREATE TEMP TABLE @tempTable AS
-    SELECT pattern_id FROM Pattern;
-    */
     std::stringstream ss;
-    ss << "DROP TABLE IF EXISTS " << m_tempTable << "; "
+    ss << "DROP TABLE IF EXISTS " << m_tempTable << ";"
        << "CREATE TEMP TABLE " << m_tempTable << " AS "
-       << "SELECT pattern_id FROM Pattern;";
-     sqlite3_exec(m_db, ss.str().c_str(), nullptr, nullptr, nullptr);
+       << "SELECT pattern_id FROM Pattern";
+    if (mapId >= 0)
+        ss << " WHERE map_id = " << mapId;
+    ss << ";";
+    sqlite3_exec(m_db, ss.str().c_str(), nullptr, nullptr, nullptr);
 }
 
 bool GameDataDB::loadCache()
 {
-    return loadMaps() && loadFixedSpots();
+    bool mapLoaded = loadMaps();
+    if (!mapLoaded)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+            "GameDataDB: Failed to load maps");
+        return false;
+    }
+    for (auto& pair : m_cachedMaps)
+    {
+        int mapId = pair.first;
+        if (auto viewOpt = loadMapView(mapId))
+        {
+            pair.second.view = std::move(*viewOpt);
+        }
+        else
+        {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                "GameDataDB: Failed to load map view for %s", pair.second.name.c_str());
+            return false;
+        }
+    }
+
+    return true;
 }
 
 bool GameDataDB::loadMaps()
@@ -1307,103 +1331,935 @@ bool GameDataDB::loadMaps()
     return true;
 }
 
-bool GameDataDB::loadFixedSpots()
+std::optional<MapView> GameDataDB::loadMapView(int mapId) const
 {
-    static const char* sql =
-        "SELECT p.map_id, p.dlc,"
+    static const char* sql_attachpoint =
+        "SELECT ap.grid_x,ap.grid_z,ap.pos_x,ap.pos_z,"
         " ROUND("
         "     COUNT(DISTINCT p.pattern_id) * 1.0 / "
-        "     (SELECT COUNT(*) FROM Pattern WHERE map_id = p.map_id AND dlc = p.dlc),"
+        "     (SELECT COUNT(*) FROM Pattern WHERE map_id = ?),"
         "     4"
         " ) AS occupancy_rate,"
         " GROUP_CONCAT(DISTINCT ap.attach_id) AS attach_ids"
         " FROM AttachPoint ap"
         " JOIN SpotConfig sc ON ap.attach_id = sc.attach_id"
         " JOIN Pattern p ON sc.pattern_id = p.pattern_id"
-        " GROUP BY ap.grid_x, ap.grid_z, ap.pos_x, ap.pos_z, p.map_id, p.dlc "
+        " WHERE p.map_id = ?"
+        " GROUP BY ap.grid_x, ap.grid_z, ap.pos_x, ap.pos_z"
         " ORDER BY occupancy_rate DESC";
 
-    sqlite3_stmt* stmt = nullptr;
-    if (!dbPrepare(m_db, sql, &stmt)) return false;
+    std::optional<MapView> view{std::in_place, mapId};
 
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql_attachpoint, &stmt)) return std::nullopt;
+    sqlite3_bind_int(stmt, 1, mapId);
+    sqlite3_bind_int(stmt, 2, mapId);
     while (sqlite3_step(stmt) == SQLITE_ROW)
     {
-        float ratio = static_cast<float>(sqlite3_column_double(stmt, 2));
+        float ratio = static_cast<float>(sqlite3_column_double(stmt, 4));
         if (ratio < 0.9f) continue;
 
-        int mapId           = sqlite3_column_int(stmt, 0);
-        bool isDlc          = sqlite3_column_int(stmt, 1) != 0;
-        auto attachIds      = split(dbText(stmt, 3), ',');
-
-        auto& target = isDlc ? m_cachedMaps[mapId].dlcFilterPoints : m_cachedMaps[mapId].legacyFilterPoints;
-        target.insert(target.end(), attachIds.begin(), attachIds.end());
+        auto attachIds = split(dbText(stmt, 5), ',');
+        sortAndUnique(attachIds);
+        for (int attachId : attachIds)
+        {
+            view->attachPoints.emplace_back();
+            auto& apv = view->attachPoints.back();
+            apv.attachId = attachId;
+            apv.point = dbMapPoint(stmt, 0, false);
+        }
     }
-    sqlite3_finalize(stmt);
+    static const char* sql_starter =
+        "SELECT s.grid_x,s.grid_z,s.pos_x,s.pos_z,s.starter_id"
+        " FROM Pattern p"
+        " JOIN Starter s ON s.starter_id = p.starter_id"
+        " WHERE p.map_id = ?"
+        " GROUP BY p.starter_id";
 
-    for (auto& pair : m_cachedMaps)
+    if (!dbPrepare(m_db, sql_starter, &stmt)) return std::nullopt;
+    sqlite3_bind_int(stmt, 1, mapId);
+    while (sqlite3_step(stmt) == SQLITE_ROW)
     {
-        sortAndUnique(pair.second.legacyFilterPoints);
-        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "GameData DB: map %d own %d legacy fixed spots",
-            (int)pair.first, (int)pair.second.legacyFilterPoints.size());
-        sortAndUnique(pair.second.dlcFilterPoints);
-        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "GameData DB: map %d own %d DLC fixed spots",
-            (int)pair.first, (int)pair.second.dlcFilterPoints.size());
+        view->starters.emplace_back();
+        auto& sv = view->starters.back();
+        sv.point = dbMapPoint(stmt, 0, false);
+        sv.starterId        = sqlite3_column_int(stmt, 4);
     }
+    
+    sqlite3_finalize(stmt);
+    return view;
+}
 
+// ============================================================
+//  GameDataDB::createTempViews  — one-time setup on open()
+// ============================================================
+bool GameDataDB::createTempViews()
+{
+    static const char* sql =
+        // v_pattern: Pattern + both PlayArea rows flattened
+        "CREATE TEMP VIEW IF NOT EXISTS v_pattern AS "
+        "SELECT p.pattern_id, p.map_id, p.nightlord_id, p.dlc, p.starter_id,"
+        "       p.day1boss_smallbase_id, p.day2boss_smallbase_id,"
+        "       p.day1extraboss_smallbase_id, p.day2extraboss_smallbase_id,"
+        "       pa1.grid_x AS pa1_grid_x, pa1.grid_z AS pa1_grid_z,"
+        "       pa1.pos_x  AS pa1_pos_x,  pa1.pos_z  AS pa1_pos_z, pa1.height AS pa1_height,"
+        "       pa2.grid_x AS pa2_grid_x, pa2.grid_z AS pa2_grid_z,"
+        "       pa2.pos_x  AS pa2_pos_x,  pa2.pos_z  AS pa2_pos_z, pa2.height AS pa2_height,"
+        "       s.grid_x AS starter_grid_x, s.grid_z AS starter_grid_z,"
+        "       s.pos_x  AS starter_pos_x,  s.pos_z  AS starter_pos_z, s.height AS starter_height"
+        " FROM Pattern p"
+        " LEFT JOIN Starter s ON p.starter_id = s.starter_id"
+        " LEFT JOIN PlayArea pa1 ON p.day1_playarea_id = pa1.playarea_id"
+        " LEFT JOIN PlayArea pa2 ON p.day2_playarea_id = pa2.playarea_id;"
+
+        // v_variation: SmallBaseMap + VariationParam
+        "CREATE TEMP VIEW IF NOT EXISTS v_variation AS "
+        "SELECT v.smallbase_id, v.variation_id,"
+        "       v.smallbase_id * 10 + v.variation_id AS var_key,"
+        "       COALESCE(s.label,'')                AS base_label,"
+        "       COALESCE(v.label,'')                AS sub_label,"
+        "       COALESCE(v.icon_atlas, s.icon_atlas,'') AS icon,"
+        "       COALESCE(s.flags, 255)              AS visible"
+        " FROM VariationParam v"
+        " JOIN SmallBaseMap s ON v.smallbase_id = s.smallbase_id;"
+
+        // v_constant: AttachMapBinding + AttachPoint
+        "CREATE TEMP VIEW IF NOT EXISTS v_constant AS "
+        "SELECT b.attach_id, b.map_id, b.label, b.icon_atlas,"
+        "       ap.grid_x, ap.grid_z, ap.pos_x, ap.pos_z, ap.height"
+        " FROM AttachMapBinding b"
+        " JOIN AttachPoint ap ON b.attach_id = ap.attach_id;"
+
+        // v_rotted_power: AttachPatternBinding + AttachPoint
+        "CREATE TEMP VIEW IF NOT EXISTS v_rotted_power AS "
+        "SELECT b.pattern_id,"
+        "       ap.grid_x, ap.grid_z, ap.pos_x, ap.pos_z, ap.height"
+        " FROM AttachPatternBinding b"
+        " JOIN AttachPoint ap ON b.attach_id = ap.attach_id;"
+
+        // v_great_hollow: AttachSmallBaseBinding + AttachPoint + SmallBaseMap
+        "CREATE TEMP VIEW IF NOT EXISTS v_great_hollow AS "
+        "SELECT b.smallbase_id AS binding, b.label, b.icon_atlas,"
+        "       ap.grid_x, ap.grid_z, ap.pos_x, ap.pos_z, ap.height,"
+        "       COALESCE(s.flags, 255) AS visible"
+        " FROM AttachSmallBaseBinding b"
+        " JOIN AttachPoint ap ON b.attach_id = ap.attach_id"
+        " LEFT JOIN SmallBaseMap s ON b.smallbase_id = s.smallbase_id;";
+
+    char* errmsg = nullptr;
+    int rc = sqlite3_exec(m_db, sql, nullptr, nullptr, &errmsg);
+    if (rc != SQLITE_OK)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+            "GameDataDB: createTempViews error: %s", errmsg);
+        sqlite3_free(errmsg);
+        return false;
+    }
     return true;
 }
 
-std::string IntFieldFilter::apply(const std::string& tempTable) const
+// ============================================================
+//  Map cache accessors
+// ============================================================
+std::vector<const char*> GameDataDB::getMapNames() const
 {
-    /*
-    DELETE FROM @tempTable
-    WHERE NOT EXISTS (
-        SELECT p.pattern_id 
-        FROM Pattern p 
-        WHERE p.pattern_id = @tempTable.pattern_id 
-        AND p.@fieldName = @value
-    )
-    */
-    std::stringstream ss;
-    ss << "DELETE FROM " << tempTable
-       << " WHERE NOT EXISTS ("
-       << "SELECT p.pattern_id FROM Pattern p "
-       << "WHERE p.pattern_id = " << tempTable << ".pattern_id "
-       << "AND p." << m_fieldName << " = " << m_value
-       << ")";
-    return ss.str();
+    std::vector<const char*> result;
+    for (const auto& pair : m_cachedMaps)
+        result.push_back(pair.second.name.c_str());
+    return result;
 }
 
-std::string SmallBaseFilter::apply(const std::string &tempTable) const
+// ============================================================
+//  Single-row query helpers
+// ============================================================
+std::optional<PatternInfo> GameDataDB::getPattern(int patternId) const
 {
-    /*
-    DELETE FROM @tempTable
-    WHERE NOT EXISTS (
-        SELECT sc.pattern_id 
-        FROM SpotConfig sc 
-        JOIN SmallBaseMap sb ON sc.smallbase_id = sb.smallbase_id
-        WHERE sc.pattern_id = @tempTable.pattern_id 
-        AND sc.attach_id IN (@m_attachIds)
-        AND sb.group_id = @m_groupId
-        AND sc.smallbase_id = @m_smallBaseId
-        AND sc.variation_id = @m_variationId
-    )
-    */
-    std::stringstream ss;
-    std::string result;
-    std::copy(m_attachIds.begin(), m_attachIds.end(), std::ostream_iterator<int>(ss, ","));
-    ss << "DELETE FROM " << tempTable
-       << " WHERE NOT EXISTS ("
-       << "SELECT sc.pattern_id FROM SpotConfig sc "
-       << "JOIN SmallBaseMap sb ON sc.smallbase_id = sb.smallbase_id "
-       << "WHERE sc.pattern_id = " << tempTable << ".pattern_id "
-       << "AND sc.attach_id IN (" << join(m_attachIds) << ")";
-    if (m_groupId >= 0)
-        ss << "AND sb.group_id = " << m_groupId << " ";
-    if (m_smallBaseId >= 0)
-        ss << "AND sc.smallbase_id = " << m_smallBaseId << " ";
-    if (m_variationId >= 0)
-        ss << "AND sc.variation_id = " << m_variationId << " ";
-    ss << ")";
-    return ss.str();
+    static const char* sql =
+        "SELECT pattern_id, map_id, nightlord_id, dlc, starter_id,"
+        "       day1boss_smallbase_id, day2boss_smallbase_id,"
+        "       day1extraboss_smallbase_id, day2extraboss_smallbase_id,"
+        "       pa1_grid_x, pa1_grid_z, pa1_pos_x, pa1_pos_z, pa1_height,"
+        "       pa2_grid_x, pa2_grid_z, pa2_pos_x, pa2_pos_z, pa2_height"
+        " FROM v_pattern WHERE pattern_id = ?";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql, &stmt)) return std::nullopt;
+    sqlite3_bind_int(stmt, 1, patternId);
+
+    std::optional<PatternInfo> result;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        PatternInfo p;
+        p.id           = sqlite3_column_int(stmt,  0);
+        p.map          = sqlite3_column_int(stmt,  1);
+        p.boss         = dbNullableInt(stmt,  2);
+        p.isdlc        = sqlite3_column_int(stmt,  3) != 0;
+        p.starter      = dbNullableInt(stmt,  4, -1);
+        p.bossId1      = dbNullableInt(stmt,  5);
+        p.bossId2      = dbNullableInt(stmt,  6);
+        p.extraBossId1 = dbNullableInt(stmt,  7);
+        p.extraBossId2 = dbNullableInt(stmt,  8);
+        p.playArea1    = dbMapPoint(stmt,  9);
+        p.playArea2    = dbMapPoint(stmt, 14);
+        result = p;
+    }
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+std::optional<SpotInfo> GameDataDB::getSpot(int attachId) const
+{
+    static const char* sql =
+        "SELECT attach_id, grid_x, grid_z, pos_x, pos_z, height"
+        " FROM AttachPoint WHERE attach_id = ?";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql, &stmt)) return std::nullopt;
+    sqlite3_bind_int(stmt, 1, attachId);
+
+    std::optional<SpotInfo> result;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        SpotInfo info;
+        info.attachId = sqlite3_column_int(stmt, 0);
+        info.point    = dbMapPoint(stmt, 1);
+        result = info;
+    }
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+std::optional<StarterInfo> GameDataDB::getStarter(int starterId) const
+{
+    static const char* sql =
+        "SELECT starter_id, grid_x, grid_z, pos_x, pos_z, height"
+        " FROM Starter WHERE starter_id = ?";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql, &stmt)) return std::nullopt;
+    sqlite3_bind_int(stmt, 1, starterId);
+
+    std::optional<StarterInfo> result;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        StarterInfo info;
+        info.starterId = sqlite3_column_int(stmt, 0);
+        info.point     = dbMapPoint(stmt, 1);
+        result = info;
+    }
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+std::optional<NightlordInfo> GameDataDB::getNightlord(int nightlordId) const
+{
+    static const char* sql =
+        "SELECT nightlord_id, name FROM Nightlord WHERE nightlord_id = ?";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql, &stmt)) return std::nullopt;
+    sqlite3_bind_int(stmt, 1, nightlordId);
+
+    std::optional<NightlordInfo> result;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        NightlordInfo info;
+        info.id   = sqlite3_column_int(stmt, 0);
+        info.name = dbText(stmt, 1);
+        result = info;
+    }
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+namespace {
+    static VariationInfo rowToVariation(sqlite3_stmt* stmt)
+    {
+        VariationInfo v;
+        v.variationId   = sqlite3_column_int(stmt, 0);
+        v.variationType = sqlite3_column_int(stmt, 1);
+        v.label         = dbText(stmt, 2);
+        v.sublabel      = dbText(stmt, 3);
+        v.icon          = dbText(stmt, 4);
+        v.visible       = sqlite3_column_int(stmt, 5);
+        v.iconScale     = 1.0f;
+        return v;
+    }
+}
+
+std::optional<VariationInfo> GameDataDB::getVariation(int varKey) const
+{
+    static const char* sql =
+        "SELECT smallbase_id, variation_id, base_label, sub_label, icon, visible"
+        " FROM v_variation WHERE var_key = ?";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql, &stmt)) return std::nullopt;
+    sqlite3_bind_int(stmt, 1, varKey);
+
+    std::optional<VariationInfo> result;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+        result = rowToVariation(stmt);
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+std::optional<VariationInfo> GameDataDB::getVariation(int patternId, int attachId) const
+{
+    static const char* sql =
+        "SELECT v.smallbase_id, v.variation_id, v.base_label, v.sub_label, v.icon, v.visible"
+        " FROM v_variation v"
+        " JOIN SpotConfig sc"
+        "   ON sc.smallbase_id = v.smallbase_id AND sc.variation_id = v.variation_id"
+        " WHERE sc.pattern_id = ? AND sc.attach_id = ?"
+        " LIMIT 1";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql, &stmt)) return std::nullopt;
+    sqlite3_bind_int(stmt, 1, patternId);
+    sqlite3_bind_int(stmt, 2, attachId);
+
+    std::optional<VariationInfo> result;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+        result = rowToVariation(stmt);
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+std::optional<VariationInfo> GameDataDB::getVariationById(int variationId) const
+{
+    static const char* sql =
+        "SELECT smallbase_id, variation_id, base_label, sub_label, icon, visible"
+        " FROM v_variation WHERE smallbase_id = ? LIMIT 1";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql, &stmt)) return std::nullopt;
+    sqlite3_bind_int(stmt, 1, variationId);
+
+    std::optional<VariationInfo> result;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+        result = rowToVariation(stmt);
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+std::optional<SpotOption> GameDataDB::getSpotOption(int attachId) const
+{
+    return std::nullopt;
+}
+
+std::optional<SpotLabelOption> GameDataDB::getAttachOption(int attachId) const
+{
+    return std::nullopt;
+}
+
+std::optional<GridOption> GameDataDB::getGridOption(int map, int x, int y) const
+{
+    static const char* sql =
+        "SELECT grid_x, grid_z, height, map_id"
+        " FROM GridHeight WHERE map_id = ? AND grid_x = ? AND grid_z = ?";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql, &stmt)) return std::nullopt;
+    sqlite3_bind_int(stmt, 1, map);
+    sqlite3_bind_int(stmt, 2, x);
+    sqlite3_bind_int(stmt, 3, y);
+
+    std::optional<GridOption> result;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        GridOption opt;
+        opt.x      = sqlite3_column_int(stmt, 0);
+        opt.y      = sqlite3_column_int(stmt, 1);
+        opt.height = static_cast<float>(sqlite3_column_double(stmt, 2));
+        opt.map    = sqlite3_column_int(stmt, 3);
+        result = opt;
+    }
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+std::optional<RottedPowerInfo> GameDataDB::getRottedPower(int patternId) const
+{
+    static const char* sql =
+        "SELECT pattern_id, grid_x, grid_z, pos_x, pos_z, height"
+        " FROM v_rotted_power WHERE pattern_id = ?";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql, &stmt)) return std::nullopt;
+    sqlite3_bind_int(stmt, 1, patternId);
+
+    std::optional<RottedPowerInfo> result;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        RottedPowerInfo info;
+        info.patternId = sqlite3_column_int(stmt, 0);
+        info.point     = dbMapPoint(stmt, 1);
+        result = info;
+    }
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+std::optional<EventInfo> GameDataDB::getEvent(int patternId) const
+{
+    static const char* sql =
+        "SELECT pattern_id, content FROM EventConfig WHERE pattern_id = ?";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql, &stmt)) return std::nullopt;
+    sqlite3_bind_int(stmt, 1, patternId);
+
+    std::optional<EventInfo> result;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        EventInfo info;
+        info.id    = sqlite3_column_int(stmt, 0);
+        info.event = dbText(stmt, 1);
+        result = info;
+    }
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+// ============================================================
+//  Multi-row queries
+// ============================================================
+std::vector<VariationDist> GameDataDB::listDistribution(int patternId) const
+{
+    static const char* sql =
+        "SELECT pattern_id, attach_id, smallbase_id * 10 + variation_id AS var_key"
+        " FROM SpotConfig WHERE pattern_id = ?";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql, &stmt)) return {};
+    sqlite3_bind_int(stmt, 1, patternId);
+
+    std::vector<VariationDist> result;
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        VariationDist d;
+        d.patternId    = sqlite3_column_int(stmt, 0);
+        d.attachId     = sqlite3_column_int(stmt, 1);
+        d.variationKey = sqlite3_column_int(stmt, 2);
+        result.push_back(d);
+    }
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+std::vector<VariationInfo> GameDataDB::listVariations(int attachId, int map) const
+{
+    static const char* sql =
+        "SELECT DISTINCT v.smallbase_id, v.variation_id,"
+        "                v.base_label, v.sub_label, v.icon, v.visible"
+        " FROM v_variation v"
+        " JOIN SpotConfig sc"
+        "   ON sc.smallbase_id = v.smallbase_id AND sc.variation_id = v.variation_id"
+        " JOIN Pattern p ON sc.pattern_id = p.pattern_id"
+        " WHERE sc.attach_id = ? AND p.map_id = ?";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql, &stmt)) return {};
+    sqlite3_bind_int(stmt, 1, attachId);
+    sqlite3_bind_int(stmt, 2, map);
+
+    std::vector<VariationInfo> result;
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+        result.push_back(rowToVariation(stmt));
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+std::vector<VariationInfo> GameDataDB::listVariations(int attachId, const std::set<int>& patterns) const
+{
+    if (patterns.empty()) return {};
+
+    std::string ids;
+    for (int id : patterns) {
+        if (!ids.empty()) ids += ',';
+        ids += std::to_string(id);
+    }
+
+    std::string sql =
+        "SELECT DISTINCT v.smallbase_id, v.variation_id,"
+        "                v.base_label, v.sub_label, v.icon, v.visible"
+        " FROM v_variation v"
+        " JOIN SpotConfig sc"
+        "   ON sc.smallbase_id = v.smallbase_id AND sc.variation_id = v.variation_id"
+        " WHERE sc.attach_id = ? AND sc.pattern_id IN (" + ids + ")";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql.c_str(), &stmt)) return {};
+    sqlite3_bind_int(stmt, 1, attachId);
+
+    std::vector<VariationInfo> result;
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+        result.push_back(rowToVariation(stmt));
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+std::vector<ConstantInfo> GameDataDB::listConstants(int map) const
+{
+    static const char* sql =
+        "SELECT attach_id, map_id, label, icon_atlas,"
+        "       grid_x, grid_z, pos_x, pos_z, height"
+        " FROM v_constant WHERE map_id = ?";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql, &stmt)) return {};
+    sqlite3_bind_int(stmt, 1, map);
+
+    std::vector<ConstantInfo> result;
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        ConstantInfo info;
+        info.type      = sqlite3_column_int(stmt, 0);  // attach_id as type identifier
+        info.map       = sqlite3_column_int(stmt, 1);
+        info.label     = dbText(stmt, 2);
+        info.icon      = dbText(stmt, 3);
+        info.iconScale = 1.0f;
+        info.point     = dbMapPoint(stmt, 4);
+        result.push_back(info);
+    }
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+std::vector<GreatHollowBindingInfo> GameDataDB::listGreatHollowBinding(int patternId) const
+{
+    static const char* sql =
+        "SELECT DISTINCT gh.binding, gh.label, gh.icon_atlas,"
+        "       gh.grid_x, gh.grid_z, gh.pos_x, gh.pos_z, gh.height, gh.visible"
+        " FROM v_great_hollow gh"
+        " JOIN SpotConfig sc ON sc.smallbase_id = gh.binding"
+        " WHERE sc.pattern_id = ?";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql, &stmt)) return {};
+    sqlite3_bind_int(stmt, 1, patternId);
+
+    std::vector<GreatHollowBindingInfo> result;
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        GreatHollowBindingInfo info;
+        info.binding   = sqlite3_column_int(stmt, 0);
+        info.label     = dbText(stmt, 1);
+        info.icon      = dbText(stmt, 2);
+        info.point     = dbMapPoint(stmt, 3);
+        info.visible   = sqlite3_column_int(stmt, 8);
+        info.iconScale = 1.0f;
+        result.push_back(info);
+    }
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+// ============================================================
+//  Filter helpers
+// ============================================================
+
+std::set<int> GameDataDB::getFilteredPatterns() const
+{
+    std::string sql = "SELECT pattern_id FROM " + m_tempTable;
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql.c_str(), &stmt)) return {};
+
+    std::set<int> result;
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+        result.insert(sqlite3_column_int(stmt, 0));
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+int GameDataDB::getFilteredPatternCount() const
+{
+    std::string sql = "SELECT COUNT(*) FROM " + m_tempTable;
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql.c_str(), &stmt)) return 0;
+
+    int count = 0;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+        count = sqlite3_column_int(stmt, 0);
+    sqlite3_finalize(stmt);
+    return count;
+}
+
+std::set<int> GameDataDB::filterByMap(int map)
+{
+    resetFilter(map);
+    return getFilteredPatterns();
+}
+
+std::set<int> GameDataDB::filterByVariation(const std::set<int>& patterns, int attachId, int varKey) const
+{
+    if (patterns.empty()) return {};
+
+    std::string ids;
+    for (int id : patterns) {
+        if (!ids.empty()) ids += ',';
+        ids += std::to_string(id);
+    }
+
+    std::string sql =
+        "SELECT DISTINCT pattern_id FROM SpotConfig"
+        " WHERE attach_id = ? AND smallbase_id * 10 + variation_id = ?"
+        " AND pattern_id IN (" + ids + ")";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql.c_str(), &stmt)) return {};
+    sqlite3_bind_int(stmt, 1, attachId);
+    sqlite3_bind_int(stmt, 2, varKey);
+
+    std::set<int> result;
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+        result.insert(sqlite3_column_int(stmt, 0));
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+std::set<int> GameDataDB::filterByStarter(const std::set<int>& patterns, int starterId) const
+{
+    if (patterns.empty()) return {};
+
+    std::string ids;
+    for (int id : patterns) {
+        if (!ids.empty()) ids += ',';
+        ids += std::to_string(id);
+    }
+
+    std::string sql =
+        "SELECT pattern_id FROM Pattern"
+        " WHERE starter_id = ? AND pattern_id IN (" + ids + ")";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql.c_str(), &stmt)) return {};
+    sqlite3_bind_int(stmt, 1, starterId);
+
+    std::set<int> result;
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+        result.insert(sqlite3_column_int(stmt, 0));
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+std::set<int> GameDataDB::filterByNightlord(const std::set<int>& patterns, int nightlordId) const
+{
+    if (patterns.empty()) return {};
+
+    std::string ids;
+    for (int id : patterns) {
+        if (!ids.empty()) ids += ',';
+        ids += std::to_string(id);
+    }
+
+    std::string sql =
+        "SELECT pattern_id FROM Pattern"
+        " WHERE nightlord_id = ? AND pattern_id IN (" + ids + ")";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql.c_str(), &stmt)) return {};
+    sqlite3_bind_int(stmt, 1, nightlordId);
+
+    std::set<int> result;
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+        result.insert(sqlite3_column_int(stmt, 0));
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+int GameDataDB::filterByMap2(int mapId)
+{
+    resetFilter(mapId);
+    return getFilteredPatternCount();
+}
+
+int GameDataDB::filterBySmallBase(std::vector<int> attachIds, int smallBaseId, int variationId)
+{
+    std::string ids = join(attachIds);
+    std::string sql =
+        "DELETE FROM " + m_tempTable +
+        " WHERE pattern_id NOT IN ("
+        "  SELECT DISTINCT pattern_id FROM SpotConfig"
+        "  WHERE attach_id IN (" + ids + ") AND smallbase_id = ? AND variation_id = ?"
+        " )";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql.c_str(), &stmt)) return {};
+    sqlite3_bind_int(stmt, 1, smallBaseId);
+    sqlite3_bind_int(stmt, 2, variationId);
+    int rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE)
+    {
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+    sqlite3_finalize(stmt);
+    return getFilteredPatternCount();
+}
+
+int GameDataDB::filterBySmallBase(std::vector<int> attachIds, int smallBaseId)
+{
+    std::string ids = join(attachIds);
+    std::string sql =
+        "DELETE FROM " + m_tempTable +
+        " WHERE pattern_id NOT IN ("
+        "  SELECT DISTINCT pattern_id FROM SpotConfig"
+        "  WHERE attach_id IN (" + ids + ") AND smallbase_id = ?"
+        " )";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql.c_str(), &stmt)) return {};
+    sqlite3_bind_int(stmt, 1, smallBaseId);
+    int rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE)
+    {
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+    sqlite3_finalize(stmt);
+    return getFilteredPatternCount();
+}
+
+int GameDataDB::filterBySmallBaseGroup(std::vector<int> attachIds, int groupId)
+{
+    std::string ids = join(attachIds);
+    std::string sql =
+        "DELETE FROM " + m_tempTable +
+        " WHERE pattern_id NOT IN ("
+        "  SELECT DISTINCT pattern_id FROM SpotConfig"
+        "  JOIN SmallBaseMap ON SpotConfig.smallbase_id = SmallBaseMap.smallbase_id"
+        "  WHERE attach_id IN (" + ids + ") AND group_id = ?"
+        " )";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql.c_str(), &stmt)) return {};
+    sqlite3_bind_int(stmt, 1, groupId);
+    int rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE)
+    {
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+    sqlite3_finalize(stmt);
+    return getFilteredPatternCount();
+}
+
+int GameDataDB::filterByStarter2(int starterId)
+{
+    std::string sql =
+        "DELETE FROM " + m_tempTable +
+        " WHERE pattern_id NOT IN ("
+        "  SELECT pattern_id FROM Pattern"
+        "  WHERE starter_id = ?"
+        " )";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql.c_str(), &stmt)) return {};
+    sqlite3_bind_int(stmt, 1, starterId);
+    int rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE)
+    {
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+    sqlite3_finalize(stmt);
+    return getFilteredPatternCount();
+}
+
+int GameDataDB::filterByNightlord2(int nightlordId)
+{
+    std::string sql =
+        "DELETE FROM " + m_tempTable +
+        " WHERE pattern_id NOT IN ("
+        "  SELECT pattern_id FROM Pattern"
+        "  WHERE nightlord_id = ?"
+        " )";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql.c_str(), &stmt)) return {};
+    sqlite3_bind_int(stmt, 1, nightlordId);
+    int rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE)
+    {
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+    sqlite3_finalize(stmt);
+    return getFilteredPatternCount();
+}
+
+const MapView& GameDataDB::getMapView(int mapId) const
+{
+    auto it = m_cachedMaps.find(mapId);
+    if (it == m_cachedMaps.end())
+        throw std::runtime_error("Map ID not found in cache");
+    return it->second.view;
+}
+
+std::optional<PatternView> GameDataDB::getPatternView(int patternId) const
+{
+    static const char* sql_pattern =
+        "SELECT v_pattern.map_id, Nightlord.name, dlc, day1boss_smallbase_id, day2boss_smallbase_id,"
+        "       day1extraboss_smallbase_id, day2extraboss_smallbase_id, content,"
+        "       starter_grid_x, starter_grid_z, starter_pos_x, starter_pos_z, starter_height,"
+        "       pa1_grid_x, pa1_grid_z, pa1_pos_x, pa1_pos_z, pa1_height,"
+        "       pa2_grid_x, pa2_grid_z, pa2_pos_x, pa2_pos_z, pa2_height"
+        " FROM v_pattern "
+        " LEFT JOIN Map ON v_pattern.map_id = Map.map_id "
+        " LEFT JOIN EventConfig ON v_pattern.pattern_id = EventConfig.pattern_id "
+        " LEFT JOIN Nightlord ON v_pattern.nightlord_id = Nightlord.nightlord_id "
+        " WHERE v_pattern.pattern_id = ?";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql_pattern, &stmt)) return std::nullopt;
+    sqlite3_bind_int(stmt, 1, patternId);
+
+    std::optional<PatternView> result{std::in_place, patternId};
+    int day1bossId = 0, day2bossId = 0, day1ExtraBossId = 0, day2ExtraBossId = 0;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        PatternView& p  = *result;
+        p.mapId         = sqlite3_column_int(stmt,  0);
+        p.nightlordName = dbText(stmt,  1);
+        p.isdlc         = sqlite3_column_int(stmt,  2) != 0;
+        day1bossId      = dbNullableInt(stmt,  3);
+        day2bossId      = dbNullableInt(stmt,  4);
+        day1ExtraBossId = dbNullableInt(stmt,  5);
+        day2ExtraBossId = dbNullableInt(stmt,  6);
+        p.eventContent  = dbText(stmt,  7);
+        p.starter       = dbMapPoint(stmt, 8);
+        p.day1PlayArea  = dbMapPoint(stmt, 13);
+        p.day2PlayArea  = dbMapPoint(stmt, 18);
+    }
+
+    static const char* sql_boss =
+        "SELECT label"
+        " FROM SmallBaseMap"
+        " WHERE smallbase_id = ?";
+    if (dbPrepare(m_db, sql_boss, &stmt))
+    {
+        sqlite3_bind_int(stmt, 1, day1bossId);
+        if (sqlite3_step(stmt) == SQLITE_ROW)
+            result->day1BossName = dbText(stmt, 0);
+        sqlite3_reset(stmt);
+        sqlite3_bind_int(stmt, 1, day2bossId);
+        if (sqlite3_step(stmt) == SQLITE_ROW)
+            result->day2BossName = dbText(stmt, 0);
+        sqlite3_reset(stmt);
+        sqlite3_bind_int(stmt, 1, day1ExtraBossId);
+        if (sqlite3_step(stmt) == SQLITE_ROW)
+            result->day1ExtraBossName = dbText(stmt, 0);
+        sqlite3_reset(stmt);
+        sqlite3_bind_int(stmt, 1, day2ExtraBossId);
+        if (sqlite3_step(stmt) == SQLITE_ROW)
+            result->day2ExtraBossName = dbText(stmt, 0);
+    }
+
+    static const char* sql_attachpoint =
+        "SELECT sc.attach_id, grid_x, grid_z, pos_x, pos_z, height,"
+        "       sc.smallbase_id, sc.variation_id, sb.group_id, sb.flags,"
+        "       sb.label, vp.label, COALESCE(vp.icon_atlas, sb.icon_atlas)"
+        " FROM SpotConfig sc"
+        " LEFT JOIN AttachPoint ap ON sc.attach_id = ap.attach_id"
+        " LEFT JOIN SmallBaseMap sb ON sc.smallbase_id = sb.smallbase_id"
+        " LEFT JOIN VariationParam vp ON sc.smallbase_id = vp.smallbase_id AND sc.variation_id = vp.variation_id"
+        " WHERE sc.pattern_id = ?";
+    if (dbPrepare(m_db, sql_attachpoint, &stmt))
+    {
+        sqlite3_bind_int(stmt, 1, patternId);
+        while (sqlite3_step(stmt) == SQLITE_ROW)
+        {
+            result->spots.emplace_back();
+            AttachPointView& apv = result->spots.back().attachPoint;
+            apv.attachId   = sqlite3_column_int(stmt, 0);
+            apv.point      = dbMapPoint(stmt, 1);
+
+            SmallBaseView& sbv = result->spots.back().smallBase;
+            sbv.smallBaseId = sqlite3_column_int(stmt, 6);
+            sbv.variationId = sqlite3_column_int(stmt, 7);
+            sbv.groupId     = sqlite3_column_int(stmt, 8);
+            sbv.flag        = static_cast<SpotFlag>(sqlite3_column_int(stmt, 9));
+            sbv.majorName   = dbText(stmt, 10);
+            sbv.minorName   = dbText(stmt, 11);
+            sbv.iconAlias   = dbText(stmt, 12);
+        }
+    }
+
+    static const char* sql_mapbinding =
+        "SELECT b.attach_id, grid_x, grid_z, pos_x, pos_z, height,"
+        "       b.label, b.icon_atlas"
+        " FROM AttachMapBinding b"
+        " JOIN AttachPoint ap ON b.attach_id = ap.attach_id"
+        " WHERE b.map_id = ?";
+    if (dbPrepare(m_db, sql_mapbinding, &stmt))
+    {
+        sqlite3_bind_int(stmt, 1, result->mapId);
+        while (sqlite3_step(stmt) == SQLITE_ROW)
+        {
+            result->spots.emplace_back();
+            AttachPointView& apv = result->spots.back().attachPoint;
+            apv.attachId   = sqlite3_column_int(stmt, 0);
+            apv.point      = dbMapPoint(stmt, 1);
+
+            SmallBaseView& sbv = result->spots.back().smallBase;
+            sbv.majorName   = dbText(stmt, 6);
+            sbv.iconAlias   = dbText(stmt, 7);
+            sbv.flag        = SpotFlag_All;
+        }
+    }
+
+    static const char* sql_patternbinding =
+        "SELECT b.attach_id, grid_x, grid_z, pos_x, pos_z, height,"
+        "       label, icon_atlas"
+        " FROM AttachPatternBinding b"
+        " JOIN AttachPoint ap ON b.attach_id = ap.attach_id"
+        " WHERE b.pattern_id = ?";
+    if (dbPrepare(m_db, sql_patternbinding, &stmt))
+    {
+        sqlite3_bind_int(stmt, 1, result->patternId);
+        while (sqlite3_step(stmt) == SQLITE_ROW)
+        {
+            result->spots.emplace_back();
+            AttachPointView& apv = result->spots.back().attachPoint;
+            apv.attachId   = sqlite3_column_int(stmt, 0);
+            apv.point      = dbMapPoint(stmt, 1);
+
+            SmallBaseView& sbv = result->spots.back().smallBase;
+            sbv.majorName   = dbText(stmt, 6);
+            sbv.iconAlias   = dbText(stmt, 7);
+            sbv.flag        = SpotFlag_All;
+        }
+    }
+
+    static const char* sql_smallbasebinding =
+        "SELECT ap.attach_id, ap.grid_x, ap.grid_z, ap.pos_x, ap.pos_z, ap.height,"
+        "       b.label, b.icon_atlas"
+        " FROM AttachSmallBaseBinding b"
+        " JOIN AttachPoint ap ON b.attach_id = ap.attach_id"
+        " WHERE EXISTS ("
+        "       SELECT 1 FROM SpotConfig sc"
+        "       WHERE sc.smallbase_id = b.smallbase_id"
+        "         AND sc.pattern_id = ?"
+        "   )";
+    if (dbPrepare(m_db, sql_smallbasebinding, &stmt))
+    {
+        sqlite3_bind_int(stmt, 1, result->patternId);
+        while (sqlite3_step(stmt) == SQLITE_ROW)
+        {
+            result->spots.emplace_back();
+            AttachPointView& apv = result->spots.back().attachPoint;
+            apv.attachId   = sqlite3_column_int(stmt, 0);
+            apv.point      = dbMapPoint(stmt, 1);
+
+            SmallBaseView& sbv = result->spots.back().smallBase;
+            sbv.majorName   = dbText(stmt, 6);
+            sbv.iconAlias   = dbText(stmt, 7);
+            sbv.flag        = SpotFlag_All;
+        }
+    }
+    
+    sqlite3_finalize(stmt);
+    return result;
 }
