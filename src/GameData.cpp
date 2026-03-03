@@ -74,6 +74,7 @@ namespace {
         std::sort(vec.begin(), vec.end());
         auto last = std::unique(vec.begin(), vec.end());
         vec.erase(last, vec.end());
+        vec.shrink_to_fit();
     }
 }
 
@@ -732,6 +733,28 @@ namespace {
         return sqlite3_column_type(stmt, col) == SQLITE_NULL
             ? defaultVal : sqlite3_column_int(stmt, col);
     }
+
+    std::vector<int> split(const std::string& str, char delimiter = ',') {
+        std::vector<int> result;
+        std::stringstream ss(str);
+        std::string item;
+        while (std::getline(ss, item, delimiter)) {
+            if (!item.empty()) {
+                result.push_back(std::stoi(item));
+            }
+        }
+        return result;
+    }
+
+    std::string join(const std::vector<int>& v, const std::string& delimiter = ",") {
+        std::string out;
+        if (auto i = v.begin(), e = v.end(); i != e) {
+            out += std::to_string(*i++);
+            for (; i != e; ++i) out.append(delimiter).append(std::to_string(*i));
+        }
+        return out;
+    }
+
 } // anonymous namespace
 
 // ============================================================
@@ -1229,6 +1252,8 @@ bool GameDataDB::open(const std::string& dbPath)
     }
     m_tempTable = "temp_pattern";
     resetFilter();
+    loadCache();
+    return true;
 }
 
 void GameDataDB::close()
@@ -1256,6 +1281,78 @@ void GameDataDB::resetFilter()
      sqlite3_exec(m_db, ss.str().c_str(), nullptr, nullptr, nullptr);
 }
 
+bool GameDataDB::loadCache()
+{
+    return loadMaps() && loadFixedSpots();
+}
+
+bool GameDataDB::loadMaps()
+{
+    static const char* sql =
+        "SELECT map_id, name FROM Map";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql, &stmt)) return false;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        MapCache map;
+        map.id   = sqlite3_column_int(stmt, 0);
+        map.name = dbText(stmt, 1);
+        m_cachedMaps[map.id] = map;
+    }
+    sqlite3_finalize(stmt);
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+        "GameData DB: loaded %d maps", (int)m_cachedMaps.size());
+    return true;
+}
+
+bool GameDataDB::loadFixedSpots()
+{
+    static const char* sql =
+        "SELECT p.map_id, p.dlc,"
+        " ROUND("
+        "     COUNT(DISTINCT p.pattern_id) * 1.0 / "
+        "     (SELECT COUNT(*) FROM Pattern WHERE map_id = p.map_id AND dlc = p.dlc),"
+        "     4"
+        " ) AS occupancy_rate,"
+        " GROUP_CONCAT(DISTINCT ap.attach_id) AS attach_ids"
+        " FROM AttachPoint ap"
+        " JOIN SpotConfig sc ON ap.attach_id = sc.attach_id"
+        " JOIN Pattern p ON sc.pattern_id = p.pattern_id"
+        " GROUP BY ap.grid_x, ap.grid_z, ap.pos_x, ap.pos_z, p.map_id, p.dlc "
+        " ORDER BY occupancy_rate DESC";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (!dbPrepare(m_db, sql, &stmt)) return false;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        float ratio = static_cast<float>(sqlite3_column_double(stmt, 2));
+        if (ratio < 0.9f) continue;
+
+        int mapId           = sqlite3_column_int(stmt, 0);
+        bool isDlc          = sqlite3_column_int(stmt, 1) != 0;
+        auto attachIds      = split(dbText(stmt, 3), ',');
+
+        auto& target = isDlc ? m_cachedMaps[mapId].dlcFilterPoints : m_cachedMaps[mapId].legacyFilterPoints;
+        target.insert(target.end(), attachIds.begin(), attachIds.end());
+    }
+    sqlite3_finalize(stmt);
+
+    for (auto& pair : m_cachedMaps)
+    {
+        sortAndUnique(pair.second.legacyFilterPoints);
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "GameData DB: map %d own %d legacy fixed spots",
+            (int)pair.first, (int)pair.second.legacyFilterPoints.size());
+        sortAndUnique(pair.second.dlcFilterPoints);
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "GameData DB: map %d own %d DLC fixed spots",
+            (int)pair.first, (int)pair.second.dlcFilterPoints.size());
+    }
+
+    return true;
+}
+
 std::string IntFieldFilter::apply(const std::string& tempTable) const
 {
     /*
@@ -1273,32 +1370,40 @@ std::string IntFieldFilter::apply(const std::string& tempTable) const
        << "SELECT p.pattern_id FROM Pattern p "
        << "WHERE p.pattern_id = " << tempTable << ".pattern_id "
        << "AND p." << m_fieldName << " = " << m_value
-       << ");";
+       << ")";
     return ss.str();
 }
 
-std::string VariationFilter::apply(const std::string &tempTable) const
+std::string SmallBaseFilter::apply(const std::string &tempTable) const
 {
     /*
     DELETE FROM @tempTable
     WHERE NOT EXISTS (
         SELECT sc.pattern_id 
         FROM SpotConfig sc 
+        JOIN SmallBaseMap sb ON sc.smallbase_id = sb.smallbase_id
         WHERE sc.pattern_id = @tempTable.pattern_id 
         AND sc.attach_id IN (@m_attachIds)
-        AND sc.smallbase_id <> @m_smallBaseId
-        AND (sc.variation_id = @m_variationId OR @m_variationId < 0)
+        AND sb.group_id = @m_groupId
+        AND sc.smallbase_id = @m_smallBaseId
+        AND sc.variation_id = @m_variationId
     )
     */
     std::stringstream ss;
+    std::string result;
+    std::copy(m_attachIds.begin(), m_attachIds.end(), std::ostream_iterator<int>(ss, ","));
     ss << "DELETE FROM " << tempTable
        << " WHERE NOT EXISTS ("
        << "SELECT sc.pattern_id FROM SpotConfig sc "
+       << "JOIN SmallBaseMap sb ON sc.smallbase_id = sb.smallbase_id "
        << "WHERE sc.pattern_id = " << tempTable << ".pattern_id "
-       << "AND sc.attach_id = ";
-    std::copy(m_attachIds.begin(), m_attachIds.end(), std::ostream_iterator<int>(ss, ","));
-    ss << "AND sc.smallbase_id = " << m_smallBaseId
-       << "AND (sc.variation_id = " << m_variationId << " OR " << m_variationId << " < 0)"
-       << ");";
+       << "AND sc.attach_id IN (" << join(m_attachIds) << ")";
+    if (m_groupId >= 0)
+        ss << "AND sb.group_id = " << m_groupId << " ";
+    if (m_smallBaseId >= 0)
+        ss << "AND sc.smallbase_id = " << m_smallBaseId << " ";
+    if (m_variationId >= 0)
+        ss << "AND sc.variation_id = " << m_variationId << " ";
+    ss << ")";
     return ss.str();
 }

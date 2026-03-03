@@ -279,20 +279,72 @@ private:
     int m_value = -1;
 };
 
-class VariationFilter : public Filter {
+class SmallBaseFilter : public Filter {
 public:
-    VariationFilter(const std::vector<int>& attachIds, int smallBaseId, int variationId)
+    SmallBaseFilter(const std::vector<int>& attachIds, int smallBaseId, int variationId)
         : m_attachIds(attachIds), m_smallBaseId(smallBaseId), m_variationId(variationId) {}
-    VariationFilter(const std::vector<int>& attachIds, int smallBaseId)
-        : VariationFilter(attachIds, smallBaseId, -1) {}
+    SmallBaseFilter(const std::vector<int>& attachIds, int smallBaseId)
+        : SmallBaseFilter(attachIds, smallBaseId, -1) {}
     std::string apply(const std::string& tempTable) const override;
     std::string getDescription() const override { return ""; }
     void drawUI() override {}
-    std::unique_ptr<Filter> clone() const override { return std::make_unique<VariationFilter>(*this); }
+    std::unique_ptr<Filter> clone() const override { return std::make_unique<SmallBaseFilter>(*this); }
 private:
     std::vector<int> m_attachIds = {-1};
+    int m_groupId = -1;
     int m_smallBaseId = -1;
     int m_variationId = -1;
+};
+
+struct MapCache {
+    int id = -1;
+    std::string name;
+
+    std::vector<int> legacyFilterPoints;
+    std::vector<int> dlcFilterPoints;
+};
+
+struct PatternView {
+    int patternId = -1;
+    int mapId = -1;
+    bool isdlc = false;
+    std::string nightlordName;
+    std::string day1BossName;
+    std::string day2BossName;
+    std::string day1ExtraBossName;
+    std::string day2ExtraBossName;
+    MapPoint day1PlayArea;
+    MapPoint day2PlayArea;
+    MapPoint starter;
+};
+
+enum SpotFlags {
+    SpotFlags_None = 0,
+    SpotFlags_Icon = 1 << 0,
+    SpotFlags_Label = 1 << 1,
+    SpotFlags_All = 0xFF
+};
+
+struct SmallBaseView {
+    int smallBaseId = -1;
+    int variationId = -1;
+    int groupId = -1;
+    std::string groupName;
+    std::string majorName;
+    std::string minorName;
+    std::string iconAlias;
+    SpotFlags flags = SpotFlags_None;
+};
+
+struct SpotView {
+    int attachId = -1;
+    MapPoint attachPoint;
+    SmallBaseView smallBase;
+};
+
+struct SpotOptionView {
+    std::vector<int> attachIds;
+    std::vector<SmallBaseView> smallBases;
 };
 
 class GameDataDB {
@@ -303,12 +355,15 @@ public:
     bool open(const std::string& dbPath);
     void close();
     void resetFilter();
+    bool loadCache();
+
+private:
+    bool loadMaps();
+    bool loadFixedSpots();
 
 private:
     sqlite3* m_db = nullptr;
     std::string m_tempTable;
 
-private:
-    std::map<int, MapInfo> m_mapCache;
-    std::map<int, NightlordInfo> m_nightlordCache;
+    std::map<int, MapCache> m_cachedMaps;
 };
