@@ -1,7 +1,8 @@
+import csv as _csv
+import json
 import sqlite3
 import os
 import defines
-import csvutil
 import logging
 
 def print_db_changes(db_conn: sqlite3.Connection):
@@ -69,52 +70,103 @@ def init_table_by_sqlfiles(db_path: str, sqlfiles: list):
     # 关闭连接
     conn.close()
 
+def init_table_by_jsonfile(db_path: str, jsonfile: str):
+    """通过JSON文件初始化表数据"""
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    with open(jsonfile, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+
+    table_name = data['table']
+    pk_col = data['pk']
+    rows = data.get('rows', [])
+
+    if not rows:
+        conn.close()
+        return
+
+    logging.info(f"正在从JSON文件初始化 {table_name} 表: {jsonfile}")
+    columns = list(rows[0].keys())
+    placeholders = ', '.join(['?' for _ in columns])
+    col_names = ', '.join(columns)
+    updates = ', '.join([f"{col}=excluded.{col}" for col in columns if col != pk_col])
+    sql = f"""INSERT INTO {table_name} ({col_names}) VALUES ({placeholders})
+        ON CONFLICT({pk_col}) DO UPDATE SET {updates}"""
+
+    for row in rows:
+        cursor.execute(sql, list(row.values()))
+
+    conn.commit()
+    print_db_changes(conn)
+    # 关闭连接
+    conn.close()
+
+def load_csv_to_mem(paths: defines.PathDefinitions, csv_names: list) -> sqlite3.Connection:
+    """将CSV文件加载到内存SQLite数据库中，每个文件对应一个表"""
+    mem = sqlite3.connect(':memory:')
+    mem.row_factory = sqlite3.Row
+    for name in csv_names:
+        filepath = paths.get_metadata(f'{name}.csv')
+        with open(filepath, newline='', encoding='utf-8') as f:
+            reader = _csv.DictReader(f)
+            cols = reader.fieldnames
+            mem.execute(f'CREATE TABLE [{name}] ({', '.join(f'[{c}]' for c in cols)})')
+            mem.executemany(
+                f'INSERT INTO [{name}] VALUES ({', '.join('?' for _ in cols)})',
+                (list(row.values()) for row in reader)
+            )
+    mem.commit()
+    return mem
+
 CastleAttachIds = [190, 2190]
 LTDivineTowerAttachIds = [1114, 1115, 1116]
 RBDivineTowerAttachIds = [1111, 1112, 1113]
 LTCityAttachIds = [1142]
 RBCityAttachIds = [1136]
-def remap_attachpoint(attachid: int, attach_point_csv: dict) -> int:
+def remap_attachpoint(attachid: int, mem: sqlite3.Connection) -> int:
     if attachid in CastleAttachIds:
-        castle = attach_point_csv.filter(worldMapPointIconId=11)[0].get("ID", attachid)
-        return int(castle)
+        row = mem.execute("SELECT ID FROM WorldMapPointParam WHERE CAST(worldMapPointIconId AS INTEGER)=11 LIMIT 1").fetchone()
+        return int(row['ID']) if row else attachid
     if attachid in LTDivineTowerAttachIds:
-        towers = attach_point_csv.filter(worldMapPointIconId=73)
-        sorted_towers = sorted(towers, key=lambda t: t.get("gridXNo", 0)) # x -> left or right
-        return int(sorted_towers[0].get("ID", attachid)) # left tower
+        rows = mem.execute("SELECT ID FROM WorldMapPointParam WHERE CAST(worldMapPointIconId AS INTEGER)=73 ORDER BY CAST(gridXNo AS INTEGER)").fetchall()
+        return int(rows[0]['ID']) if rows else attachid  # left tower
     if attachid in RBDivineTowerAttachIds:
-        towers = attach_point_csv.filter(worldMapPointIconId=73)
-        sorted_towers = sorted(towers, key=lambda t: t.get("gridXNo", 0)) # x -> left or right
-        return int(sorted_towers[-1].get("ID", attachid)) # right tower
+        rows = mem.execute("SELECT ID FROM WorldMapPointParam WHERE CAST(worldMapPointIconId AS INTEGER)=73 ORDER BY CAST(gridXNo AS INTEGER)").fetchall()
+        return int(rows[-1]['ID']) if rows else attachid  # right tower
     if attachid in LTCityAttachIds:
-        city = attach_point_csv.filter(worldMapPointIconId=75)[0].get("ID", attachid)
-        return int(city)
+        row = mem.execute("SELECT ID FROM WorldMapPointParam WHERE CAST(worldMapPointIconId AS INTEGER)=75 LIMIT 1").fetchone()
+        return int(row['ID']) if row else attachid
     if attachid in RBCityAttachIds:
-        city = attach_point_csv.filter(worldMapPointIconId=74)[0].get("ID", attachid)
-        return int(city)
+        row = mem.execute("SELECT ID FROM WorldMapPointParam WHERE CAST(worldMapPointIconId AS INTEGER)=74 LIMIT 1").fetchone()
+        return int(row['ID']) if row else attachid
     return attachid
 
-def init_table_attachpoint(db_path: str, paths: defines.PathDefinitions):
+def init_table_attachpoint(db_path: str, mem: sqlite3.Connection):
     """通过CSV文件初始化AttachPoint表数据"""
-
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    
+
     logging.info("正在初始化AttachPoint表")
-    spot_config_csv = csvutil.load_csv(paths.get_metadata('LotResultSmallBaseAndSpot.csv'), key_column='ID')
-    attach_point_csv = csvutil.load_csv(paths.get_metadata('WorldMapPointParam.csv'), key_column='ID')
-    used_attach_points = spot_config_csv.group_by('attachId').keys()
+    used_attach_points = [
+        int(row[0]) for row in mem.execute(
+            "SELECT DISTINCT CAST(attachId AS INTEGER) FROM LotResultSmallBaseAndSpot WHERE attachId IS NOT NULL"
+        ).fetchall()
+    ]
     for attach_id in used_attach_points:
-        remapped_id = remap_attachpoint(attach_id, attach_point_csv)
-        rowdata = attach_point_csv.get(remapped_id, None)
+        remapped_id = remap_attachpoint(attach_id, mem)
+        rowdata = mem.execute(
+            "SELECT gridXNo, gridZNo, posX, posZ, posY FROM WorldMapPointParam WHERE CAST(ID AS INTEGER)=?",
+            (remapped_id,)
+        ).fetchone()
         if rowdata is None:
             logging.warning(f"attachId {attach_id} 在 WorldMapPointParam.csv 中未找到对应数据，跳过")
             continue
-        grid_x = rowdata.get("gridXNo", 0)
-        grid_z = rowdata.get("gridZNo", 0)
-        pos_x = rowdata.get("posX", 0)
-        pos_z = rowdata.get("posZ", 0)
-        height = rowdata.get("posY", 0)
+        grid_x = int(rowdata['gridXNo'] or 0)
+        grid_z = int(rowdata['gridZNo'] or 0)
+        pos_x = float(rowdata['posX'] or 0)
+        pos_z = float(rowdata['posZ'] or 0)
+        height = float(rowdata['posY'] or 0)
         cursor.execute(
             """INSERT INTO AttachPoint (attach_id, grid_x, grid_z, pos_x, pos_z, height) VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(attach_id) DO UPDATE SET
@@ -122,7 +174,7 @@ def init_table_attachpoint(db_path: str, paths: defines.PathDefinitions):
                     grid_z=excluded.grid_z,
                     pos_x=excluded.pos_x,
                     pos_z=excluded.pos_z,
-                    height=excluded.height""", 
+                    height=excluded.height""",
             (attach_id, grid_x, grid_z, pos_x, pos_z, height))
 
     conn.commit()
@@ -130,33 +182,27 @@ def init_table_attachpoint(db_path: str, paths: defines.PathDefinitions):
     # 关闭连接
     conn.close()
 
-def init_table_smallbasemap(db_path: str, paths: defines.PathDefinitions):
+def init_table_smallbasemap(db_path: str, mem: sqlite3.Connection):
     """通过CSV文件初始化SmallBase表数据"""
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    
+
     logging.info("正在初始化SmallBaseMap表")
-    spot_config_csv = csvutil.load_csv(paths.get_metadata('LotResultSmallBaseAndSpot.csv'), key_column='ID')
-    used_small_base_maps = set(spot_config_csv.group_by('smallBaseMapId').keys())
-    pattern_playarea_csv = csvutil.load_csv(paths.get_metadata('LotResultPlayAreaParam.csv'), key_column='ID')
-    for playarea_rowdata in pattern_playarea_csv.values():
-        bossId1 = int(playarea_rowdata.get("bossId1", 0))
-        bossId2 = int(playarea_rowdata.get("bossId2", 0))
-        extraBossId1 = int(playarea_rowdata.get("extraBossId1", 0))
-        extraBossId2 = int(playarea_rowdata.get("extraBossId2", 0))
-        if bossId1 > 0:
-            used_small_base_maps.add(bossId1)
-        if bossId2 > 0:
-            used_small_base_maps.add(bossId2)
-        if extraBossId1 > 0:
-            used_small_base_maps.add(extraBossId1)
-        if extraBossId2 > 0:
-            used_small_base_maps.add(extraBossId2)
-    used_small_base_maps.discard(0) # 移除无效ID
+    used_small_base_maps = set(
+        int(row[0]) for row in mem.execute(
+            "SELECT DISTINCT CAST(smallBaseMapId AS INTEGER) FROM LotResultSmallBaseAndSpot WHERE smallBaseMapId IS NOT NULL"
+        ).fetchall()
+    )
+    for rowdata in mem.execute("SELECT bossId1, bossId2, extraBossId1, extraBossId2 FROM LotResultPlayAreaParam").fetchall():
+        for col in ('bossId1', 'bossId2', 'extraBossId1', 'extraBossId2'):
+            val = int(rowdata[col] or 0)
+            if val > 0:
+                used_small_base_maps.add(val)
+    used_small_base_maps.discard(0)  # 移除无效ID
     for smallbase_id in used_small_base_maps:
         cursor.execute(
             """INSERT INTO SmallBaseMap (smallbase_id) VALUES (?)
-                ON CONFLICT(smallbase_id) DO NOTHING""", 
+                ON CONFLICT(smallbase_id) DO NOTHING""",
             (smallbase_id,))
 
     conn.commit()
@@ -164,19 +210,18 @@ def init_table_smallbasemap(db_path: str, paths: defines.PathDefinitions):
     # 关闭连接
     conn.close()
 
-def init_table_playarea(db_path: str, paths: defines.PathDefinitions):
+def init_table_playarea(db_path: str, mem: sqlite3.Connection):
     """通过CSV文件初始化PlayArea表数据"""
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    
+
     logging.info("正在初始化PlayArea表")
-    playarea_csv = csvutil.load_csv(paths.get_metadata('PlayAreaCreateParam.csv'), key_column='ID')
-    for playarea_id, rowdata in playarea_csv.items():
-        grid_x = int(rowdata.get("gridXNo", 0))
-        grid_z = int(rowdata.get("gridZNo", 0))
-        pos_x = float(rowdata.get("posX", 0))
-        pos_z = float(rowdata.get("posZ", 0))
-        height = float(rowdata.get("posY", 0))
+    for rowdata in mem.execute("SELECT * FROM PlayAreaCreateParam").fetchall():
+        playarea_id = int(rowdata['ID'])
+        grid_x = int(rowdata['gridXNo'] or 0)
+        grid_z = int(rowdata['gridZNo'] or 0)
+        pos_x = float(rowdata['posX'] or 0)
+        pos_z = float(rowdata['posZ'] or 0)
         cursor.execute(
             """INSERT INTO PlayArea (playarea_id, grid_x, grid_z, pos_x, pos_z, height) VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(playarea_id) DO UPDATE SET
@@ -184,24 +229,23 @@ def init_table_playarea(db_path: str, paths: defines.PathDefinitions):
                     grid_z=excluded.grid_z,
                     pos_x=excluded.pos_x,
                     pos_z=excluded.pos_z,
-                    height=excluded.height""", 
-            (playarea_id, grid_x, grid_z, pos_x, pos_z, height))
+                    height=excluded.height""",
+            (playarea_id, grid_x, grid_z, pos_x, pos_z, 0))
 
     conn.commit()
     print_db_changes(conn)
     # 关闭连接
     conn.close()
 
-def init_table_variationparam(db_path: str, paths: defines.PathDefinitions):
+def init_table_variationparam(db_path: str, mem: sqlite3.Connection):
     """通过CSV文件初始化VariationParam表数据"""
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    
+
     logging.info("正在初始化VariationParam表")
-    spot_config_csv = csvutil.load_csv(paths.get_metadata('LotResultSmallBaseAndSpot.csv'), key_column='ID')
-    for rowdata in spot_config_csv.values():
-        smallbase_id = int(rowdata.get("smallBaseMapId", 0))
-        variation_id = int(rowdata.get("variationId", 0))
+    for rowdata in mem.execute("SELECT smallBaseMapId, variationId FROM LotResultSmallBaseAndSpot").fetchall():
+        smallbase_id = int(rowdata['smallBaseMapId'] or 0)
+        variation_id = int(rowdata['variationId'] or 0)
         cursor.execute(
             """INSERT INTO VariationParam (smallbase_id, variation_id) VALUES (?, ?)
                 ON CONFLICT(smallbase_id, variation_id) DO UPDATE SET
@@ -214,40 +258,42 @@ def init_table_variationparam(db_path: str, paths: defines.PathDefinitions):
     # 关闭连接
     conn.close()
 
-def init_table_pattern(db_path: str, paths: defines.PathDefinitions):
+def init_table_pattern(db_path: str, mem: sqlite3.Connection):
     """通过CSV文件初始化Pattern表数据"""
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    
+
     logging.info("正在初始化Pattern表")
-    pattern_playarea_csv = csvutil.load_csv(paths.get_metadata('LotResultPlayAreaParam.csv'), key_column='ID')
-    pattern_flag_csv = csvutil.load_csv(paths.get_metadata("LotResultMapPatternFlag.csv"), key_column='ID')
-    for pattern_id, rowdata in pattern_playarea_csv.items():
-        day1_playarea_id = int(rowdata.get("playArea1", 0))
-        day2_playarea_id = int(rowdata.get("playArea2", 0))
-        day1boss_smallbase_id = int(rowdata.get("bossId1", 0))
-        day2boss_smallbase_id = int(rowdata.get("bossId2", 0))
-        day1extraboss_smallbase_id = int(rowdata.get("extraBossId1", 0))
+    for rowdata in mem.execute("SELECT * FROM LotResultPlayAreaParam").fetchall():
+        pattern_id = int(rowdata['ID'])
+        day1_playarea_id = int(rowdata['playArea1'] or 0)
+        day2_playarea_id = int(rowdata['playArea2'] or 0)
+        day1boss_smallbase_id = int(rowdata['bossId1'] or 0)
+        day2boss_smallbase_id = int(rowdata['bossId2'] or 0)
+        day1extraboss_smallbase_id = int(rowdata['extraBossId1'] or 0)
         if day1extraboss_smallbase_id <= 0:
             day1extraboss_smallbase_id = None
-        day2extraboss_smallbase_id = int(rowdata.get("extraBossId2", 0))
+        day2extraboss_smallbase_id = int(rowdata['extraBossId2'] or 0)
         if day2extraboss_smallbase_id <= 0:
             day2extraboss_smallbase_id = None
-        
-        starter_rows = pattern_flag_csv.filter(patternId=pattern_id)
+
+        flag_rows = mem.execute(
+            "SELECT * FROM LotResultMapPatternFlag WHERE CAST(patternId AS INTEGER)=?",
+            (pattern_id,)
+        ).fetchall()
         starter_rowdata = None
-        for row in starter_rows:
-            modifierSet = int(row.get("modifierSet", 0))
-            if modifierSet == 190 or modifierSet == 160: # 基础模式
+        for row in flag_rows:
+            modifierSet = int(row['modifierSet'] or 0)
+            if modifierSet == 190 or modifierSet == 160:  # 基础模式
                 starter_rowdata = row
                 break
         if not starter_rowdata:
             raise ValueError(f"在 LotResultMapPatternFlag.csv 中未找到数据，pattern_id={pattern_id}")
-        dlc = int(starter_rowdata.get("patternSetId", 0)) >= 1000
-        starter_id = int(starter_rowdata.get("modifier", 0))
-        map_id = int(starter_rowdata.get("rareMap", 0))
-        nightlord_id = int(starter_rowdata.get("targetBoss", 0))
-        
+        dlc = int(starter_rowdata['patternSetId'] or 0) >= 1000
+        starter_id = int(starter_rowdata['modifier'] or 0)
+        map_id = int(starter_rowdata['rareMap'] or 0)
+        nightlord_id = int(starter_rowdata['targetBoss'] or 0)
+
         cursor.execute(
             """INSERT INTO Pattern (pattern_id, map_id, nightlord_id, starter_id,
                 day1_playarea_id, day2_playarea_id, dlc,
@@ -265,28 +311,26 @@ def init_table_pattern(db_path: str, paths: defines.PathDefinitions):
                     day2extraboss_smallbase_id=excluded.day2extraboss_smallbase_id,
                     dlc=excluded.dlc""",
             (pattern_id, map_id, nightlord_id, starter_id,
-            day1_playarea_id, day2_playarea_id, dlc,
-            day1boss_smallbase_id, day2boss_smallbase_id,
-            day1extraboss_smallbase_id, day2extraboss_smallbase_id))
+             day1_playarea_id, day2_playarea_id, dlc,
+             day1boss_smallbase_id, day2boss_smallbase_id,
+             day1extraboss_smallbase_id, day2extraboss_smallbase_id))
 
     conn.commit()
     print_db_changes(conn)
     # 关闭连接
     conn.close()
 
-def init_table_spotconfig(db_path: str, paths: defines.PathDefinitions):
+def init_table_spotconfig(db_path: str, mem: sqlite3.Connection):
     """通过CSV文件初始化SpotConfig表数据"""
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    
+
     logging.info("正在初始化SpotConfig表")
-    spot_config_csv = csvutil.load_csv(paths.get_metadata('LotResultSmallBaseAndSpot.csv'), key_column='ID')
-    for rowdata in spot_config_csv.values():
-        pattern_id = int(rowdata.get("patternId", 0))
-        attach_id = int(rowdata.get("attachId", 0))
-        smallbase_id = int(rowdata.get("smallBaseMapId", 0))
-        variation_id = int(rowdata.get("variationId", 0))
-        
+    for rowdata in mem.execute("SELECT patternId, attachId, smallBaseMapId, variationId FROM LotResultSmallBaseAndSpot").fetchall():
+        pattern_id = int(rowdata['patternId'] or 0)
+        attach_id = int(rowdata['attachId'] or 0)
+        smallbase_id = int(rowdata['smallBaseMapId'] or 0)
+        variation_id = int(rowdata['variationId'] or 0)
         cursor.execute(
             """INSERT INTO SpotConfig (pattern_id, attach_id, smallbase_id, variation_id) VALUES (?, ?, ?, ?)
                 ON CONFLICT(pattern_id, attach_id) DO UPDATE SET
@@ -301,28 +345,26 @@ def init_table_spotconfig(db_path: str, paths: defines.PathDefinitions):
     # 关闭连接
     conn.close()
 
-def init_table_eventconfig(db_path: str, paths: defines.PathDefinitions):
+def init_table_eventconfig(db_path: str, mem: sqlite3.Connection):
     """通过CSV文件初始化EventConfig表数据"""
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    
+
     logging.info("正在初始化EventConfig表")
-    pattern_flag_csv = csvutil.load_csv(paths.get_metadata('LotResultMapPatternFlag.csv'), key_column='ID')
-    for rowdata in pattern_flag_csv.values():
-        eventflag = int(rowdata.get("eventFlag", 0))
+    for rowdata in mem.execute("SELECT * FROM LotResultMapPatternFlag").fetchall():
+        eventflag = int(rowdata['eventFlag'] or 0)
         if eventflag == 0 or eventflag not in defines.EventDefinitionsCHS.keys():
             continue
-        pattern_id = int(rowdata.get("patternId", 0))
+        pattern_id = int(rowdata['patternId'] or 0)
         eventvalue = defines.EventDefinitionsCHS.get(eventflag)
         content = eventvalue if isinstance(eventvalue, str) else ""
         if eventvalue is None:
             logging.warning(f"未找到 eventFlag {eventflag} 的中文描述，pattern_id={pattern_id}")
             continue
         elif callable(eventvalue):
-            modifier = int(rowdata.get("modifier", 0))
-            modifierSet = int(rowdata.get("modifierSet", 0))
+            modifier = int(rowdata['modifier'] or 0)
+            modifierSet = int(rowdata['modifierSet'] or 0)
             content = eventvalue(modifier, modifierSet)
-        
         cursor.execute(
             """INSERT INTO EventConfig (pattern_id, content) VALUES (?, ?)
                 ON CONFLICT(pattern_id) DO UPDATE SET
@@ -335,26 +377,21 @@ def init_table_eventconfig(db_path: str, paths: defines.PathDefinitions):
     # 关闭连接
     conn.close()
 
-def init_table_bindings(db_path: str, paths: defines.PathDefinitions):
+def init_table_bindings(db_path: str, mem: sqlite3.Connection):
     """通过CSV文件初始化AttachBinding数据"""
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    
-    attach_point_csv = csvutil.load_csv(paths.get_metadata('WorldMapPointParam.csv'), key_column='ID')
-    pattern_flag_csv = csvutil.load_csv(paths.get_metadata("LotResultMapPatternFlag.csv"), key_column='ID')
 
     # handle shift earth power points
     logging.info("正在初始化特殊地形力量数据")
-    power_points = attach_point_csv.filter(worldMapPointIconId=61)
-    for rowdata in power_points:
-        attach_id = int(rowdata.get("ID", 0))
-        grid_x = int(rowdata.get("gridXNo", 0))
-        grid_z = int(rowdata.get("gridZNo", 0))
-        pos_x = float(rowdata.get("posX", 0))
-        pos_z = float(rowdata.get("posZ", 0))
-        height = float(rowdata.get("posY", 0))
-        map_id = int(rowdata.get("pad", 0)) // 10
-        
+    for rowdata in mem.execute("SELECT * FROM WorldMapPointParam WHERE CAST(worldMapPointIconId AS INTEGER)=61").fetchall():
+        attach_id = int(rowdata['ID'] or 0)
+        grid_x = int(rowdata['gridXNo'] or 0)
+        grid_z = int(rowdata['gridZNo'] or 0)
+        pos_x = float(rowdata['posX'] or 0)
+        pos_z = float(rowdata['posZ'] or 0)
+        height = float(rowdata['posY'] or 0)
+        map_id = int(rowdata['pad'] or 0) // 10
         cursor.execute(
             """INSERT INTO AttachPoint (attach_id, grid_x, grid_z, pos_x, pos_z, height) VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(attach_id) DO UPDATE SET
@@ -364,39 +401,48 @@ def init_table_bindings(db_path: str, paths: defines.PathDefinitions):
                     pos_z=excluded.pos_z,
                     height=excluded.height""",
             (attach_id, grid_x, grid_z, pos_x, pos_z, height))
-        if map_id == 3: # rotted wood only
-            flag_id = int(rowdata.get("eventFlagId1", 0))
-            patterns = pattern_flag_csv.filter(modifierSet=500, eventFlag=flag_id)
-            for pattern in patterns:
-                pattern_id = int(pattern.get("patternId", -1))
+        if map_id == 3:  # rotted wood only
+            flag_id = int(rowdata['eventFlagId1'] or 0)
+            for pattern in mem.execute(
+                "SELECT patternId FROM LotResultMapPatternFlag WHERE CAST(modifierSet AS INTEGER)=500 AND CAST(eventFlag AS INTEGER)=?",
+                (flag_id,)
+            ).fetchall():
+                pattern_id = int(pattern['patternId'] or -1)
                 if pattern_id >= 0:
                     cursor.execute(
                         """INSERT INTO AttachPatternBinding (pattern_id, attach_id) VALUES (?, ?)
                             ON CONFLICT(pattern_id, attach_id) DO NOTHING""",
                         (pattern_id, attach_id))
         else:
-            cursor.execute("""INSERT INTO AttachMapBinding (attach_id, map_id) VALUES (?, ?)
-                ON CONFLICT(attach_id, map_id) DO NOTHING""",
-            (attach_id, map_id))
+            cursor.execute(
+                """INSERT INTO AttachMapBinding (attach_id, map_id) VALUES (?, ?)
+                    ON CONFLICT(attach_id, map_id) DO NOTHING""",
+                (attach_id, map_id))
 
     logging.info("正在初始化地形固定点数据")
     enabled_types = [2, 16, 28, 71, 76]
     enabled_maps = [1, 2, 3, 4, 5]
-    sorted_attach_points = attach_point_csv.group_by('worldMapPointIconId')
-    for point_type, rows in sorted_attach_points.items():
+    point_types = [
+        int(row[0]) for row in mem.execute(
+            "SELECT DISTINCT CAST(worldMapPointIconId AS INTEGER) FROM WorldMapPointParam"
+        ).fetchall()
+    ]
+    for point_type in point_types:
         if point_type not in enabled_types:
             continue
-        for rowdata in rows:
-            map_id = int(rowdata.get("pad", 0)) // 10
+        for rowdata in mem.execute(
+            "SELECT * FROM WorldMapPointParam WHERE CAST(worldMapPointIconId AS INTEGER)=?",
+            (point_type,)
+        ).fetchall():
+            map_id = int(rowdata['pad'] or 0) // 10
             if map_id not in enabled_maps:
                 continue
-            
-            attach_id = int(rowdata.get("ID", 0))
-            grid_x = int(rowdata.get("gridXNo", 0))
-            grid_z = int(rowdata.get("gridZNo", 0))
-            pos_x = float(rowdata.get("posX", 0))
-            pos_z = float(rowdata.get("posZ", 0))
-            height = float(rowdata.get("posY", 0))
+            attach_id = int(rowdata['ID'] or 0)
+            grid_x = int(rowdata['gridXNo'] or 0)
+            grid_z = int(rowdata['gridZNo'] or 0)
+            pos_x = float(rowdata['posX'] or 0)
+            pos_z = float(rowdata['posZ'] or 0)
+            height = float(rowdata['posY'] or 0)
             cursor.execute(
                 """INSERT INTO AttachPoint (attach_id, grid_x, grid_z, pos_x, pos_z, height) VALUES (?, ?, ?, ?, ?, ?)
                     ON CONFLICT(attach_id) DO UPDATE SET
@@ -406,22 +452,20 @@ def init_table_bindings(db_path: str, paths: defines.PathDefinitions):
                         pos_z=excluded.pos_z,
                         height=excluded.height""",
                 (attach_id, grid_x, grid_z, pos_x, pos_z, height))
-            
-            flagid6 = int(rowdata.get("eventFlagId6", 0))
+            flagid6 = int(rowdata['eventFlagId6'] or 0)
             if point_type == 16:
-                flagid2 = int(rowdata.get("eventFlagId2", 0))
-                flagid0 = int(rowdata.get("eventFlagId0", 0))
+                flagid2 = int(rowdata['eventFlagId2'] or 0)
+                flagid0 = int(rowdata['eventFlagId0'] or 0)
                 smallbase_id = flagid0 // 10000
                 # great hollow boss points, bind to small base
                 if map_id == 4 and flagid2 > 0 and smallbase_id > 0:
-                    flagid0 = int(rowdata.get("eventFlagId0", 0))
                     cursor.execute("""
                         INSERT INTO AttachSmallBaseBinding (attach_id, smallbase_id)
                         SELECT ?, ?
                         WHERE EXISTS (SELECT 1 FROM SmallBaseMap WHERE smallbase_id = ?)
                         ON CONFLICT(attach_id, smallbase_id) DO NOTHING
                     """, (attach_id, smallbase_id, smallbase_id))
-                elif flagid6 > 0: # other field boss points, bind to map
+                elif flagid6 > 0:  # other field boss points, bind to map
                     cursor.execute(
                         """INSERT INTO AttachMapBinding (attach_id, map_id) VALUES (?, ?)
                             ON CONFLICT(attach_id, map_id) DO NOTHING""",
@@ -437,14 +481,14 @@ def init_table_bindings(db_path: str, paths: defines.PathDefinitions):
     # 关闭连接
     conn.close()
 
-def main(step:callable=None):
+def main():
     """主函数"""
     import argparse
 
     paths = defines.PathDefinitions(__file__)
     
     parser = argparse.ArgumentParser(description='创建地图模式配置数据库')
-    default_db_path = paths.get_output('game_data.db')
+    default_db_path = paths.get_output('game_data2.db')
     parser.add_argument('-o', '--output', default=default_db_path, 
                        help=f'输出数据库文件路径 (默认: {default_db_path})')
     
@@ -452,35 +496,43 @@ def main(step:callable=None):
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     
     # 创建数据库
-    db_path = create_database(args.output, paths.get_queries('create_tables.sql'))
-    # 如果指定了步骤函数，则只执行该步骤
-    if step is not None:
-        step(db_path, paths)
-        return
+    db_path = create_database(args.output, paths.get_sql('create_tables.sql'))
     
-    # 使用SQL文件初始化表数据
-    init_table_by_sqlfiles(db_path, [
-        paths.get_queries('init_table_map.sql'),
-        paths.get_queries('init_table_nightlord.sql'),
-        paths.get_queries('init_table_starter.sql')
-    ])
+    # 使用JSON文件初始化表数据
+    init_table_by_jsonfile(db_path, paths.get_sql('maps.json'))
+    init_table_by_jsonfile(db_path, paths.get_sql('nightlords.json'))
+    init_table_by_jsonfile(db_path, paths.get_sql('starters.json'))
+
+    mem = load_csv_to_mem(paths, [
+        'LotBaseMapPatternFlag',
+        'LotResultMapPatternFlag',
+        'LotResultPlayAreaParam',
+        'LotResultSmallBaseAndSpot',
+        'NightBossMenuParam',
+        'PlayAreaCreateParam',
+        'SmallBaseAndSpotAttachPoint',
+        'SmallBaseMapVariationParam',
+        'WorldMapPointParam',
+        ])
     
     # 使用CSV文件初始化AttachPoint表数据
-    init_table_attachpoint(db_path, paths)
+    init_table_attachpoint(db_path, mem)
     # 使用CSV文件初始化SmallBaseMap表数据
-    init_table_smallbasemap(db_path, paths)
+    init_table_smallbasemap(db_path, mem)
     # 使用CSV文件初始化PlayArea表数据
-    init_table_playarea(db_path, paths)
+    init_table_playarea(db_path, mem)
     # 使用CSV文件初始化VariationParam表数据
-    init_table_variationparam(db_path, paths)
+    init_table_variationparam(db_path, mem)
     # 使用CSV文件初始化Pattern表数据
-    init_table_pattern(db_path, paths)
+    init_table_pattern(db_path, mem)
     # 使用CSV文件初始化SpotConfig表数据
-    init_table_spotconfig(db_path, paths)
+    init_table_spotconfig(db_path, mem)
     # 使用CSV文件初始化EventConfig表数据
-    init_table_eventconfig(db_path, paths)
+    init_table_eventconfig(db_path, mem)
     # 使用CSV文件初始化Binding表数据
-    init_table_bindings(db_path, paths)
+    init_table_bindings(db_path, mem)
+
+    mem.close()
 
 if __name__ == "__main__":
-    main(init_table_pattern)
+    main()

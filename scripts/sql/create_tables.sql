@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS SmallBaseMap (
     label CHAR(32),
     icon_atlas CHAR(32),
     group_id TINYINT,
-    flags TINYINT DEFAULT 255
+    flags TINYINT DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_smallbase_group ON SmallBaseMap(group_id);
 

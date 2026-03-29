@@ -1,0 +1,12 @@
+{
+    "table": "Map",
+    "pk": "map_id",
+    "rows": [
+        {"map_id": 0, "name": "普通"},
+        {"map_id": 1, "name": "雪山"},
+        {"map_id": 2, "name": "火山"},
+        {"map_id": 3, "name": "腐败"},
+        {"map_id": 4, "name": "大空洞"},
+        {"map_id": 5, "name": "隐城"}
+    ]
+}

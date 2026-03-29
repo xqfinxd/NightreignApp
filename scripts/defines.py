@@ -4,9 +4,9 @@ from pathlib import Path
 
 KnownIcons = {
     1 : "site of grace",
-    2 :"church",
-    3 :"ruins",
-    7 :"fort",
+    2 : "church",
+    3 : "ruins",
+    7 : "fort",
     11: "castle",
     13: "spectral hawk tree",
     16: "field boss",
@@ -134,7 +134,7 @@ class PathDefinitions:
         self.fonts_dir = self.assets_dir / "fonts"
         self.src_dir = self.project_dir / "src"
         self.cpp_header_dir= self.src_dir / "generated"
-        self.queries_dir = self.project_dir / "scripts" / "queries"
+        self.sql_dir = self.project_dir / "scripts" / "sql"
 
     def get_cpp_header(self, fn: str):
         return str(self.cpp_header_dir / f'{fn}.h')
@@ -142,8 +142,8 @@ class PathDefinitions:
     def get_metadata(self, fn: str):
         return str(self.metadata_dir / fn)
 
-    def get_queries(self, fn: str):
-        return str(self.queries_dir / fn)
+    def get_sql(self, fn: str):
+        return str(self.sql_dir / fn)
 
     def get_output(self, fn: str):
         return str(self.datas_dir / fn)

@@ -1,4 +1,3 @@
--- 查询相同坐标上的 pattern_id 集合和数量，按 DLC 区分
 SELECT 
     ap.grid_x,
     ap.grid_z,
@@ -12,13 +11,11 @@ SELECT
         FROM Pattern 
         WHERE map_id = p.map_id AND dlc = p.dlc
     ) AS map_total_patterns_by_dlc,
-    -- 计算占有率（小数形式）
     ROUND(
         COUNT(DISTINCT p.pattern_id) * 1.0 / 
         (SELECT COUNT(*) FROM Pattern WHERE map_id = p.map_id AND dlc = p.dlc),
         4
     ) AS occupancy_rate,
-    -- 计算占有率（百分比形式）
     ROUND(
         COUNT(DISTINCT p.pattern_id) * 100.0 / 
         (SELECT COUNT(*) FROM Pattern WHERE map_id = p.map_id AND dlc = p.dlc),
