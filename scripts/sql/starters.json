@@ -1,18 +1,20 @@
 {
     "table": "Starter",
     "pk": "starter_id",
+    "headers": ["starter_id", "grid_x", "grid_z", "pos_x", "pos_z"],
+    "op": "update",
     "rows": [
-        {"starter_id": 13000, "grid_x": 42, "grid_z": 36, "pos_x": 28.44, "pos_z": 88.18},
-        {"starter_id": 13002, "grid_x": 45, "grid_z": 39, "pos_x": -29.87, "pos_z": -76.8},
-        {"starter_id": 13001, "grid_x": 43, "grid_z": 36, "pos_x": 58.74, "pos_z": -64.57},
-        {"starter_id": 700,   "grid_x": 42, "grid_z": 36, "pos_x": -74.0, "pos_z": 62.0},
-        {"starter_id": 701,   "grid_x": 42, "grid_z": 37, "pos_x": -66.0, "pos_z": 44.0},
-        {"starter_id": 702,   "grid_x": 42, "grid_z": 38, "pos_x": -48.0, "pos_z": 98.46},
-        {"starter_id": 703,   "grid_x": 43, "grid_z": 38, "pos_x": -86.0, "pos_z": 32.0},
-        {"starter_id": 704,   "grid_x": 44, "grid_z": 36, "pos_x": -22.0, "pos_z": -72.0},
-        {"starter_id": 705,   "grid_x": 44, "grid_z": 37, "pos_x": -52.0, "pos_z": -76.0},
-        {"starter_id": 706,   "grid_x": 44, "grid_z": 39, "pos_x": -72.0, "pos_z": 44.0},
-        {"starter_id": 707,   "grid_x": 45, "grid_z": 37, "pos_x": 86.0,  "pos_z": 4.0},
-        {"starter_id": 708,   "grid_x": 45, "grid_z": 38, "pos_x": -86.0, "pos_z": 81.0}
+        [13000, 42, 36,  28.44,  88.18],
+        [13002, 45, 39, -29.87, -76.8],
+        [13001, 43, 36,  58.74, -64.57],
+        [700,   42, 36, -74.0,   62.0],
+        [701,   42, 37, -66.0,   44.0],
+        [702,   42, 38, -48.0,   98.46],
+        [703,   43, 38, -86.0,   32.0],
+        [704,   44, 36, -22.0,  -72.0],
+        [705,   44, 37, -52.0,  -76.0],
+        [706,   44, 39, -72.0,   44.0],
+        [707,   45, 37,  86.0,    4.0],
+        [708,   45, 38, -86.0,   81.0]
     ]
 }

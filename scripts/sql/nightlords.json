@@ -1,16 +1,18 @@
 {
     "table": "Nightlord",
     "pk": "nightlord_id",
+    "headers": ["nightlord_id", "name"],
+    "op": "update",
     "rows": [
-        {"nightlord_id": 0, "name": "三狼"},
-        {"nightlord_id": 1, "name": "大嘴"},
-        {"nightlord_id": 2, "name": "双虫"},
-        {"nightlord_id": 3, "name": "水母"},
-        {"nightlord_id": 4, "name": "山羊"},
-        {"nightlord_id": 5, "name": "人马"},
-        {"nightlord_id": 6, "name": "冰龙"},
-        {"nightlord_id": 7, "name": "黑夜王"},
-        {"nightlord_id": 8, "name": "七仙女"},
-        {"nightlord_id": 9, "name": "垃圾王"}
+        [0, "三狼"],
+        [1, "大嘴"],
+        [2, "双虫"],
+        [3, "水母"],
+        [4, "山羊"],
+        [5, "人马"],
+        [6, "冰龙"],
+        [7, "黑夜王"],
+        [8, "七仙女"],
+        [9, "垃圾王"]
     ]
 }

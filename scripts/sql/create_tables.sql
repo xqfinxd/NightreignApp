@@ -3,13 +3,13 @@
 -- table: Map
 CREATE TABLE IF NOT EXISTS Map (
     map_id TINYINT PRIMARY KEY,
-    name CHAR(8) NOT NULL
+    name CHAR(8) DEFAULT 'unknown'
 );
 
 -- table: Nightlord
 CREATE TABLE IF NOT EXISTS Nightlord (
     nightlord_id TINYINT PRIMARY KEY,
-    name CHAR(32) NOT NULL
+    name CHAR(32) DEFAULT 'unknown'
 );
 
 -- table: SmallBaseMap

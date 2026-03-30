@@ -1,9 +1,24 @@
+import argparse
 import csv as _csv
 import json
-import sqlite3
-import os
-import defines
 import logging
+import os
+import sqlite3
+
+import defines
+
+
+CSV_INPUT_TABLES = [
+    'LotBaseMapPatternFlag',
+    'LotResultMapPatternFlag',
+    'LotResultPlayAreaParam',
+    'LotResultSmallBaseAndSpot',
+    'NightBossMenuParam',
+    'PlayAreaCreateParam',
+    'SmallBaseAndSpotAttachPoint',
+    'SmallBaseMapVariationParam',
+    'WorldMapPointParam',
+]
 
 def print_db_changes(db_conn: sqlite3.Connection):
     """打印数据库更改统计信息"""
@@ -70,37 +85,130 @@ def init_table_by_sqlfiles(db_path: str, sqlfiles: list):
     # 关闭连接
     conn.close()
 
+def _table_columns(conn: sqlite3.Connection, table_name: str) -> list[str]:
+    rows = conn.execute(f"PRAGMA table_info([{table_name}])").fetchall()
+    if not rows:
+        raise ValueError(f"表不存在: {table_name}")
+    return [row[1] for row in rows]
+
+
+def _validate_json_payload(payload: dict, jsonfile: str) -> tuple[str, str, list[dict], list[str]]:
+    if not isinstance(payload, dict):
+        raise ValueError(f"JSON格式错误（应为对象）: {jsonfile}")
+    if 'table' not in payload or 'pk' not in payload or 'rows' not in payload:
+        raise ValueError(f"JSON缺少必要字段 table/pk/rows: {jsonfile}")
+
+    table_name = payload['table']
+    pk_col = payload['pk']
+    rows = payload.get('rows', [])
+    if not isinstance(rows, list):
+        raise ValueError(f"rows 必须为数组: {jsonfile}")
+
+    if not rows:
+        return table_name, pk_col, rows, []
+
+    if not isinstance(rows[0], dict):
+        raise ValueError(f"rows 元素必须为对象: {jsonfile}")
+
+    columns = list(rows[0].keys())
+    for i, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise ValueError(f"rows[{i}] 不是对象: {jsonfile}")
+        if list(row.keys()) != columns:
+            raise ValueError(f"rows 字段不一致，错误位置 rows[{i}]: {jsonfile}")
+
+    return table_name, pk_col, rows, columns
+
+
 def init_table_by_jsonfile(db_path: str, jsonfile: str):
     """通过JSON文件初始化表数据"""
+    with open(jsonfile, 'r', encoding='utf-8') as f:
+        payload = json.load(f)
+
+    table_name, pk_col, rows, columns = _validate_json_payload(payload, jsonfile)
+
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    with open(jsonfile, 'r', encoding='utf-8') as f:
-        data = json.load(f)
+    table_columns = _table_columns(conn, table_name)
+    if pk_col not in table_columns:
+        conn.close()
+        raise ValueError(f"主键字段不存在: {table_name}.{pk_col} ({jsonfile})")
 
-    table_name = data['table']
-    pk_col = data['pk']
-    rows = data.get('rows', [])
+    for col in columns:
+        if col not in table_columns:
+            conn.close()
+            raise ValueError(f"字段不存在: {table_name}.{col} ({jsonfile})")
 
     if not rows:
+        logging.info(f"JSON文件无数据行，跳过: {jsonfile}")
         conn.close()
         return
 
     logging.info(f"正在从JSON文件初始化 {table_name} 表: {jsonfile}")
-    columns = list(rows[0].keys())
     placeholders = ', '.join(['?' for _ in columns])
-    col_names = ', '.join(columns)
-    updates = ', '.join([f"{col}=excluded.{col}" for col in columns if col != pk_col])
-    sql = f"""INSERT INTO {table_name} ({col_names}) VALUES ({placeholders})
-        ON CONFLICT({pk_col}) DO UPDATE SET {updates}"""
+    col_names = ', '.join([f"[{c}]" for c in columns])
+    updates = ', '.join([f"[{col}]=excluded.[{col}]" for col in columns if col != pk_col])
+
+    if updates:
+        sql = (
+            f"INSERT INTO [{table_name}] ({col_names}) VALUES ({placeholders}) "
+            f"ON CONFLICT([{pk_col}]) DO UPDATE SET {updates}"
+        )
+    else:
+        sql = (
+            f"INSERT INTO [{table_name}] ({col_names}) VALUES ({placeholders}) "
+            f"ON CONFLICT([{pk_col}]) DO NOTHING"
+        )
 
     for row in rows:
-        cursor.execute(sql, list(row.values()))
+        cursor.execute(sql, [row[col] for col in columns])
 
     conn.commit()
     print_db_changes(conn)
-    # 关闭连接
     conn.close()
+
+
+def discover_json_files(sql_dir: str) -> list[str]:
+    files: list[str] = []
+    for name in sorted(os.listdir(sql_dir)):
+        full = os.path.join(sql_dir, name)
+        if os.path.isfile(full) and name.lower().endswith('.json'):
+            files.append(full)
+    return files
+
+
+def resolve_json_inputs(paths: defines.PathDefinitions, json_inputs: list[str], import_all_json: bool) -> list[str]:
+    resolved: list[str] = []
+    if import_all_json:
+        resolved.extend(discover_json_files(paths.get_sql('')))
+
+    for item in json_inputs:
+        if os.path.isabs(item) and os.path.exists(item):
+            resolved.append(item)
+            continue
+
+        direct = os.path.abspath(item)
+        if os.path.exists(direct):
+            resolved.append(direct)
+            continue
+
+        by_sql_dir = paths.get_sql(item)
+        if os.path.exists(by_sql_dir):
+            resolved.append(by_sql_dir)
+            continue
+
+        raise FileNotFoundError(f"JSON文件不存在: {item}")
+
+    # 去重并保持顺序
+    unique: list[str] = []
+    seen = set()
+    for p in resolved:
+        ap = os.path.abspath(p)
+        if ap not in seen:
+            seen.add(ap)
+            unique.append(ap)
+    return unique
 
 def load_csv_to_mem(paths: defines.PathDefinitions, csv_names: list) -> sqlite3.Connection:
     """将CSV文件加载到内存SQLite数据库中，每个文件对应一个表"""
@@ -111,9 +219,13 @@ def load_csv_to_mem(paths: defines.PathDefinitions, csv_names: list) -> sqlite3.
         with open(filepath, newline='', encoding='utf-8') as f:
             reader = _csv.DictReader(f)
             cols = reader.fieldnames
-            mem.execute(f'CREATE TABLE [{name}] ({', '.join(f'[{c}]' for c in cols)})')
+            if not cols:
+                raise ValueError(f"CSV缺少表头: {filepath}")
+            column_sql = ', '.join([f"[{c}]" for c in cols])
+            value_sql = ', '.join(['?' for _ in cols])
+            mem.execute(f"CREATE TABLE [{name}] ({column_sql})")
             mem.executemany(
-                f'INSERT INTO [{name}] VALUES ({', '.join('?' for _ in cols)})',
+                f"INSERT INTO [{name}] VALUES ({value_sql})",
                 (list(row.values()) for row in reader)
             )
     mem.commit()
@@ -483,56 +595,66 @@ def init_table_bindings(db_path: str, mem: sqlite3.Connection):
 
 def main():
     """主函数"""
-    import argparse
-
     paths = defines.PathDefinitions(__file__)
-    
-    parser = argparse.ArgumentParser(description='创建地图模式配置数据库')
-    default_db_path = paths.get_output('game_data2.db')
-    parser.add_argument('-o', '--output', default=default_db_path, 
-                       help=f'输出数据库文件路径 (默认: {default_db_path})')
-    
+
+    parser = argparse.ArgumentParser(description='四步流程创建地图模式配置数据库')
+    default_db_path = paths.get_output('game_data.db')
+    parser.add_argument('-o', '--output', default=default_db_path,
+                        help=f'输出数据库文件路径 (默认: {default_db_path})')
+    parser.add_argument('--force', action='store_true',
+                        help='数据库文件存在时不提示，直接删除重建')
+    parser.add_argument('--create-only', action='store_true',
+                        help='仅执行第1步：创建数据库和表结构')
+    parser.add_argument('--skip-csv-init', action='store_true',
+                        help='跳过第2步：CSV规则初始化')
+    parser.add_argument('--skip-json', action='store_true',
+                        help='跳过第3步：JSON导入')
+    parser.add_argument('--import-json', action='append', default=[],
+                        help='导入单个JSON文件（可重复传参）；支持绝对路径/相对路径/仅文件名')
+    parser.add_argument('-a', '--import-all-json', action='store_true',
+                        help='导入 scripts/sql 目录下全部JSON文件')
+
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    
-    # 创建数据库
+
+    # Step 1: 创建数据库
+    if args.force and os.path.exists(args.output):
+        os.remove(args.output)
+        logging.info(f"已删除现有数据库: {args.output}")
     db_path = create_database(args.output, paths.get_sql('create_tables.sql'))
-    
-    # 使用JSON文件初始化表数据
-    init_table_by_jsonfile(db_path, paths.get_sql('maps.json'))
-    init_table_by_jsonfile(db_path, paths.get_sql('nightlords.json'))
-    init_table_by_jsonfile(db_path, paths.get_sql('starters.json'))
 
-    mem = load_csv_to_mem(paths, [
-        'LotBaseMapPatternFlag',
-        'LotResultMapPatternFlag',
-        'LotResultPlayAreaParam',
-        'LotResultSmallBaseAndSpot',
-        'NightBossMenuParam',
-        'PlayAreaCreateParam',
-        'SmallBaseAndSpotAttachPoint',
-        'SmallBaseMapVariationParam',
-        'WorldMapPointParam',
-        ])
-    
-    # 使用CSV文件初始化AttachPoint表数据
-    init_table_attachpoint(db_path, mem)
-    # 使用CSV文件初始化SmallBaseMap表数据
-    init_table_smallbasemap(db_path, mem)
-    # 使用CSV文件初始化PlayArea表数据
-    init_table_playarea(db_path, mem)
-    # 使用CSV文件初始化VariationParam表数据
-    init_table_variationparam(db_path, mem)
-    # 使用CSV文件初始化Pattern表数据
-    init_table_pattern(db_path, mem)
-    # 使用CSV文件初始化SpotConfig表数据
-    init_table_spotconfig(db_path, mem)
-    # 使用CSV文件初始化EventConfig表数据
-    init_table_eventconfig(db_path, mem)
-    # 使用CSV文件初始化Binding表数据
-    init_table_bindings(db_path, mem)
+    if args.create_only:
+        logging.info('已完成 --create-only，仅执行第1步')
+        return
 
-    mem.close()
+    # Step 2: CSV规则初始化
+    if not args.skip_csv_init:
+        mem = load_csv_to_mem(paths, CSV_INPUT_TABLES)
+        try:
+            init_table_attachpoint(db_path, mem)
+            init_table_smallbasemap(db_path, mem)
+            init_table_playarea(db_path, mem)
+            init_table_variationparam(db_path, mem)
+            init_table_pattern(db_path, mem)
+            init_table_spotconfig(db_path, mem)
+            init_table_eventconfig(db_path, mem)
+            init_table_bindings(db_path, mem)
+        finally:
+            mem.close()
+    else:
+        logging.info('已跳过第2步（CSV规则初始化）')
+
+    # Step 3: JSON导入（默认导入 scripts/sql 全部 JSON，可被参数覆盖）
+    if not args.skip_json:
+        use_all_json = args.import_all_json or (len(args.import_json) == 0)
+        json_files = resolve_json_inputs(paths, args.import_json, use_all_json)
+        if not json_files:
+            logging.info('未发现可导入JSON，跳过第3步')
+        else:
+            for json_file in json_files:
+                init_table_by_jsonfile(db_path, json_file)
+    else:
+        logging.info('已跳过第3步（JSON导入）')
 
 if __name__ == "__main__":
     main()

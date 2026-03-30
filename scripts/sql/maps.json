@@ -1,12 +1,14 @@
 {
     "table": "Map",
     "pk": "map_id",
+    "headers": ["map_id", "name"],
+    "op": "update",
     "rows": [
-        {"map_id": 0, "name": "普通"},
-        {"map_id": 1, "name": "雪山"},
-        {"map_id": 2, "name": "火山"},
-        {"map_id": 3, "name": "腐败"},
-        {"map_id": 4, "name": "大空洞"},
-        {"map_id": 5, "name": "隐城"}
+        [0, "普通"],
+        [1, "雪山"],
+        [2, "火山"],
+        [3, "腐败"],
+        [4, "大空洞"],
+        [5, "隐城"]
     ]
 }
