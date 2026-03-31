@@ -9,8 +9,6 @@
 #include <rapidjson/document.h>
 #include <rapidjson/istreamwrapper.h>
 
-#include "generated/AtlasRow.h"
-
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
@@ -28,37 +26,6 @@ TextureRegistry::~TextureRegistry() {
 void TextureRegistry::loadTextureDataAsync(const std::string& alias, std::function<void(bool success)> callback)
 {
     m_async_loader->loadTextureDataAsync(alias, this, callback);
-}
-
-bool TextureRegistry::LoadAtlas(const std::string& atlasPath) {
-    auto rowdata = readCSVFile<AtlasRow>(atlasPath);
-    
-    if (rowdata.empty()) {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "TextureRegistry:  Atlas is empty: %s", atlasPath.c_str());
-        return false;
-    }
-    
-    // alias,path,width,height,format
-    int loadedCount = 0;
-    for (size_t i = 0; i < rowdata.size(); ++i) {
-        TextureMetadata meta;
-        meta.alias = rowdata[i].alias;
-        meta.path = rowdata[i].path;
-        meta.width = rowdata[i].width;
-        meta.height = rowdata[i].height;
-        meta.channel = rowdata[i].format;
-        
-        if (meta.width <= 0 || meta.height <= 0) {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "TextureRegistry:  Invalid dimensions for %s", meta.alias.c_str());
-            continue;
-        }
-        
-        m_textures[meta.alias] = meta;
-        loadedCount++;
-    }
-    
-    SDL_LogVerbose(SDL_LOG_CATEGORY_APPLICATION, "TextureRegistry:  Loaded %d texture metadata entries", loadedCount);
-    return loadedCount > 0;
 }
 
 bool TextureRegistry::loadAtlasJson(const std::string& jsonPath)

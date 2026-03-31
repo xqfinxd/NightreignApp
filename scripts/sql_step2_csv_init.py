@@ -393,6 +393,41 @@ def init_table_bindings(db_path: str, mem: sqlite3.Connection) -> None:
     conn.close()
 
 
+def init_view_mappoint(db_path: str) -> None:
+    conn = sqlite3.connect(db_path)
+    conn.execute("DROP VIEW IF EXISTS viewMapPoint")
+    conn.execute("""
+        CREATE VIEW viewMapPoint AS
+        SELECT
+            ap.grid_x,
+            ap.grid_z,
+            ap.pos_x,
+            ap.pos_z,
+            p.map_id,
+            p.dlc,
+            COUNT(DISTINCT p.pattern_id) AS coord_pattern_count,
+            (
+                SELECT COUNT(*)
+                FROM Pattern
+                WHERE map_id = p.map_id AND dlc = p.dlc
+            ) AS map_total_patterns_by_dlc,
+            ROUND(
+                COUNT(DISTINCT p.pattern_id) * 1.0 /
+                (SELECT COUNT(*) FROM Pattern WHERE map_id = p.map_id AND dlc = p.dlc),
+                4
+            ) AS occupancy_rate,
+            GROUP_CONCAT(DISTINCT ap.attach_id) AS attach_ids
+        FROM AttachPoint ap
+        JOIN SpotConfig sc ON ap.attach_id = sc.attach_id
+        JOIN Pattern p ON sc.pattern_id = p.pattern_id
+        GROUP BY ap.grid_x, ap.grid_z, ap.pos_x, ap.pos_z, p.map_id, p.dlc
+        ORDER BY occupancy_rate DESC
+    """)
+    conn.commit()
+    conn.close()
+    logging.info("viewMapPoint 视图创建完成")
+
+
 def main() -> None:
     paths = defines.PathDefinitions(__file__)
     default_db_path = paths.get_output('game_data2.db')
@@ -416,6 +451,7 @@ def main() -> None:
         init_table_bindings(args.db, mem)
     finally:
         mem.close()
+    init_view_mappoint(args.db)
     logging.info("✅ CSV数据初始化完成")
 
 

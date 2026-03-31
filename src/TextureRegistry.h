@@ -66,7 +66,6 @@ public:
      * @param atlasPath atlas.csv文件路径
      * @return 成功返回true
      */
-    bool LoadAtlas(const std::string& atlasPath);
     bool loadAtlasJson(const std::string& jsonPath);
 
     /**
