@@ -148,7 +148,7 @@ def discover_json_files(sql_dir: str) -> list[str]:
 def resolve_inputs(paths: defines.PathDefinitions, json_inputs: list[str], import_all: bool) -> list[str]:
     resolved: list[str] = []
     if import_all:
-        resolved.extend(discover_json_files(paths.get_sql('')))
+        resolved.extend(discover_json_files(paths.get_sqldata_dir()))
 
     for item in json_inputs:
         if os.path.isabs(item) and os.path.exists(item):
@@ -158,7 +158,7 @@ def resolve_inputs(paths: defines.PathDefinitions, json_inputs: list[str], impor
         if os.path.exists(direct):
             resolved.append(direct)
             continue
-        by_sql_dir = paths.get_sql(item)
+        by_sql_dir = paths.get_sqldata(item)
         if os.path.exists(by_sql_dir):
             resolved.append(by_sql_dir)
             continue

@@ -404,29 +404,27 @@ def init_view_mappoint(db_path: str) -> None:
             ap.pos_x,
             ap.pos_z,
             p.map_id,
-            p.dlc,
             COUNT(DISTINCT p.pattern_id) AS coord_pattern_count,
             (
                 SELECT COUNT(*)
                 FROM Pattern
-                WHERE map_id = p.map_id AND dlc = p.dlc
-            ) AS map_total_patterns_by_dlc,
+                WHERE map_id = p.map_id
+            ) AS map_total_patterns,
             ROUND(
                 COUNT(DISTINCT p.pattern_id) * 1.0 /
-                (SELECT COUNT(*) FROM Pattern WHERE map_id = p.map_id AND dlc = p.dlc),
+                (SELECT COUNT(*) FROM Pattern WHERE map_id = p.map_id),
                 4
             ) AS occupancy_rate,
             GROUP_CONCAT(DISTINCT ap.attach_id) AS attach_ids
         FROM AttachPoint ap
         JOIN SpotConfig sc ON ap.attach_id = sc.attach_id
         JOIN Pattern p ON sc.pattern_id = p.pattern_id
-        GROUP BY ap.grid_x, ap.grid_z, ap.pos_x, ap.pos_z, p.map_id, p.dlc
+        GROUP BY ap.grid_x, ap.grid_z, ap.pos_x, ap.pos_z, p.map_id
         ORDER BY occupancy_rate DESC
     """)
     conn.commit()
     conn.close()
     logging.info("viewMapPoint 视图创建完成")
-
 
 def main() -> None:
     paths = defines.PathDefinitions(__file__)

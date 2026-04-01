@@ -135,6 +135,7 @@ class PathDefinitions:
         self.src_dir = self.project_dir / "src"
         self.cpp_header_dir= self.src_dir / "generated"
         self.sql_dir = self.project_dir / "scripts" / "sql"
+        self.sqldata_dir = self.project_dir / "scripts" / "sqldata"
 
     def get_cpp_header(self, fn: str):
         return str(self.cpp_header_dir / f'{fn}.h')
@@ -144,6 +145,12 @@ class PathDefinitions:
 
     def get_sql(self, fn: str):
         return str(self.sql_dir / fn)
+    
+    def get_sqldata_dir(self):
+        return str(self.sqldata_dir)
+    
+    def get_sqldata(self, fn: str):
+        return str(self.sqldata_dir / fn)
 
     def get_output(self, fn: str):
         return str(self.datas_dir / fn)
