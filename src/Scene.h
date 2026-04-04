@@ -132,6 +132,9 @@ public:
 	void drawUI();
 	void drawContextMenu();
 
+	void setScreenText(const std::string& text) { m_screenText = text; }
+	const std::string& getScreenText() const { return m_screenText; }
+
 	// Map control
 	void loadMapTiles(int mapIndex, int layer = 0);
 	void onFilterPatterns(int patternId);
@@ -228,4 +231,5 @@ private:
 	glm::vec2 m_contextMenuPos = glm::vec2(0.0f);
 	SelectionData m_selectionData;
 	std::unique_ptr<GameData> m_gameData;
+	std::string m_screenText;
 };

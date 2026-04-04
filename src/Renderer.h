@@ -29,6 +29,7 @@ public:
 	// Rendering methods (moved from RenderSystem)
 	void renderEntities(const Camera& camera, const std::vector<Entity*>& gameObjects);
 	void renderText(const Camera& camera, const std::vector<Entity*>& gameObjects, glm::vec4 bgColor, glm::vec4 fgColor);
+	void renderScreenText(const std::string& text, float x, float y, float scale, glm::vec4 bgColor, glm::vec4 fgColor);
 
 private:
 	void renderEntity(const Camera& camera, Entity& gameObject);

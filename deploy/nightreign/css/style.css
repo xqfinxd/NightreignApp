@@ -277,6 +277,7 @@ pre>code {
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -428,6 +429,7 @@ pre>code {
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -498,6 +500,7 @@ pre>code {
   cursor: pointer;
   transition: background .15s, color .15s, border-color .15s, box-shadow .15s;
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
   white-space: nowrap;
   flex: 0 0 auto;
 }

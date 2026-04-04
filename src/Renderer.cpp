@@ -442,3 +442,167 @@ void Renderer::renderText(const Camera& camera,
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 }
+
+void Renderer::renderScreenText(const std::string& text, float x, float y, float scale,
+	glm::vec4 bgColor, glm::vec4 fgColor)
+{
+	if (text.empty())
+		return;
+
+	// Get ImGui font atlas
+	ImGuiIO& io = ImGui::GetIO();
+	ImFontAtlas* atlas = io.Fonts;
+	if (!atlas || !atlas->TexID)
+		return;
+
+	ImFont* font = atlas->Fonts[0];
+	if (!font || !font->IsLoaded())
+		return;
+
+	Shader* shader = m_resource_mgr->getShader("font");
+	if (!shader)
+		return;
+
+	shader->use();
+
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, (GLuint)(intptr_t)atlas->TexID);
+	shader->setInt("fontTexture", 0);
+
+	// Screen-space orthographic projection (origin top-left)
+	glm::vec2 canvasSize = m_device->getCanvasSize();
+	glm::mat4 ortho = glm::ortho(0.0f, canvasSize.x, 0.0f, canvasSize.y);
+	shader->setMat4("mvp", ortho);
+
+	const float kFontHeight = font->FontSize * scale;
+	const float kBgPadding = kFontHeight * 0.15f;
+	const float kLineSpacingY = kFontHeight * 0.05f;
+	const glm::vec2 kZeroUV(0.0f, 0.0f);
+
+	// Split text into lines
+	std::stringstream ss(text);
+	std::string line;
+	std::vector<std::string> lines;
+	while (std::getline(ss, line)) {
+		lines.push_back(line);
+	}
+	if (lines.empty()) return;
+
+	// Measure total text block size
+	float totalHeight = 0.0f;
+	float maxLineWidth = 0.0f;
+	std::vector<float> lineWidths;
+	for (const auto& l : lines) {
+		ImVec2 size = font->CalcTextSizeA(font->FontSize, FLT_MAX, 0.0f, l.c_str());
+		float w = size.x * scale;
+		float h = size.y * scale;
+		maxLineWidth = std::max(maxLineWidth, w);
+		totalHeight += h;
+		lineWidths.push_back(w);
+	}
+	totalHeight += (lines.size() - 1) * kLineSpacingY;
+	if (maxLineWidth == 0.0f || totalHeight == 0.0f) return;
+
+	// Compute origin in GL coordinates (y from bottom)
+	float originX = x;
+	float originY = canvasSize.y - y; // flip: screen top -> GL top
+
+	// Draw background (centered horizontally)
+	float bgCenterX = canvasSize.x * 0.5f;
+	if (bgColor.a > 0.0f)
+	{
+		float bgX0 = bgCenterX - maxLineWidth * 0.5f - kBgPadding;
+		float bgX1 = bgCenterX + maxLineWidth * 0.5f + kBgPadding;
+		float bgY0 = originY - totalHeight - kBgPadding;
+		float bgY1 = originY + kBgPadding;
+
+		std::vector<Vertex> bgVerts;
+		bgVerts.emplace_back(glm::vec3(bgX0, bgY0, 0.0f), kZeroUV, bgColor);
+		bgVerts.emplace_back(glm::vec3(bgX1, bgY0, 0.0f), kZeroUV, bgColor);
+		bgVerts.emplace_back(glm::vec3(bgX1, bgY1, 0.0f), kZeroUV, bgColor);
+		bgVerts.emplace_back(glm::vec3(bgX0, bgY1, 0.0f), kZeroUV, bgColor);
+		std::vector<uint32_t> bgIdx = {0, 1, 2, 2, 3, 0};
+
+		GLuint bgVbo, bgEbo;
+		glGenBuffers(1, &bgVbo);
+		glGenBuffers(1, &bgEbo);
+		glBindBuffer(GL_ARRAY_BUFFER, bgVbo);
+		glBufferData(GL_ARRAY_BUFFER, bgVerts.size() * sizeof(bgVerts[0]), bgVerts.data(), GL_DYNAMIC_DRAW);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bgEbo);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, bgIdx.size() * sizeof(uint32_t), bgIdx.data(), GL_DYNAMIC_DRAW);
+
+		shader->setVec4("backgroundColor", glm::vec4(1.0f));
+		setupVertexAttributes();
+		glDrawElements(GL_TRIANGLES, (GLsizei)bgIdx.size(), GL_UNSIGNED_INT, 0);
+
+		glDeleteBuffers(1, &bgVbo);
+		glDeleteBuffers(1, &bgEbo);
+	}
+
+	// Build glyph quads
+	std::vector<Vertex> vertices;
+	std::vector<uint32_t> indices;
+	uint32_t indexOffset = 0;
+	float cursorY = originY;
+
+	for (size_t i = 0; i < lines.size(); i++) {
+		float cursorX = bgCenterX - lineWidths[i] * 0.5f;
+
+		const char* text_begin = lines[i].c_str();
+		const char* text_end = text_begin + lines[i].length();
+
+		for (const char* s = text_begin; s < text_end; )
+		{
+			unsigned int c = 0;
+			int bytes_count = ImTextCharFromUtf8(&c, s, text_end);
+			if (bytes_count <= 0) break;
+			s += bytes_count;
+			if (c < 32) continue;
+
+			const ImFontGlyph* glyph = font->FindGlyph((ImWchar)c);
+			if (!glyph) continue;
+
+			float x0 = cursorX + glyph->X0 * scale;
+			float y0 = cursorY - glyph->Y0 * scale;
+			float x1 = cursorX + glyph->X1 * scale;
+			float y1 = cursorY - glyph->Y1 * scale;
+
+			vertices.emplace_back(glm::vec3(x0, y0, 0.0f), glm::vec2(glyph->U0, glyph->V0), fgColor);
+			vertices.emplace_back(glm::vec3(x1, y0, 0.0f), glm::vec2(glyph->U1, glyph->V0), fgColor);
+			vertices.emplace_back(glm::vec3(x1, y1, 0.0f), glm::vec2(glyph->U1, glyph->V1), fgColor);
+			vertices.emplace_back(glm::vec3(x0, y1, 0.0f), glm::vec2(glyph->U0, glyph->V1), fgColor);
+
+			indices.push_back(indexOffset + 0);
+			indices.push_back(indexOffset + 1);
+			indices.push_back(indexOffset + 2);
+			indices.push_back(indexOffset + 2);
+			indices.push_back(indexOffset + 3);
+			indices.push_back(indexOffset + 0);
+			indexOffset += 4;
+
+			cursorX += glyph->AdvanceX * scale;
+		}
+		cursorY -= kFontHeight + kLineSpacingY;
+	}
+
+	if (vertices.empty()) return;
+
+	GLuint vbo, ebo;
+	glGenBuffers(1, &vbo);
+	glGenBuffers(1, &ebo);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+	glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vertices[0]), vertices.data(), GL_DYNAMIC_DRAW);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(uint32_t), indices.data(), GL_DYNAMIC_DRAW);
+
+	shader->setVec4("backgroundColor", glm::vec4(0.0f));
+	setupVertexAttributes();
+	glDrawElements(GL_TRIANGLES, (GLsizei)indices.size(), GL_UNSIGNED_INT, 0);
+
+	glDeleteBuffers(1, &vbo);
+	glDeleteBuffers(1, &ebo);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+}

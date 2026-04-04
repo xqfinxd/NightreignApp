@@ -281,14 +281,15 @@ bool GameData::loadVariationsEx(const std::string& filePath)
     for (size_t i = 0; i < variationLabelRowdata.size(); ++i)
     {
         int varkey = variationLabelRowdata[i].id;
-        auto it = m_variationDB.find(varkey);
-        if (it == m_variationDB.end()) continue;
+        auto& varInfo = m_variationDB[varkey];
+        varInfo.variationId = variationLabelRowdata[i].smallBaseMapId;
+        varInfo.variationType = variationLabelRowdata[i].variationId;
 
-        it->second.label = variationLabelRowdata[i].label;
-        it->second.sublabel = variationLabelRowdata[i].sublabel;
-        it->second.icon = variationLabelRowdata[i].icon;
-        it->second.visible = variationLabelRowdata[i].visible;
-        it->second.iconScale = variationLabelRowdata[i].iconScale;
+        varInfo.label = variationLabelRowdata[i].label;
+        varInfo.sublabel = variationLabelRowdata[i].sublabel;
+        varInfo.icon = variationLabelRowdata[i].icon;
+        varInfo.visible = variationLabelRowdata[i].visible;
+        varInfo.iconScale = variationLabelRowdata[i].iconScale;
     }
     
     return true;

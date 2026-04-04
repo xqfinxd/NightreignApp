@@ -521,6 +521,12 @@ void Scene::render(Renderer *renderer)
 	glm::vec4 white = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
 	auto texts = findObjectsByComponent<TextComponent>();
 	renderer->renderText(*camera, texts, black, white);
+
+	// Render screen-space UI text at the top of the screen
+	if (!m_screenText.empty()) {
+		renderer->renderScreenText(m_screenText, 10.0f, 10.0f, 1.2f,
+			black, white);
+	}
 }
 
 void Scene::drawUI()
@@ -1084,36 +1090,23 @@ void Scene::updatePanelInfo(const PatternInfo &patternInfo)
 {
 	auto& gameData = GameData::getRef();
 	// Update info panel with map details
-	std::string htmlContent = "<h3>地图信息</h3>";
+	std::string htmlContent = CHS("地图信息");
 	if (auto nightlordInfo = gameData.getNightlord(patternInfo.boss))
 	{
-		htmlContent += "<p><strong>夜王：</strong>" + nightlordInfo->name + "</p>";
+		htmlContent.append("\n");
+		htmlContent.append(CHS("夜王"));
+		htmlContent.append(": ");
+		htmlContent.append(nightlordInfo->name);
 	}
-	else
-	{
-		htmlContent += "<p><strong>未定义夜王：</strong>" + std::to_string(patternInfo.boss) + "</p>";
-	}
-	auto appendBossInfo = [&](const std::string& title, int bossId) {
-		if (bossId <= 0) return;
-		if (auto bossInfo = gameData.getVariationById(bossId))
-		{
-			htmlContent += "<p><strong>" + title + "：</strong>" + bossInfo->getText() + "</p>";
-		}
-		else
-		{
-			htmlContent += "<p><strong>未定义" + title + "：</strong>" + std::to_string(bossId) + "</p>";
-		}
-	};
-	appendBossInfo("第一夜BOSS", patternInfo.bossId1);
-	appendBossInfo("第二夜BOSS", patternInfo.bossId2);
-	appendBossInfo("第一夜额外BOSS", patternInfo.extraBossId1);
-	appendBossInfo("第二夜额外BOSS", patternInfo.extraBossId2);
 	
 	if (auto eventInfo = gameData.getEvent(patternInfo.id))
 	{
-		htmlContent += "<p><strong>事件：</strong>" + eventInfo->event + "</p>";
+		htmlContent.append("\n");
+		htmlContent.append(CHS("事件"));
+		htmlContent.append(": ");
+		htmlContent.append(eventInfo->event);
 	}
-	setInfoPanelContent(htmlContent);
+	setScreenText(htmlContent);
 }
 
 VariationInfo Scene::getFilterSpot() const
@@ -1244,6 +1237,7 @@ Entity& Scene::addBaseSpot(const MapPoint &gridPos, int attachId, const Variatio
 
 		meshComp->visible = meshComp->visible && option->showIcon;
 	}
+	
 	if (isOverlayPoint(gridPos))
 	{
         tag += " @b1";
@@ -1454,12 +1448,7 @@ void Scene::loadSpotsByMap(int map)
 	m_currentPatternId = -1;
 
 	// Update info panel with map details
-	std::string htmlContent = "<h3>选择模式</h3>";
-	htmlContent += "<p>点击下方地图 -> 选择目标地图</p>";
-	htmlContent += "<p style=\"text-indent: 2em;\">点击初始点和交互点选择类型</p>";
-	htmlContent += "<p style=\"text-indent: 2em;\">点击下方夜王按钮指定夜王</p>";
-	htmlContent += "<p style=\"text-indent: 2em;\">建议优先选择初始点</p>";
-	setInfoPanelContent(htmlContent);
+	setScreenText(CHS("选择模式"));
 }
 
 EntityManager::EntityManager() : m_registry(new entt::registry) {
